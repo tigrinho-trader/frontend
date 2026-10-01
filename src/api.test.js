@@ -29,7 +29,8 @@ describe("api", () => {
     vi.stubGlobal("fetch", fetch);
     await api.cotacoes();
     await api.regras();
-    expect(fetch.mock.calls.map((c) => c[0])).toEqual(["/api/cotacoes", "/api/ordens/regras"]);
+    await api.barreira();
+    expect(fetch.mock.calls.map((c) => c[0])).toEqual(["/api/cotacoes", "/api/ordens/regras", "/api/ordens/barreira"]);
     expect(fetch.mock.calls[0][1].headers).toEqual({});
   });
 

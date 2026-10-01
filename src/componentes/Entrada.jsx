@@ -16,7 +16,7 @@ export default function Entrada({ aoEntrar }) {
       >
         <div className="logo-grande">🐯</div>
         <h1>Tigrinho Trader</h1>
-        <p>Aposte no movimento real das criptos em rodadas de 15 segundos a 5 minutos.</p>
+        <p>Jogos de reflexo e coragem movidos pelo preço real das criptos.</p>
         <label htmlFor="nome">Seu nome de jogador</label>
         <input
           id="nome"
@@ -26,11 +26,11 @@ export default function Entrada({ aoEntrar }) {
           onChange={(e) => setNome(e.target.value.trim())}
           maxLength={30}
         />
-        <small>3 a 30 letras, números, ponto, hífen ou _. Quem é novo ganha 1.000 fichas.</small>
+        <small>3 a 30 letras, números, ponto, hífen ou _. Quem é novo ganha 1.000 moedas.</small>
         <button className="botao-principal" disabled={!valido}>
-          Entrar na mesa
+          Entrar
         </button>
-        <p className="nota">Fichas fictícias, sem dinheiro real.</p>
+        <p className="nota">Moedas fictícias, sem dinheiro real.</p>
       </form>
     </div>
   );

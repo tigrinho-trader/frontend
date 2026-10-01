@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api.js";
+import { PARAMETROS_PADRAO } from "./barreira.js";
 
-const PONTOS_GRAFICO = 90;
+const PONTOS_GRAFICO = 120;
 
 /** Cotacoes ao vivo (1 por segundo) + historico curto por ativo pro grafico. */
 export function useCotacoes() {
@@ -24,7 +25,9 @@ export function useCotacoes() {
             const pontos = novo[c.simbolo] || [];
             const ultimo = pontos[pontos.length - 1];
             if (!ultimo || ultimo.em !== c.atualizadoEm) {
-              novo[c.simbolo] = [...pontos, { em: c.atualizadoEm, preco: Number(c.preco) }].slice(-PONTOS_GRAFICO);
+              novo[c.simbolo] = [...pontos, { em: c.atualizadoEm, preco: Number(c.preco), recebido: Date.now() }].slice(
+                -PONTOS_GRAFICO,
+              );
             }
           }
           return novo;
@@ -42,6 +45,26 @@ export function useCotacoes() {
   }, []);
 
   return { cotacoes, historico, erro };
+}
+
+/** Parametros da aposta "sem toque" e volatilidade de cada ativo (atualiza a cada 10s). */
+export function useParametrosBarreira() {
+  const [parametros, setParametros] = useState(PARAMETROS_PADRAO);
+  useEffect(() => {
+    let vivo = true;
+    const buscar = () =>
+      api
+        .barreira()
+        .then((p) => vivo && setParametros(p))
+        .catch(() => {});
+    buscar();
+    const t = setInterval(buscar, 10000);
+    return () => {
+      vivo = false;
+      clearInterval(t);
+    };
+  }, []);
+  return parametros;
 }
 
 /** Acompanha uma rodada ate ela fechar e avisa uma unica vez quando terminar. */

@@ -4,28 +4,22 @@ Parte do projeto **Tigrinho Trader** (disciplina Projeto de Software).
 
 ## Finalidade
 
-Interface "tigrinho" do jogo: o jogador aposta se o preço real de uma cripto (Binance) sobe, desce ou fica parado
-numa rodada de 15s a 5min, com fichas fictícias. Fala exclusivamente com o `api-gateway` via REST (`/api/...`);
-não conhece os serviços internos.
+Jogos casuais em que a aposta está dentro da mecânica do jogo, com moedas fictícias e o preço real das criptos
+(Binance). Fala exclusivamente com o `api-gateway` via REST (`/api/...`); não conhece os serviços internos.
+
+Os dois jogos usam a aposta **BARREIRA** ("sem toque") do `trading-service`: o jogador escolhe um preço-alvo e
+ganha se o mercado **não encostar** nele até o fim. Quanto mais perto do preço, mais paga (até 20x); o
+multiplicador vem da volatilidade real do ativo e é mostrado ao vivo (`src/barreira.js` repete a conta do backend).
 
 ## Jogos
 
 | Jogo | Como funciona |
 |---|---|
-| 🎯 Palpite | Escolhe o ativo e aposta em Sobe, Desce ou Parado. |
-| 🎡 Roleta do Tigre | A roleta sorteia ativo + palpite (9 fatias) e a aposta é feita onde o ponteiro parar. |
-| 🪜 Escada | Cada acerto sobe um degrau e o prêmio inteiro vira a próxima aposta. 5 degraus até o topo; dá pra sacar entre um e outro, errou cai tudo. |
+| ✈️ Voo Congelado | O avião voa sobre o gráfico ao vivo e o jogador escolhe a altura (mouse, dedo ou ↑↓). Num momento aleatório chega o gelo e o avião congela ali: essa altura vira o alvo. Se a linha do preço encostar no avião antes do gelo derreter (15/30/60s), ele cai. |
+| 🐯 Arena do Tigre | Expedição de ~3 minutos em 5 ondas. Cada onda oferece 3 animais: os do céu atacam de cima (alvo acima do preço), os do chão de baixo. O jogador escolhe quantos e quais enfrentar; durante 30s o tigre atravessa a arena na altura do preço, e cada linha de ataque que ele cruzar é um golpe (aposta perdida). Bicho mais forte fica mais perto e paga mais; a última onda tem um chefe. |
 
-Os três usam os modos do `trading-service` (regras em `GET /api/ordens/regras`):
-
-| Modo | Sobe/Desce | Parado | Se errar |
-|---|---|---|---|
-| 🐱 Fácil | 1,50x | 1,80x | perde metade |
-| 🐯 Difícil | 1,90x | 2,50x | perde tudo |
-| 🔥 Insano | 4,00x (preço precisa andar 0,02%) | 6,00x (dentro de 0,01%) | perde tudo |
-
-Durante a rodada a tela mostra o gráfico ao vivo, a contagem regressiva e se você está ganhando ou perdendo naquele
-instante; quem decide o resultado é o `trading-service`.
+O tigre do jogador evolui: XP, nível, título e troféus saem do histórico de rodadas no servidor
+(`src/tigre.js`), então o progresso continua em qualquer navegador.
 
 > Login com Auth0 entra na Etapa 3. Até lá o jogador digita um nome, que vai no cabeçalho `X-Usuario-Id`.
 
@@ -47,10 +41,12 @@ Na imagem Docker o nginx serve o build e repassa `/api` para `GATEWAY_URL` (padr
 ## Estrutura
 
 - `src/api.js`: cliente do gateway
-- `src/jogo.js`: regras de tela (situação parcial da rodada, roleta, escada, formatação), testadas em `src/jogo.test.js`
-- `src/ganchos.js`: hooks de cotações ao vivo, acompanhamento da rodada e carteira
-- `src/jogos/`: Palpite, Roleta e Escada
-- `src/componentes/`: topo, ticker, controles, gráfico, rodada ativa e histórico
+- `src/barreira.js`: preço da aposta "sem toque" (mesma conta do `CalculadoraBarreira` do backend)
+- `src/tigre.js`: XP, nível e troféus do tigre a partir das rodadas
+- `src/jogos/VooCongelado.jsx` + `src/jogos/voo/cena.js`: o jogo do avião (cena em canvas)
+- `src/jogos/ArenaTigre.jsx` + `src/jogos/arena/bestiario.js`: a arena e os animais
+- `src/som.js`: efeitos sonoros sintetizados (WebAudio), com botão de mudo
+- `src/ganchos.js`: cotações ao vivo, parâmetros da barreira, rodadas e carteira
 
 ## Repositorios do projeto
 

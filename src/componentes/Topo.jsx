@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { formatarFichas } from "../jogo.js";
+import { formatarMoedas } from "../jogo.js";
+import { alternarMudo, estaMudo } from "../som.js";
 
-export default function Topo({ usuario, carteira, aoSair, aoRecarregar }) {
+export default function Topo({ usuario, carteira, progresso, aoSair, aoRecarregar, aoInicio }) {
   const saldo = carteira ? Number(carteira.saldo) : null;
   const anterior = useRef(saldo);
   const [pulso, setPulso] = useState(null);
+  const [mudo, setMudo] = useState(estaMudo());
 
   // pisca verde/vermelho quando o saldo muda
   useEffect(() => {
@@ -21,22 +23,31 @@ export default function Topo({ usuario, carteira, aoSair, aoRecarregar }) {
 
   return (
     <header className="topo">
-      <div className="marca">
+      <button className="marca" onClick={aoInicio}>
         <span className="marca-emoji">🐯</span>
         <span>
           Tigrinho <strong>Trader</strong>
         </span>
-      </div>
+      </button>
       <div className="topo-direita">
+        <span className="nivel" title={`${progresso.xp} XP`}>
+          Nv. {progresso.nivel}
+        </span>
         <div className={`saldo ${pulso || ""}`} aria-live="polite">
-          <span className="saldo-rotulo">Fichas</span>
-          <span className="saldo-valor">🪙 {saldo == null ? "…" : formatarFichas(saldo)}</span>
+          🪙 <strong>{saldo == null ? "…" : formatarMoedas(saldo)}</strong>
         </div>
         {saldo != null && saldo < 5 && (
           <button className="botao-secundario" onClick={aoRecarregar}>
-            Recarregar 1.000
+            +1.000 moedas
           </button>
         )}
+        <button
+          className="icone"
+          aria-label={mudo ? "Ligar som" : "Desligar som"}
+          onClick={() => setMudo(alternarMudo())}
+        >
+          {mudo ? "🔇" : "🔊"}
+        </button>
         <div className="jogador">
           <span>{usuario}</span>
           <button className="link" onClick={aoSair}>

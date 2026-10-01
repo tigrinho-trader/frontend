@@ -40,6 +40,7 @@ async function chamar(caminho, { usuario, metodo = "GET", corpo } = {}) {
 export const api = {
   cotacoes: () => chamar("/cotacoes"),
   regras: () => chamar("/ordens/regras"),
+  barreira: () => chamar("/ordens/barreira"),
   carteira: (usuario) => chamar("/carteira", { usuario }),
   extrato: (usuario) => chamar("/carteira/extrato", { usuario }),
   depositar: (usuario, valor) => chamar("/carteira/depositos", { usuario, metodo: "POST", corpo: { valor } }),

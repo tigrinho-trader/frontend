@@ -1,20 +1,32 @@
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
 import { api } from "./api.js";
-import { useArmazenado, useCotacoes, useJogador } from "./ganchos.js";
-import { FICHAS } from "./jogo.js";
+import { useArmazenado, useCotacoes, useJogador, useParametrosBarreira } from "./ganchos.js";
+import { progressoDoTigre, TROFEUS } from "./tigre.js";
+import { tocar } from "./som.js";
 import Entrada from "./componentes/Entrada.jsx";
 import Topo from "./componentes/Topo.jsx";
 import Ticker from "./componentes/Ticker.jsx";
-import Controles from "./componentes/Controles.jsx";
 import Historico from "./componentes/Historico.jsx";
-import Palpite from "./jogos/Palpite.jsx";
-import Roleta from "./jogos/Roleta.jsx";
-import Escada from "./jogos/Escada.jsx";
+import VooCongelado from "./jogos/VooCongelado.jsx";
+import ArenaTigre from "./jogos/ArenaTigre.jsx";
 
 const JOGOS = [
-  { id: "palpite", nome: "Palpite", emoji: "🎯", descricao: "Escolha o ativo e diga se sobe, desce ou fica parado." },
-  { id: "roleta", nome: "Roleta do Tigre", emoji: "🎡", descricao: "A roleta escolhe o ativo e o palpite. Só a sorte." },
-  { id: "escada", nome: "Escada", emoji: "🪜", descricao: "Cada acerto vira a próxima aposta. Suba 5 degraus ou saque antes." },
+  {
+    id: "voo",
+    nome: "Voo Congelado",
+    emoji: "✈️",
+    cena: "❄️",
+    descricao: "Pilote o avião sobre o gráfico. Do nada, o gelo congela você no ar: se o preço encostar, você cai.",
+    cor: "ceu",
+  },
+  {
+    id: "arena",
+    nome: "Arena do Tigre",
+    emoji: "🐯",
+    cena: "🦅🐊",
+    descricao: "Expedição de 3 minutos: escolha quais animais enfrentar. Bicho forte paga mais e acerta mais fácil.",
+    cor: "selva",
+  },
 ];
 
 export default function App() {
@@ -26,22 +38,9 @@ export default function App() {
 function Mesa({ usuario, aoSair }) {
   const { cotacoes, historico, erro: erroCotacoes } = useCotacoes();
   const { carteira, ordens, atualizar } = useJogador(usuario);
-  const [regras, setRegras] = useState(null);
-  const [erroRegras, setErroRegras] = useState(null);
-  const [jogo, setJogo] = useArmazenado("tigrinho.jogo", "palpite");
-  const [modo, setModo] = useArmazenado("tigrinho.modo", "DIFICIL");
-  const [valor, setValor] = useArmazenado("tigrinho.valor", FICHAS[1]);
-  const [duracao, setDuracao] = useArmazenado("tigrinho.duracao", 15);
-
-  useEffect(() => {
-    api.regras().then(setRegras).catch((e) => setErroRegras(e.message));
-  }, []);
-
-  useEffect(() => {
-    document.body.dataset.modo = modo;
-  }, [modo]);
-
-  const regraModo = regras?.modos.find((m) => m.modo === modo);
+  const parametros = useParametrosBarreira();
+  const [jogo, setJogo] = useArmazenado("tigrinho.jogo", null);
+  const progresso = useMemo(() => progressoDoTigre(ordens), [ordens]);
 
   // a carteira recebe o resultado pelo RabbitMQ: confere de novo um pouco depois
   const aoTerminarRodada = () => {
@@ -56,70 +55,105 @@ function Mesa({ usuario, aoSair }) {
 
   const contexto = {
     usuario,
-    regras,
-    regraModo,
-    modo,
-    valor: Number(valor),
-    duracao,
     cotacoes,
     historico,
+    parametros,
+    ordens,
     saldo: carteira ? Number(carteira.saldo) : 0,
     aoApostar: atualizar,
     aoTerminarRodada,
   };
 
-  const jogoAtual = JOGOS.find((j) => j.id === jogo) || JOGOS[0];
+  const jogoAtual = JOGOS.find((j) => j.id === jogo);
+  const pronto = cotacoes.length > 0;
 
   return (
     <div className="mesa">
-      <Topo usuario={usuario} carteira={carteira} aoSair={aoSair} aoRecarregar={recarregar} />
+      <Topo
+        usuario={usuario}
+        carteira={carteira}
+        progresso={progresso}
+        aoSair={aoSair}
+        aoRecarregar={recarregar}
+        aoInicio={() => setJogo(null)}
+      />
       <Ticker cotacoes={cotacoes} historico={historico} erro={erroCotacoes} />
 
-      <main className="conteudo">
-        <section className="palco">
-          <nav className="abas" aria-label="Jogos">
+      {!jogoAtual ? (
+        <main className="lobby">
+          <section className="jogos">
             {JOGOS.map((j) => (
               <button
                 key={j.id}
-                className={`aba ${j.id === jogoAtual.id ? "ativa" : ""}`}
-                onClick={() => setJogo(j.id)}
+                className={`cartao-jogo cartao-${j.cor}`}
+                onClick={() => {
+                  tocar("clique");
+                  setJogo(j.id);
+                }}
               >
-                <span className="aba-emoji">{j.emoji}</span> {j.nome}
+                <span className="cartao-arte" aria-hidden="true">
+                  <span className="cartao-emoji">{j.emoji}</span>
+                  <span className="cartao-cena">{j.cena}</span>
+                </span>
+                <span className="cartao-nome">{j.nome}</span>
+                <span className="cartao-descricao">{j.descricao}</span>
+                <span className="cartao-jogar">Jogar →</span>
               </button>
             ))}
-          </nav>
-          <p className="descricao-jogo">{jogoAtual.descricao}</p>
-
-          <Controles
-            regras={regras}
-            modo={modo}
-            aoMudarModo={setModo}
-            valor={Number(valor)}
-            aoMudarValor={setValor}
-            duracao={duracao}
-            aoMudarDuracao={setDuracao}
-            saldo={contexto.saldo}
-          />
-
-          {erroRegras && <p className="aviso erro">Não consegui carregar as regras: {erroRegras}</p>}
-
-          {regras && cotacoes.length > 0 ? (
-            <div className="area-jogo" key={jogoAtual.id}>
-              {jogoAtual.id === "palpite" && <Palpite {...contexto} />}
-              {jogoAtual.id === "roleta" && <Roleta {...contexto} />}
-              {jogoAtual.id === "escada" && <Escada {...contexto} />}
-            </div>
+          </section>
+          <Covil progresso={progresso} />
+          <Historico ordens={ordens} />
+        </main>
+      ) : (
+        <main className="tela-jogo">
+          <button className="voltar" onClick={() => setJogo(null)}>
+            ← Jogos
+          </button>
+          {pronto ? (
+            jogoAtual.id === "voo" ? (
+              <VooCongelado {...contexto} />
+            ) : (
+              <ArenaTigre {...contexto} />
+            )
           ) : (
             <p className="aviso">Esperando as cotações da Binance…</p>
           )}
-        </section>
+        </main>
+      )}
 
-        <Historico ordens={ordens} />
-      </main>
-
-      <footer className="rodape">
-        Fichas fictícias, sem dinheiro real · preços reais da Binance · projeto acadêmico Insper
-      </footer>
+      <footer className="rodape">Moedas fictícias, sem dinheiro real · preços reais da Binance · projeto acadêmico Insper</footer>
     </div>
+  );
+}
+
+/** O tigre do jogador: nivel, XP e trofeus, guardados no historico do servidor. */
+function Covil({ progresso }) {
+  return (
+    <section className="covil">
+      <div className="covil-tigre" aria-hidden="true">
+        🐯
+      </div>
+      <div className="covil-info">
+        <h2>
+          Seu tigre · nível {progresso.nivel} <small>{progresso.titulo}</small>
+        </h2>
+        <div className="barra-xp" title={`${progresso.xp} XP`}>
+          <div className="barra-xp-cheia" style={{ width: `${progresso.progresso * 100}%` }} />
+        </div>
+        <small>
+          {progresso.xp} XP · faltam {progresso.faltam} para o nível {progresso.nivel + 1}
+        </small>
+        <div className="trofeus">
+          {TROFEUS.map((t) => (
+            <span key={t.id} className={`trofeu ${progresso.trofeus[t.id] ? "" : "apagado"}`} title={t.nome}>
+              {t.emoji} {progresso.trofeus[t.id]}
+            </span>
+          ))}
+          <span className="trofeu">
+            ⚔️ {progresso.vitorias}V / {progresso.derrotas}D
+          </span>
+        </div>
+      </div>
+    </section>
   );
 }
