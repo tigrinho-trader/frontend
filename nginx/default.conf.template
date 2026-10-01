@@ -1,0 +1,16 @@
+# Serve o build e repassa /api pro api-gateway.
+server {
+    listen 80;
+    root /usr/share/nginx/html;
+
+    location /api/ {
+        proxy_pass ${GATEWAY_URL};
+        # O navegador fala com este nginx na mesma origem. Repassar o Origin faria o CORS do gateway
+        # (que so libera FRONTEND_ORIGINS) recusar os POSTs com 403.
+        proxy_set_header Origin "";
+    }
+
+    location / {
+        try_files $uri /index.html;
+    }
+}
