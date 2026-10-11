@@ -19,8 +19,13 @@
     </div>
 
     <!-- Menu inicial -->
-    <div class="overlay" id="menu">
+    <div class="overlay" id="menu" data-conta="carregando">
       <div class="card">
+        <div class="jogador so-logado">
+          <span class="avatar" id="menu-avatar"></span>
+          <span class="jogador-nome" id="menu-apelido">Jogador</span>
+          <span class="jogador-saldo"><span class="coin"></span><b id="menu-wallet">0</b></span>
+        </div>
         <h1>Flecha Certeira</h1>
         <p class="sub">Pague para atirar, acerte os pássaros e saia com mais moedas!</p>
         <ul class="howto">
@@ -30,8 +35,125 @@
           <li>Os pássaros não param: <b>mire onde o pássaro VAI estar</b>.</li>
           <li>Acabaram as flechas? Compre mais ou encerre. Se errar muito, você <b>sai com menos moedas</b> do que entrou!</li>
         </ul>
-        <button class="btn" id="btn-play">Jogar</button>
-        <p class="best">Seu saldo: <span class="coin"></span><b id="menu-wallet">0</b></p>
+        <p class="aviso-menu" id="menu-aviso" hidden></p>
+
+        <!-- Conectando ao login -->
+        <p class="so-carregando carregando">Conectando…</p>
+
+        <!-- Sem login -->
+        <div class="so-anonimo">
+          <p class="aviso-config" id="aviso-config" hidden>Login não configurado — defina VITE_AUTH0_DOMAIN, VITE_AUTH0_CLIENT_ID e VITE_AUTH0_AUDIENCE</p>
+          <button class="btn" id="btn-entrar">Entrar</button>
+          <button class="btn secondary" id="btn-criar-conta">Criar conta</button>
+          <p class="note">As moedas ficam na sua carteira no servidor: entre para jogar.</p>
+        </div>
+
+        <!-- Logado, mas o servidor não respondeu -->
+        <div class="so-erro">
+          <p class="erro-menu" id="menu-erro">Não foi possível falar com o servidor.</p>
+          <button class="btn" id="btn-tentar">Tentar de novo</button>
+          <button class="btn secondary" id="btn-sair-erro">Sair</button>
+        </div>
+
+        <!-- Logado -->
+        <div class="so-logado">
+          <button class="btn" id="btn-play">Jogar</button>
+          <div class="menu-acoes">
+            <button class="btn secondary small" id="btn-perfil">Meu perfil</button>
+            <button class="btn secondary small" id="btn-admin" hidden>Administração</button>
+            <button class="btn secondary small" id="btn-sair">Sair</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Meu perfil -->
+    <div class="overlay" id="perfil">
+      <div class="card conta">
+        <h2>Meu perfil</h2>
+        <div class="perfil-topo">
+          <span class="avatar grande" id="perfil-avatar"></span>
+          <div class="perfil-dados">
+            <b class="perfil-nome" id="perfil-nome">—</b>
+            <span id="perfil-email">—</span>
+            <span><span id="perfil-papel">—</span> · membro desde <span id="perfil-desde">—</span></span>
+          </div>
+        </div>
+        <form class="linha-form" id="form-apelido" novalidate>
+          <label for="perfil-apelido">Apelido</label>
+          <input type="text" id="perfil-apelido" maxlength="20" autocomplete="nickname" spellcheck="false">
+          <button type="submit" class="btn small" id="btn-salvar-apelido">Salvar</button>
+        </form>
+        <p class="msg" id="perfil-apelido-msg"></p>
+
+        <h3 class="secao">Últimas movimentações</h3>
+        <div class="tabela-rolagem curta">
+          <table class="tabela extrato">
+            <thead><tr><th>Tipo</th><th>Valor</th><th>Descrição</th><th>Data</th></tr></thead>
+            <tbody id="perfil-extrato"><tr><td colspan="4" class="vazio">Carregando…</td></tr></tbody>
+          </table>
+        </div>
+
+        <div class="zona-perigo">
+          <button type="button" class="btn danger small" id="btn-excluir">Excluir minha conta</button>
+          <form class="confirmar-exclusao" id="form-excluir" hidden novalidate>
+            <p>Sua conta será desativada e seus dados pessoais (nome, email, foto e apelido) serão apagados. Isso não pode ser desfeito.
+               Digite <b>EXCLUIR</b> para confirmar.</p>
+            <div class="linha-form">
+              <input type="text" id="excluir-texto" autocomplete="off" spellcheck="false" aria-label="Digite EXCLUIR para confirmar">
+              <button type="submit" class="btn danger small" id="btn-excluir-confirmar" disabled>Excluir</button>
+              <button type="button" class="btn secondary small" id="btn-excluir-cancelar">Cancelar</button>
+            </div>
+            <p class="msg erro" id="excluir-msg"></p>
+          </form>
+        </div>
+
+        <button class="btn secondary" id="btn-perfil-voltar">Voltar</button>
+      </div>
+    </div>
+
+    <!-- Administração de usuários (só ADMIN) -->
+    <div class="overlay" id="admin">
+      <div class="card conta larga">
+        <h2>Administração</h2>
+        <form class="filtros" id="admin-filtros">
+          <input type="search" id="admin-busca" placeholder="Buscar por nome, email, apelido ou id" aria-label="Buscar usuários">
+          <select id="admin-status" aria-label="Status">
+            <option value="">Todos os status</option>
+            <option value="ATIVO">Ativo</option>
+            <option value="BLOQUEADO">Bloqueado</option>
+            <option value="EXCLUIDO">Excluído</option>
+          </select>
+          <select id="admin-papel" aria-label="Papel">
+            <option value="">Todos os papéis</option>
+            <option value="JOGADOR">Jogador</option>
+            <option value="ADMIN">Administrador</option>
+          </select>
+          <button type="submit" class="btn small">Buscar</button>
+        </form>
+        <p class="msg erro" id="admin-erro"></p>
+        <div class="tabela-rolagem">
+          <table class="tabela usuarios">
+            <thead><tr><th>Apelido / nome</th><th>Email</th><th>Papel</th><th>Status</th><th>Último acesso</th><th>Ações</th></tr></thead>
+            <tbody id="admin-linhas"></tbody>
+          </table>
+        </div>
+        <div class="paginacao">
+          <button type="button" class="mini" id="admin-anterior">‹ Anterior</button>
+          <span id="admin-pagina">Página 1 de 1</span>
+          <button type="button" class="mini" id="admin-proxima">Próxima ›</button>
+        </div>
+        <button class="btn secondary" id="btn-admin-voltar">Voltar</button>
+      </div>
+    </div>
+
+    <!-- Conta bloqueada ou excluída (403) -->
+    <div class="overlay" id="bloqueado">
+      <div class="card small">
+        <h2 id="bloqueado-titulo">Conta bloqueada</h2>
+        <p class="sub" id="bloqueado-texto">Um administrador bloqueou sua conta. Enquanto ela estiver bloqueada, não é possível jogar.</p>
+        <p class="note" id="bloqueado-motivo"></p>
+        <button class="btn secondary" id="btn-bloqueado-sair">Sair</button>
       </div>
     </div>
 
@@ -56,6 +178,10 @@
           <span class="buy-total">Total <span class="coin"></span><b id="buy-total">0</b></span>
           <span class="buy-after">saldo depois: <b id="buy-after">0</b></span>
         </p>
+        <div class="erro-caixa" id="buy-erro" hidden>
+          <span id="buy-erro-texto"></span>
+          <button type="button" class="mini" id="btn-buy-fechar-aberta" hidden>Encerrar a rodada aberta</button>
+        </div>
         <button class="btn" id="btn-enter">Pagar e entrar</button>
         <button class="btn secondary" id="btn-buy-back">Voltar</button>
       </div>
@@ -66,8 +192,10 @@
       <div class="card shop">
         <h2>Acabaram as flechas!</h2>
         <p class="sub">Até agora: gastou <b id="ref-spent">0</b>, ganhou <b id="ref-earned">0</b> → <b id="ref-net">0</b></p>
-        <p class="sub">Saldo: <span class="coin"></span><b id="ref-wallet">0</b> · comprar mais flechas?</p>
+        <p class="sub">Disponível para comprar: <span class="coin"></span><b id="ref-wallet">0</b> · comprar mais flechas?</p>
+        <p class="note dica">As moedas ganhas entram na carteira quando a rodada termina.</p>
         <div class="refill-options" id="refill-options"></div>
+        <p class="msg erro" id="refill-erro"></p>
         <button class="btn secondary" id="btn-refill-end">Encerrar rodada</button>
       </div>
     </div>
@@ -95,12 +223,16 @@
           <tr><td>Moedas ganhas</td><td id="res-earned" class="pos">+0</td></tr>
           <tr class="total"><td>Saldo atual</td><td><span class="coin"></span><span id="res-wallet">0</span></td></tr>
         </table>
+        <p class="note" id="res-aviso"></p>
         <p class="broke" id="res-broke">Você ficou sem moedas para entrar em qualquer campo!</p>
         <button class="btn" id="btn-again">Jogar de novo</button>
         <button class="btn secondary" id="btn-change-range">Trocar de campo</button>
-        <button class="btn" id="btn-restart">Recomeçar com 100 moedas</button>
+        <button class="btn" id="btn-restart">Voltar ao menu</button>
       </div>
     </div>
+
+    <!-- Avisos rápidos (não bloqueiam o jogo) -->
+    <div class="aviso" id="aviso" role="status" aria-live="polite"></div>
   </div>
 
   <script type="module" src="/src/main.js"></script>

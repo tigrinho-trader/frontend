@@ -393,3 +393,270 @@ h2 { font-size: calc(var(--s) * 44px); margin-bottom: calc(var(--s) * 10px); }
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes pop { from { transform: scale(0.7); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 @keyframes starPop { from { transform: scale(0) rotate(-90deg); } to { transform: scale(1) rotate(0); } }
+
+/* ---------------------------------------------------------------------------
+   Conta: login, perfil, administração (mesmo estilo de madeira das outras telas)
+   --------------------------------------------------------------------------- */
+input, select, textarea { -webkit-user-select: text; user-select: text; }
+
+/* O menu mostra um bloco por situação da conta */
+#menu:not([data-conta="carregando"]) .so-carregando,
+#menu:not([data-conta="anonimo"]) .so-anonimo,
+#menu:not([data-conta="erro"]) .so-erro,
+#menu:not([data-conta="logado"]) .so-logado { display: none !important; }
+
+.carregando {
+  font-size: calc(var(--s) * 22px);
+  font-weight: 900;
+  opacity: 0.75;
+  animation: pulsar 1.2s ease-in-out infinite;
+}
+
+.jogador {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--s) * 10px);
+  margin: calc(var(--s) * -8px) 0 calc(var(--s) * 8px);
+  padding: calc(var(--s) * 6px) calc(var(--s) * 14px) calc(var(--s) * 6px) calc(var(--s) * 6px);
+  background: linear-gradient(#fffaf0, #f6e6c8);
+  border: calc(var(--s) * 3px) solid #c9a77c;
+  border-radius: calc(var(--s) * 40px);
+  text-align: left;
+}
+.jogador-nome {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: 'Lilita One', 'Nunito', sans-serif;
+  font-size: calc(var(--s) * 24px);
+}
+.jogador-saldo {
+  font-family: 'Lilita One', 'Nunito', sans-serif;
+  font-size: calc(var(--s) * 26px);
+  color: #e53935;
+}
+.jogador-saldo b { font-weight: 400; }
+
+.avatar {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: calc(var(--s) * 44px);
+  height: calc(var(--s) * 44px);
+  overflow: hidden;
+  font-family: 'Lilita One', 'Nunito', sans-serif;
+  font-size: calc(var(--s) * 20px);
+  color: #fff;
+  background: radial-gradient(circle at 35% 30%, #ef5350, #b71c1c);
+  border: calc(var(--s) * 3px) solid #8b5a2b;
+  border-radius: 50%;
+  text-shadow: 0 calc(var(--s) * 2px) 0 #7a1a12;
+}
+.avatar img { width: 100%; height: 100%; object-fit: cover; }
+.avatar.grande { width: calc(var(--s) * 84px); height: calc(var(--s) * 84px); font-size: calc(var(--s) * 36px); border-width: calc(var(--s) * 4px); }
+
+.menu-acoes { margin-top: calc(var(--s) * 2px); }
+
+.btn.small {
+  min-width: 0;
+  margin: calc(var(--s) * 4px);
+  padding: calc(var(--s) * 7px) calc(var(--s) * 18px);
+  font-size: calc(var(--s) * 20px);
+  border-width: calc(var(--s) * 3px);
+  border-radius: calc(var(--s) * 14px);
+  box-shadow: 0 calc(var(--s) * 4px) 0 #1b5e20;
+}
+.btn.secondary.small { box-shadow: 0 calc(var(--s) * 4px) 0 #4e342e; }
+.btn.danger { background: #e53935; border-color: #7a1a12; box-shadow: 0 calc(var(--s) * 6px) 0 #7a1a12; text-shadow: 0 calc(var(--s) * 2px) 0 #7a1a12; }
+.btn.danger.small { box-shadow: 0 calc(var(--s) * 4px) 0 #7a1a12; }
+
+.aviso-menu, .aviso-config, .erro-menu, .erro-caixa {
+  margin: 0 auto calc(var(--s) * 12px);
+  padding: calc(var(--s) * 8px) calc(var(--s) * 14px);
+  font-size: calc(var(--s) * 16px);
+  font-weight: 900;
+  line-height: 1.3;
+  border: calc(var(--s) * 3px) dashed #c9a77c;
+  border-radius: calc(var(--s) * 14px);
+  background: #fffaf0;
+}
+.aviso-menu.erro, .aviso-config, .erro-menu, .erro-caixa { color: #b71c1c; border-color: #e57373; background: #fff1ee; }
+.erro-caixa .mini { margin-left: calc(var(--s) * 8px); }
+
+/* Aviso flutuante durante o jogo */
+.aviso {
+  position: absolute;
+  top: calc(var(--s) * 128px);
+  left: 50%;
+  z-index: 5;
+  max-width: 70%;
+  padding: calc(var(--s) * 10px) calc(var(--s) * 20px);
+  font-size: calc(var(--s) * 18px);
+  font-weight: 900;
+  text-align: center;
+  color: #fff;
+  background: rgba(74, 47, 23, 0.92);
+  border: calc(var(--s) * 3px) solid #ffd54f;
+  border-radius: calc(var(--s) * 16px);
+  box-shadow: 0 calc(var(--s) * 6px) calc(var(--s) * 16px) rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, calc(var(--s) * -10px));
+  transition: opacity 0.25s, transform 0.25s;
+}
+.aviso.show { opacity: 1; transform: translate(-50%, 0); }
+.aviso.erro { border-color: #ff8a80; background: rgba(120, 25, 15, 0.92); }
+
+/* Cartões de conta */
+.card.conta { width: calc(var(--s) * 820px); padding-top: calc(var(--s) * 18px); padding-bottom: calc(var(--s) * 18px); }
+.card.conta.larga { width: calc(var(--s) * 1180px); }
+.card.conta h2 { margin-bottom: calc(var(--s) * 6px); }
+h3.secao {
+  margin: calc(var(--s) * 14px) 0 calc(var(--s) * 6px);
+  font-family: 'Lilita One', 'Nunito', sans-serif;
+  font-weight: 400;
+  font-size: calc(var(--s) * 24px);
+  text-align: left;
+}
+
+.perfil-topo {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--s) * 16px);
+  margin-bottom: calc(var(--s) * 12px);
+  text-align: left;
+}
+.perfil-dados { display: flex; flex-direction: column; min-width: 0; font-size: calc(var(--s) * 17px); }
+.perfil-dados span { overflow: hidden; text-overflow: ellipsis; }
+.perfil-nome { font-family: 'Lilita One', 'Nunito', sans-serif; font-weight: 400; font-size: calc(var(--s) * 28px); }
+
+.linha-form {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--s) * 8px);
+}
+.linha-form label { font-weight: 900; font-size: calc(var(--s) * 18px); }
+
+.card input[type="text"], .card input[type="search"], .card select {
+  flex: 1;
+  min-width: 0;
+  padding: calc(var(--s) * 8px) calc(var(--s) * 12px);
+  font-family: 'Nunito', sans-serif;
+  font-weight: 700;
+  font-size: calc(var(--s) * 17px);
+  color: #4a2f17;
+  background: #fffaf0;
+  border: calc(var(--s) * 3px) solid #c9a77c;
+  border-radius: calc(var(--s) * 12px);
+  outline: none;
+}
+.card input:focus, .card select:focus { border-color: #8bc34a; background: #fff; }
+.card select { flex: none; cursor: pointer; }
+
+.msg { min-height: calc(var(--s) * 22px); margin: calc(var(--s) * 4px) 0; font-size: calc(var(--s) * 16px); font-weight: 900; text-align: left; }
+.msg.erro { color: #c62828; }
+.msg.ok { color: #2e7d32; }
+
+/* Tabelas (extrato e usuários) */
+.tabela-rolagem {
+  max-height: calc(var(--s) * 330px);
+  overflow: auto;
+  margin-bottom: calc(var(--s) * 10px);
+  border: calc(var(--s) * 3px) solid #e2cfae;
+  border-radius: calc(var(--s) * 14px);
+  background: #fffaf0;
+}
+.tabela-rolagem.curta { max-height: calc(var(--s) * 220px); }
+.tabela { width: 100%; border-collapse: collapse; font-size: calc(var(--s) * 15px); text-align: left; }
+.tabela th {
+  position: sticky;
+  top: 0;
+  padding: calc(var(--s) * 6px) calc(var(--s) * 10px);
+  font-family: 'Lilita One', 'Nunito', sans-serif;
+  font-weight: 400;
+  font-size: calc(var(--s) * 16px);
+  color: #fff;
+  background: #8b5a2b;
+}
+.tabela td { padding: calc(var(--s) * 6px) calc(var(--s) * 10px); border-top: calc(var(--s) * 2px) dashed #ead8b8; vertical-align: middle; }
+.tabela tr.eu td { background: #f4fbe8; }
+.tabela td.vazio { padding: calc(var(--s) * 16px); text-align: center; opacity: 0.75; }
+.tabela td.vazio.erro { color: #c62828; opacity: 1; }
+.tabela td.valor { font-weight: 900; white-space: nowrap; text-align: right; }
+.tabela td.data { white-space: nowrap; opacity: 0.85; }
+.tabela td.nome b { display: block; }
+.tabela td.nome small { display: block; opacity: 0.75; }
+.tabela td.email { word-break: break-all; }
+.tabela td.acoes { white-space: nowrap; }
+.selo {
+  display: inline-block;
+  padding: 0 calc(var(--s) * 6px);
+  font-size: calc(var(--s) * 12px);
+  color: #fff;
+  background: #43a047;
+  border-radius: calc(var(--s) * 8px);
+}
+.papel, .status {
+  display: inline-block;
+  padding: calc(var(--s) * 1px) calc(var(--s) * 8px);
+  font-weight: 900;
+  font-size: calc(var(--s) * 13px);
+  border-radius: calc(var(--s) * 10px);
+  background: #f6e6c8;
+}
+.papel-admin { color: #fff; background: #8e24aa; }
+.status-ativo { color: #1b5e20; background: #dcedc8; }
+.status-bloqueado { color: #fff; background: #e53935; cursor: help; }
+.status-excluido { color: #fff; background: #757575; }
+
+/* Botão pequeno de ação (tabela, paginação) */
+.mini {
+  margin: calc(var(--s) * 2px);
+  padding: calc(var(--s) * 4px) calc(var(--s) * 10px);
+  font-family: 'Nunito', sans-serif;
+  font-weight: 900;
+  font-size: calc(var(--s) * 14px);
+  color: #4a2f17;
+  background: #f6e6c8;
+  border: calc(var(--s) * 2px) solid #c9a77c;
+  border-radius: calc(var(--s) * 12px);
+  box-shadow: 0 calc(var(--s) * 3px) 0 #a8875c;
+  cursor: pointer;
+}
+.mini:hover { background: #ffecc0; }
+.mini:active { transform: translateY(calc(var(--s) * 2px)); box-shadow: 0 calc(var(--s) * 1px) 0 #a8875c; }
+.mini:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+.mini.perigo { color: #fff; background: #e53935; border-color: #7a1a12; box-shadow: 0 calc(var(--s) * 3px) 0 #7a1a12; }
+
+.bloqueio { display: flex; align-items: center; gap: calc(var(--s) * 4px); }
+.card .bloqueio input[type="text"] { padding: calc(var(--s) * 4px) calc(var(--s) * 8px); font-size: calc(var(--s) * 14px); min-width: calc(var(--s) * 160px); }
+
+.filtros { display: flex; align-items: center; gap: calc(var(--s) * 8px); margin-bottom: calc(var(--s) * 4px); }
+.filtros .btn.small { margin: 0; }
+
+.paginacao {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: calc(var(--s) * 14px);
+  margin-bottom: calc(var(--s) * 8px);
+  font-weight: 900;
+  font-size: calc(var(--s) * 16px);
+}
+
+.zona-perigo {
+  margin: calc(var(--s) * 4px) 0 calc(var(--s) * 10px);
+  padding-top: calc(var(--s) * 10px);
+  border-top: calc(var(--s) * 2px) dashed #c9a77c;
+  text-align: left;
+}
+.confirmar-exclusao p { font-size: calc(var(--s) * 15px); margin-bottom: calc(var(--s) * 6px); }
+
+.note.dica { margin: calc(var(--s) * -6px) 0 calc(var(--s) * 8px); }
+#res-aviso:empty { display: none; }
+[hidden] { display: none !important; }
+
+@keyframes pulsar { 0%, 100% { opacity: 0.45; } 50% { opacity: 0.9; } }

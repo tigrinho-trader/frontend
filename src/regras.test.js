@@ -5,6 +5,7 @@ import {
   BIRD_TYPES,
   MAX_ARROWS,
   RANGES,
+  RANGE_BY_SLUG,
   arrowCost,
   arrowPosition,
   birdValue,
@@ -43,6 +44,21 @@ describe("valores dos pássaros", () => {
   it("campos mais caros pagam mais pelo mesmo pássaro", () => {
     const valores = RANGES.map((r) => birdValue(BIRD_TYPES.red, r));
     expect(valores).toEqual([...valores].sort((a, b) => a - b));
+  });
+});
+
+describe("campos de tiro", () => {
+  it("têm os slugs usados pela API do trading-service", () => {
+    expect(RANGES.map((r) => r.slug)).toEqual(["vilarejo", "bosque", "pico", "reserva-real"]);
+  });
+
+  it("acha o campo pelo slug", () => {
+    expect(RANGE_BY_SLUG.pico).toBe(pico);
+    expect(RANGE_BY_SLUG["reserva-real"]).toBe(real);
+  });
+
+  it("espelham entrada, flecha e multiplicador do contrato do servidor", () => {
+    expect(RANGES.map((r) => [r.fee, r.arrowPrice, r.mult])).toEqual([[5, 1, 2], [15, 3, 4], [40, 8, 10], [100, 20, 25]]);
   });
 });
 

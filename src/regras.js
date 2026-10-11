@@ -34,35 +34,37 @@ for (const t of Object.values(BIRD_TYPES)) {
   t.bellyDark = shade(t.belly, -0.12);
 }
 
-// Campos de tiro: quanto mais caro, mais cada pássaro vale (e mais difícil ele é).
+// Campos de tiro (o servidor usa as mesmas regras): quanto mais caro, mais cada pássaro vale (e mais difícil ele é).
 // Custo = entrada (fixa) + preço de cada flecha. Equilíbrio: com 10 flechas de madeira
 // é preciso acertar ~3 pássaros para recuperar o que gastou.
 export const RANGES = [
   {
-    name: 'Campo do Vilarejo', theme: 'village', fee: 5, arrowPrice: 1, mult: 2, tier: 1,
+    slug: 'vilarejo', name: 'Campo do Vilarejo', theme: 'village', fee: 5, arrowPrice: 1, mult: 2, tier: 1,
     desc: 'Pássaros lentos e voo reto. Bom para treinar.',
     speedMul: 1.0, wobbleChance: 0, wobbleAmp: 0, spawnEvery: 1.6, maxBirds: 3,
     pool: { red: 5, big: 3, yellow: 1, blue: 0, gold: 0.3 },
   },
   {
-    name: 'Bosque dos Arqueiros', theme: 'forest', fee: 15, arrowPrice: 3, mult: 4, tier: 2,
+    slug: 'bosque', name: 'Bosque dos Arqueiros', theme: 'forest', fee: 15, arrowPrice: 3, mult: 4, tier: 2,
     desc: 'Mais pássaros rápidos e alguns que sobem e descem.',
     speedMul: 1.15, wobbleChance: 0.2, wobbleAmp: 35, spawnEvery: 1.35, maxBirds: 4,
     pool: { red: 4, big: 2, yellow: 3, blue: 1, gold: 0.5 },
   },
   {
-    name: 'Pico das Águias', theme: 'peak', fee: 40, arrowPrice: 8, mult: 10, tier: 3,
+    slug: 'pico', name: 'Pico das Águias', theme: 'peak', fee: 40, arrowPrice: 8, mult: 10, tier: 3,
     desc: 'Pássaros velozes e voo em ondas. Mais dourados.',
     speedMul: 1.3, wobbleChance: 0.4, wobbleAmp: 50, spawnEvery: 1.1, maxBirds: 5,
     pool: { red: 3, big: 1, yellow: 3, blue: 3, gold: 0.8 },
   },
   {
-    name: 'Reserva Real', theme: 'royal', fee: 100, arrowPrice: 20, mult: 25, tier: 4,
+    slug: 'reserva-real', name: 'Reserva Real', theme: 'royal', fee: 100, arrowPrice: 20, mult: 25, tier: 4,
     desc: 'Só para mestres: pássaros muito rápidos e imprevisíveis.',
     speedMul: 1.45, wobbleChance: 0.6, wobbleAmp: 65, spawnEvery: 0.9, maxBirds: 6,
     pool: { red: 2, big: 1, yellow: 3, blue: 4, gold: 1.2 },
   },
 ];
+// O slug identifica o campo na API do trading-service (sessões do Flecha Certeira)
+export const RANGE_BY_SLUG = Object.fromEntries(RANGES.map(r => [r.slug, r]));
 
 // Tipos de flecha: custam "price" vezes o preço base do campo e multiplicam
 // as moedas do pássaro por "coins". As melhores rendem um pouco mais por moeda

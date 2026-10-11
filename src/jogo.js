@@ -1,12 +1,17 @@
 // Flecha Certeira: o jogo (canvas, controles, telas e HUD).
 // As regras e a economia ficam em regras.js; os cenários em cenarios.js.
+// O dinheiro fica no servidor: saldo na carteira (wallet-service) e cada rodada é uma
+// sessão no trading-service (sessao.js); o navegador só estima entre as respostas.
 import {
-  START_COINS, DEFAULT_ARROWS, MAX_ARROWS, REFILL_QTY, BIRD_TYPES, RANGES, ARROW_TYPES, ARROW_BY_ID,
+  DEFAULT_ARROWS, MAX_ARROWS, REFILL_QTY, BIRD_TYPES, RANGES, ARROW_TYPES, ARROW_BY_ID,
   clamp, formatMult, birdValue, arrowCost, coinsForHit, emptyQuiver, countArrows, orderCost, minCost,
   canEnter as canEnterWith, isBroke as isBrokeWith, fitOrder, changeOrder, pickBirdType,
   segmentHitsCircle, arrowPosition,
 } from './regras.js';
 import { Scenery } from './cenarios.js';
+import * as api from './api.js';
+import { criarControladorSessao } from './sessao.js';
+import { formatarMoedas, mensagemErro } from './telas.js';
 
 // ---------------------------------------------------------------------------
 // Configuração geral
@@ -25,16 +30,7 @@ const PREVIEW_STEP = 0.05;        // segundos entre pontos da trajetória
 // ---------------------------------------------------------------------------
 const rand = (a, b) => a + Math.random() * (b - a);
 const $ = id => document.getElementById(id);
-
-function loadWallet() {
-  try {
-    const v = localStorage.getItem('flecha-certeira-wallet');
-    return v === null ? START_COINS : Math.max(0, Number(v) || 0);
-  } catch { return START_COINS; }
-}
-function saveWallet(v) {
-  try { localStorage.setItem('flecha-certeira-wallet', String(v)); } catch { /* sem storage */ }
-}
+const moedas = formatarMoedas;
 
 // ---------------------------------------------------------------------------
 // Som (sintetizado com WebAudio, sem arquivos)
@@ -102,8 +98,11 @@ resize();
 // Estado do jogo
 // ---------------------------------------------------------------------------
 const game = {
-  state: 'menu',            // menu | ranges | playing | paused | result
-  wallet: loadWallet(),
+  state: 'menu',            // menu | ranges | buy | playing | refill | paused | result | perfil | admin | bloqueado
+  wallet: 0,                // saldo mostrado: carteira do servidor (na rodada: saldoBase − custo + ganhos)
+  saldoBase: 0,             // saldo da carteira quando a rodada começou
+  encerrando: false,        // esperando o servidor encerrar a sessão
+  ocupado: false,           // esperando o servidor abrir a sessão ou vender flechas
   range: RANGES[0],
   quiver: emptyQuiver(),    // flechas restantes de cada tipo
   selected: 'wood',         // tipo de flecha na mão do arqueiro
@@ -127,21 +126,105 @@ const game = {
   aim: { active: false, valid: false, sx: 0, sy: 0, cx: 0, cy: 0, angle: -0.6, power: 0 },
 };
 
-const OVERLAYS = { menu: 'menu', ranges: 'ranges', buy: 'buy', refill: 'refill', paused: 'pause', result: 'result' };
+const OVERLAYS = {
+  menu: 'menu', ranges: 'ranges', buy: 'buy', refill: 'refill', paused: 'pause', result: 'result',
+  perfil: 'perfil', admin: 'admin', bloqueado: 'bloqueado',
+};
 
-function setState(s) {
+export function setState(s) {
   game.state = s;
   wrap.dataset.state = s;
   for (const [state, id] of Object.entries(OVERLAYS)) {
     $(id).classList.toggle('show', state === s);
   }
-  if (s === 'menu') $('menu-wallet').textContent = game.wallet;
+  if (s === 'menu') $('menu-wallet').textContent = moedas(game.wallet);
   if (s === 'ranges') renderRanges();
 }
 
+export const estadoAtual = () => game.state;
+
+/** Atualiza o saldo em todas as telas que o mostram. */
+function mostrarSaldo() {
+  for (const id of ['menu-wallet', 'ranges-wallet', 'res-wallet']) $(id).textContent = moedas(game.wallet);
+  if (game.state === 'ranges') renderRanges();
+  if (game.state === 'result') atualizarFalido();
+}
+
 function setWallet(v) {
-  game.wallet = v;
-  saveWallet(v);
+  game.wallet = Math.max(0, Number(v) || 0);
+  mostrarSaldo();
+}
+
+/**
+ * Busca o saldo na carteira (GET /api/carteira). Durante uma rodada o saldo mostrado
+ * continua sendo o da rodada. `aceitar(saldo)` pode recusar um saldo antigo.
+ */
+export async function atualizarCarteira({ aceitar = () => true } = {}) {
+  const c = await api.carteira();
+  const saldo = Number(c?.saldo) || 0;
+  if (!sessaoCtl && aceitar(saldo)) setWallet(saldo);
+  return saldo;
+}
+
+// Aviso rápido no topo da tela (não bloqueia o jogo)
+let avisoTimer = null;
+export function avisar(texto, tipo = 'info', duracao = 4500) {
+  const el = $('aviso');
+  el.textContent = texto;
+  el.className = `aviso show ${tipo}`;
+  clearTimeout(avisoTimer);
+  avisoTimer = setTimeout(() => { el.className = 'aviso'; }, duracao);
+}
+
+// Erros que já têm tela própria (401 volta ao login, 403 mostra a conta bloqueada)
+const tratadoPeloApp = erro => erro?.status === 401 || erro?.status === 403;
+
+// ---------------------------------------------------------------------------
+// Sessão no servidor
+// ---------------------------------------------------------------------------
+let sessaoCtl = null;
+
+function novaSessao() {
+  return criarControladorSessao({
+    api,
+    aoAtualizar: () => reconciliar(),
+    aoErro: (erro, ctx) => {
+      if (tratadoPeloApp(erro)) return;
+      if (ctx.tipo === 'tiro' && (erro.status === 404 || erro.status === 409)) {
+        avisar('A rodada já foi encerrada no servidor.', 'erro');
+        if (game.state === 'playing' || game.state === 'paused' || game.state === 'refill') endSession();
+        return;
+      }
+      avisar(`Tiro não registrado: ${mensagemErro(erro)}`, 'erro');
+    },
+  });
+}
+
+// Flechas que já saíram do arco mas ainda não foram informadas ao servidor
+const naoReportadas = () => game.arrows.filter(a => !a.reportado);
+
+/** Ajusta o HUD aos números do servidor (mais as estimativas do que ainda não foi confirmado). */
+function reconciliar() {
+  const est = sessaoCtl?.estado();
+  if (!est) return;
+  const voando = naoReportadas();
+  game.spent = est.custo;
+  game.earned = est.ganhos + voando.reduce((s, a) => s + a.coins, 0);
+  for (const t of ARROW_TYPES) {
+    const noAr = voando.filter(a => a.type.id === t.id).length;
+    game.quiver[t.id] = Math.max(0, (est.flechas[t.id] || 0) - noAr);
+  }
+  for (const t of ARROW_TYPES) game.bought[t.id] = Number(est.compradas[t.id]) || 0;
+  ensureSelection();
+  game.wallet = game.saldoBase - game.spent + game.earned;
+  if (game.state === 'refill') fillRefill();
+}
+
+/** Informa ao servidor uma flecha que terminou o voo (cravou no chão ou saiu da tela). */
+function reportarTiro(ar) {
+  if (ar.reportado || !sessaoCtl) return;
+  ar.reportado = true;
+  sessaoCtl.registrarTiro(ar.type.id, ar.acertos, ar.coins);
 }
 
 // Atalhos que usam o saldo atual
@@ -150,7 +233,7 @@ const isBroke = () => isBrokeWith(game.wallet);
 const arrowsLeft = () => countArrows(game.quiver);
 
 function renderRanges() {
-  $('ranges-wallet').textContent = game.wallet;
+  $('ranges-wallet').textContent = moedas(game.wallet);
   const grid = $('range-grid');
   grid.innerHTML = '';
   RANGES.forEach((r, i) => {
@@ -195,8 +278,38 @@ function openBuy(range) {
   game.range = range;
   // Se o pedido anterior ficou caro demais, corta das flechas mais caras primeiro
   game.order = fitOrder(game.order, range, game.wallet);
+  mostrarErroCompra(null);
   setState('buy');
   renderBuy();
+}
+
+// Erro do servidor ao abrir a sessão (saldo insuficiente, rodada já aberta, sem conexão...)
+function mostrarErroCompra(erro) {
+  const el = $('buy-erro');
+  el.hidden = !erro;
+  $('btn-buy-fechar-aberta').hidden = erro?.status !== 409;
+  $('buy-erro-texto').textContent = erro
+    ? (erro.status === 409 ? 'Você já tem uma rodada aberta no servidor. Encerre-a para começar outra.' : mensagemErro(erro))
+    : '';
+}
+
+/** Encerra a sessão que ficou aberta no servidor (ex.: outra aba) e libera a loja. */
+async function encerrarRodadaAberta() {
+  const btn = $('btn-buy-fechar-aberta');
+  btn.disabled = true;
+  try {
+    const aberta = await api.sessaoAtual();
+    if (aberta) await api.encerrarSessao(aberta.id);
+    mostrarErroCompra(null);
+    avisar('A rodada anterior foi encerrada e acertada na carteira.');
+    await atualizarCarteira().catch(() => {});
+    setTimeout(() => atualizarCarteira().catch(() => {}), 1500);
+  } catch (e) {
+    if (!tratadoPeloApp(e)) mostrarErroCompra(e);
+  } finally {
+    btn.disabled = false;
+    if (game.state === 'buy') renderBuy();
+  }
 }
 
 function renderBuy() {
@@ -229,8 +342,9 @@ function renderBuy() {
   $('buy-arrows-label').textContent = `${count} flecha${count === 1 ? '' : 's'}`;
   $('buy-arrows').textContent = arrowsCost;
   $('buy-total').textContent = total;
-  $('buy-after').textContent = left;
-  $('btn-enter').disabled = count === 0 || left < 0;
+  $('buy-after').textContent = moedas(left);
+  $('btn-enter').disabled = count === 0 || left < 0 || game.ocupado;
+  $('btn-enter').textContent = game.ocupado ? 'Entrando...' : 'Pagar e entrar';
 }
 
 function updateOrder(typeId, delta) {
@@ -249,12 +363,30 @@ function ensureSelection() {
   if (next) game.selected = next.id;
 }
 
-function enterRange() {
+async function enterRange() {
   const range = game.range, order = game.order;
   const total = range.fee + orderCost(order, range);
-  if (total > game.wallet || countArrows(order) === 0) return;
+  if (total > game.wallet || countArrows(order) === 0 || game.ocupado || sessaoCtl) return;
   audio();
-  setWallet(game.wallet - total);
+
+  // Abre a sessão no servidor: ele confere o saldo e guarda o custo da rodada
+  const ctl = novaSessao();
+  game.ocupado = true;
+  mostrarErroCompra(null);
+  renderBuy();
+  try {
+    await ctl.abrir(range.slug, { ...order });
+  } catch (e) {
+    if (!tratadoPeloApp(e)) mostrarErroCompra(e);
+    return;
+  } finally {
+    game.ocupado = false;
+    if (game.state === 'buy') renderBuy();
+  }
+  if (game.state !== 'buy') return;   // saiu da loja (ex.: sessão expirou) enquanto esperava
+
+  sessaoCtl = ctl;
+  game.saldoBase = game.wallet;
   sfx.pay();
   game.spent = total;
   game.quiver = { ...order };
@@ -273,75 +405,146 @@ function enterRange() {
   game.endTimer = 0;
   game.banner = 2.6;
   game.aim.active = false;
+  reconciliar();
   setState('playing');
 }
 
-const canRefill = () => game.wallet >= REFILL_QTY * game.range.arrowPrice;
+// O servidor só deixa comprar com o saldo da carteira menos o custo da rodada:
+// as moedas ganhas entram na carteira quando a rodada termina.
+const availableToBuy = () => game.saldoBase - game.spent;
+const canRefill = () => availableToBuy() >= REFILL_QTY * game.range.arrowPrice;
 
-function openRefill() {
-  const r = game.range, net = game.earned - game.spent;
-  $('ref-spent').textContent = game.spent;
-  $('ref-earned').textContent = game.earned;
+function fillRefill() {
+  const r = game.range, net = game.earned - game.spent, livre = availableToBuy();
+  $('ref-spent').textContent = moedas(game.spent);
+  $('ref-earned').textContent = moedas(game.earned);
   const netEl = $('ref-net');
-  netEl.textContent = (net > 0 ? '+' : '') + net;
+  netEl.textContent = (net > 0 ? '+' : '') + moedas(net);
   netEl.className = net > 0 ? 'pos' : net < 0 ? 'neg' : '';
-  $('ref-wallet').textContent = game.wallet;
+  $('ref-wallet').textContent = moedas(livre);
   $('refill-options').innerHTML = ARROW_TYPES.map(t => {
     const cost = REFILL_QTY * arrowCost(t, r);
+    const ok = livre >= cost && arrowsLeft() + REFILL_QTY <= MAX_ARROWS && !game.ocupado && !game.encerrando;
     return `
-      <button class="refill-opt" data-type="${t.id}" ${game.wallet >= cost ? '' : 'disabled'}>
+      <button class="refill-opt" data-type="${t.id}" ${ok ? '' : 'disabled'}>
         <img src="${arrowIcon(t)}" alt="">
         <b>+${REFILL_QTY} ${t.name}</b>
         <span>moedas ×${formatMult(t.coins)} · <span class="coin"></span>${cost}</span>
       </button>`;
   }).join('');
+}
+
+function openRefill() {
+  $('refill-erro').textContent = '';
+  fillRefill();
   game.aim.active = false;
   setState('refill');
 }
 
-function buyMoreArrows(typeId) {
+async function buyMoreArrows(typeId) {
   const cost = REFILL_QTY * arrowCost(ARROW_BY_ID[typeId], game.range);
-  if (cost > game.wallet) return;
-  setWallet(game.wallet - cost);
-  game.spent += cost;
-  game.bought[typeId] += REFILL_QTY;
-  game.quiver[typeId] += REFILL_QTY;
-  game.selected = typeId;
+  if (cost > availableToBuy() || game.ocupado || game.encerrando || !sessaoCtl) return;
+  game.ocupado = true;
+  $('refill-erro').textContent = '';
+  fillRefill();
+  try {
+    await sessaoCtl.comprar(typeId, REFILL_QTY);   // o servidor desconta e devolve a aljava nova
+  } catch (e) {
+    if (!tratadoPeloApp(e)) $('refill-erro').textContent = mensagemErro(e);
+    return;
+  } finally {
+    game.ocupado = false;
+    if (game.state === 'refill') fillRefill();
+  }
+  if (game.state !== 'refill') return;
+  reconciliar();
+  if (game.quiver[typeId] > 0) game.selected = typeId;
   game.pending = null;
   sfx.pay();
   setState('playing');
 }
 
-function endSession() {
-  const net = game.earned - game.spent;
+// Botões de saída ficam travados enquanto o servidor encerra a sessão
+function marcarEncerrando(on) {
+  game.encerrando = on;
+  for (const id of ['btn-quit', 'btn-resume', 'btn-refill-end']) $(id).disabled = on;
+  $('btn-quit').textContent = on ? 'Encerrando...' : 'Sair do campo';
+  $('btn-refill-end').textContent = on ? 'Encerrando...' : 'Encerrar rodada';
+  if (game.state === 'refill') fillRefill();
+}
+
+async function endSession() {
+  if (game.encerrando || !sessaoCtl) return;
+  game.aim.active = false;
+  game.pending = null;
+  // Flechas ainda no ar contam com os pássaros que já acertaram
+  for (const ar of game.arrows) reportarTiro(ar);
+  marcarEncerrando(true);
+
+  const ctl = sessaoCtl;
+  let final = null, falha = null;
+  try {
+    final = await ctl.encerrar();
+  } catch (e) {
+    falha = e;
+  }
+  marcarEncerrando(false);
+  if (falha && tratadoPeloApp(falha)) { sessaoCtl = null; return; }
+
+  // Resultado oficial do servidor (ou a estimativa local, se ele não respondeu)
+  const custo = final ? Number(final.custo) || 0 : game.spent;
+  const ganhos = final ? Number(final.ganhos) || 0 : game.earned;
+  const net = final ? Number(final.resultado) || 0 : ganhos - custo;
+  const compradas = final?.compradas || game.bought;
+  const disparadas = final?.disparadas
+    ? ARROW_TYPES.reduce((s, t) => s + (Number(final.disparadas[t.id]) || 0), 0)
+    : game.shotsFired;
+  const acertos = final ? Number(final.acertos) || 0 : game.hits;
+  sessaoCtl = null;
+  const saldoBase = game.saldoBase;
+  game.wallet = Math.max(0, saldoBase + net);
+
   const title = $('res-title');
   title.textContent = net > 0 ? 'Lucro!' : net < 0 ? 'Prejuízo...' : 'Empatou!';
   title.className = net > 0 ? 'pos' : net < 0 ? 'neg' : '';
   const netEl = $('res-net');
-  netEl.innerHTML = `<span class="coin"></span>${net > 0 ? '+' : ''}${net}`;
+  netEl.innerHTML = `<span class="coin"></span>${net > 0 ? '+' : ''}${moedas(net)}`;
   netEl.className = 'net ' + (net > 0 ? 'pos' : net < 0 ? 'neg' : '');
   $('res-range').textContent = game.range.name;
   $('res-fee').textContent = `−${game.range.fee}`;
   $('res-arrows-label').textContent = 'Flechas: ' + ARROW_TYPES
-    .filter(t => game.bought[t.id] > 0)
-    .map(t => `${game.bought[t.id]} ${t.name.toLowerCase()}`)
+    .filter(t => Number(compradas[t.id]) > 0)
+    .map(t => `${compradas[t.id]} ${t.name.toLowerCase()}`)
     .join(', ');
-  $('res-arrows').textContent = `−${game.spent - game.range.fee}`;
-  $('res-hits').textContent = `${game.hits} de ${game.shotsFired} flechas`;
-  $('res-earned').textContent = `+${game.earned}`;
-  $('res-wallet').textContent = game.wallet;
+  $('res-arrows').textContent = `−${moedas(custo - game.range.fee)}`;
+  $('res-hits').textContent = `${acertos} com ${disparadas} flecha${disparadas === 1 ? '' : 's'}`;
+  $('res-earned').textContent = `+${moedas(ganhos)}`;
+  $('res-wallet').textContent = moedas(game.wallet);
+  $('res-aviso').textContent = falha
+    ? `O servidor não confirmou o fim da rodada (${mensagemErro(falha)}). Ela será acertada na carteira automaticamente.`
+    : '';
+  $('btn-again').textContent = 'Jogar de novo';
+  atualizarFalido();
 
+  setState('result');
+  net >= 0 ? sfx.win() : sfx.lose();
+
+  // A carteira é atualizada pelo RabbitMQ (assíncrono): busca agora e de novo em 1,5 s.
+  // A primeira leitura só vale se o resultado já entrou (senão mantém a estimativa).
+  const jaAplicado = saldo => net === 0 || saldo !== saldoBase;
+  atualizarCarteira({ aceitar: jaAplicado }).catch(() => {});
+  setTimeout(() => atualizarCarteira().catch(() => {}), 1500);
+}
+
+// Botões do resultado conforme o saldo (sem moedas para nenhum campo: só voltar ao menu)
+function atualizarFalido() {
   const again = $('btn-again');
-  again.textContent = 'Jogar de novo';
   again.disabled = !canEnter(game.range);
   const broke = isBroke();
   $('res-broke').style.display = broke ? 'block' : 'none';
   again.style.display = broke ? 'none' : '';
   $('btn-change-range').style.display = broke ? 'none' : '';
   $('btn-restart').style.display = broke ? '' : 'none';
-
-  setState('result');
-  net >= 0 ? sfx.win() : sfx.lose();
 }
 
 // ---------------------------------------------------------------------------
@@ -349,13 +552,14 @@ function endSession() {
 // ---------------------------------------------------------------------------
 function spawnBird() {
   const cfg = game.range;
-  const type = BIRD_TYPES[pickBirdType(cfg.pool)];
+  const typeId = pickBirdType(cfg.pool);
+  const type = BIRD_TYPES[typeId];
   const dir = Math.random() < 0.5 ? 1 : -1;
   const amp = Math.random() < cfg.wobbleChance ? rand(15, cfg.wobbleAmp) : 0;
   const baseY = rand(70 + amp, 420);
   const phase = rand(0, Math.PI * 2);
   game.birds.push({
-    type, dir,
+    type, typeId, dir,
     x: dir > 0 ? -60 : W + 60,
     y: baseY + amp * Math.sin(phase),
     baseY, amp, phase,
@@ -415,8 +619,11 @@ function hitBird(arrow, bird) {
   game.hits++;
   // valor do pássaro × força da flecha × combo
   const coins = coinsForHit(bird.type, game.range, arrow.type, arrow.hits);
+  arrow.acertos.push(bird.typeId);   // vai para o servidor quando a flecha terminar
+  arrow.coins += coins;
+  // estimativa local: o servidor confirma (ou corrige) quando o tiro for registrado
   game.earned += coins;
-  setWallet(game.wallet + coins);
+  game.wallet += coins;
 
   addText(bird.x, bird.y - 34, `+${coins}`, '#ffd54f', 38, true);
   if (arrow.type.coins > 1) {
@@ -457,6 +664,9 @@ function shoot() {
     state: 'flying',
     life: 0,
     hits: 0,
+    acertos: [],          // tipos dos pássaros acertados, em ordem
+    coins: 0,             // moedas estimadas desta flecha
+    reportado: false,     // já foi informada ao servidor?
   });
   game.quiver[game.selected]--;
   ensureSelection();
@@ -489,8 +699,10 @@ function updateArrows(dt) {
         ar.trail = [];
         dust(ar.x, GROUND_Y, 7);
         sfx.thud();
+        reportarTiro(ar);
       } else if (ar.x < -150 || ar.x > W + 150) {
         ar.dead = true;
+        reportarTiro(ar);
       }
     } else {
       ar.life += dt;
@@ -635,6 +847,7 @@ function update(dt) {
   updateBirds(dt);
   updateArrows(dt);
   updateParticles(dt);
+  if (game.encerrando || game.ocupado) return;
 
   // Sem flechas: espera a última cair e oferece comprar mais (se der) ou encerra
   if (!game.pending) {
@@ -1377,7 +1590,7 @@ function drawHUD() {
   plaque(px, 14, pw, 96, 16);
   drawCoin(WALLET_POS.x, WALLET_POS.y, 15);
   ctx.textAlign = 'left';
-  outlinedText(`${game.wallet}`, WALLET_POS.x + 24, WALLET_POS.y + 11, "32px 'Lilita One', sans-serif", '#ffe57f', '#4a2a10', 5);
+  outlinedText(moedas(game.wallet), WALLET_POS.x + 24, WALLET_POS.y + 11, "32px 'Lilita One', sans-serif", '#ffe57f', '#4a2a10', 5);
 
   const net = game.earned - game.spent;
   ctx.textAlign = 'right';
@@ -1568,6 +1781,7 @@ canvas.addEventListener('pointerup', () => {
 canvas.addEventListener('pointercancel', () => { game.aim.active = false; });
 
 function togglePause() {
+  if (game.encerrando) return;
   if (game.state === 'playing') { game.aim.active = false; setState('paused'); }
   else if (game.state === 'paused') setState('playing');
 }
@@ -1578,6 +1792,7 @@ function toggleMute() {
 }
 
 window.addEventListener('keydown', e => {
+  if (e.target?.closest?.('input, textarea, select')) return;   // digitando no perfil/administração
   const k = e.key.toLowerCase();
   if (k === 'p' || k === 'escape') togglePause();
   else if (k === 'm') toggleMute();
@@ -1591,8 +1806,8 @@ document.addEventListener('visibilitychange', () => {
 
 $('btn-play').addEventListener('click', () => {
   audio();
-  if (isBroke()) setWallet(START_COINS);   // sem moedas para nada: recomeça com o saldo inicial
   setState('ranges');
+  atualizarCarteira().catch(() => {});   // saldo pode ter mudado (depósito, outra aba)
 });
 $('btn-ranges-back').addEventListener('click', () => setState('menu'));
 $('range-grid').addEventListener('click', e => {
@@ -1606,6 +1821,7 @@ $('arrow-shop').addEventListener('click', e => {
 });
 $('btn-enter').addEventListener('click', enterRange);
 $('btn-buy-back').addEventListener('click', () => setState('ranges'));
+$('btn-buy-fechar-aberta').addEventListener('click', encerrarRodadaAberta);
 
 $('refill-options').addEventListener('click', e => {
   const btn = e.target.closest('button[data-type]');
@@ -1616,7 +1832,7 @@ $('btn-refill-end').addEventListener('click', endSession);
 $('btn-quit').addEventListener('click', endSession);
 $('btn-again').addEventListener('click', () => openBuy(game.range));
 $('btn-change-range').addEventListener('click', () => setState('ranges'));
-$('btn-restart').addEventListener('click', () => { setWallet(START_COINS); setState('ranges'); });
+$('btn-restart').addEventListener('click', () => setState('menu'));
 $('btn-resume').addEventListener('click', togglePause);
 $('btn-pause').addEventListener('click', togglePause);
 $('btn-mute').addEventListener('click', toggleMute);
