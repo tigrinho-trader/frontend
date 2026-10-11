@@ -307,3 +307,85 @@ describe("jogo com o servidor", () => {
     expect($("res-wallet").textContent).toBe("1.025");
   });
 });
+
+describe("comprar moedas", () => {
+  it("pelo menu: escolhe o pacote, confirma e o saldo novo aparece", async () => {
+    let saldo = 1000;
+    rotas["GET /carteira"] = () => [200, { usuarioId: EU.id, saldo, atualizadaEm: null }];
+    rotas["POST /carteira/depositos"] = (init) => {
+      saldo += JSON.parse(init.body).valor;
+      return [200, { usuarioId: EU.id, saldo, atualizadaEm: null }];
+    };
+    await iniciarApp();
+
+    $("btn-comprar").click();
+    expect($("wrap").dataset.state).toBe("creditos");
+    expect($("creditos-saldo").textContent).toBe("1.000");
+    expect($("creditos-confirmar").hidden).toBe(true);
+
+    $("creditos-pacotes").querySelector('[data-pacote="bau"]').click();
+    expect($("creditos-confirmar").hidden).toBe(false);
+    expect($("creditos-qtd").textContent).toBe("1.000");
+
+    $("btn-creditos-pagar").click();
+    await estabilizar();
+    expect(chamadas.find((c) => c.chave === "POST /carteira/depositos").corpo).toEqual({ valor: 1000 });
+    expect($("creditos-msg").textContent).toContain("1.000 moedas entraram na sua carteira");
+    expect($("creditos-saldo").textContent).toBe("2.000");
+    expect($("creditos-confirmar").hidden).toBe(true);
+
+    $("btn-creditos-voltar").click();
+    expect($("wrap").dataset.state).toBe("menu");
+    expect($("menu-wallet").textContent).toBe("2.000");
+  });
+
+  it("compra desligada na carteira mostra o aviso e não muda o saldo", async () => {
+    rotas["POST /carteira/depositos"] = [422, { detail: "Pagamentos desabilitados" }];
+    await iniciarApp();
+    $("btn-comprar").click();
+    $("creditos-pacotes").querySelector('[data-pacote="punhado"]').click();
+    $("btn-creditos-pagar").click();
+    await estabilizar();
+    expect($("creditos-msg").textContent).toContain("desligada");
+    expect($("creditos-msg").className).toContain("erro");
+    expect($("creditos-saldo").textContent).toBe("1.000");
+    expect($("btn-creditos-pagar").disabled).toBe(false);
+  });
+
+  it("saldo insuficiente na loja de flechas oferece comprar moedas e volta para a loja", async () => {
+    rotas["POST /jogos/flecha/sessoes"] = [422, { detail: "Saldo insuficiente: disponivel 3" }];
+    await iniciarApp();
+    $("btn-play").click();
+    $("range-grid").querySelector('button[data-range="0"]').click();
+    $("btn-enter").click();
+    await estabilizar();
+    expect($("buy-erro").hidden).toBe(false);
+    expect($("btn-buy-comprar").hidden).toBe(false);
+
+    $("btn-buy-comprar").click();
+    expect($("wrap").dataset.state).toBe("creditos");
+    $("btn-creditos-voltar").click();
+    expect($("wrap").dataset.state).toBe("buy");
+    expect($("buy-erro").hidden).toBe(true);
+  });
+
+  it("outros erros da loja não oferecem a compra", async () => {
+    rotas["POST /jogos/flecha/sessoes"] = [409, { detail: "Ja existe uma sessao aberta" }];
+    await iniciarApp();
+    $("btn-play").click();
+    $("range-grid").querySelector('button[data-range="0"]').click();
+    $("btn-enter").click();
+    await estabilizar();
+    expect($("buy-erro").hidden).toBe(false);
+    expect($("btn-buy-comprar").hidden).toBe(true);
+  });
+
+  it("a escolha de campo também leva à compra", async () => {
+    await iniciarApp();
+    $("btn-play").click();
+    $("btn-ranges-comprar").click();
+    expect($("wrap").dataset.state).toBe("creditos");
+    $("btn-creditos-voltar").click();
+    expect($("wrap").dataset.state).toBe("ranges");
+  });
+});

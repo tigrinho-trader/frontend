@@ -96,8 +96,12 @@ VITE_AUTH0_AUDIENCE" e o jogo não chama a API. No Docker elas entram como `--bu
 
 ## Telas da conta
 
-- **Menu**: sem login, "Entrar" e "Criar conta". Logado: foto e apelido, saldo, "Jogar", "Meu perfil",
-  "Administração" (só para `ADMIN`) e "Sair".
+- **Menu**: sem login, "Entrar" e "Criar conta". Logado: foto e apelido, saldo, "Jogar", "Comprar moedas",
+  "Meu perfil", "Administração" (só para `ADMIN`) e "Sair".
+- **Comprar moedas**: pacotes de 100, 500, 1.000 e 5.000 moedas. Hoje usa o pagamento de teste (sandbox) da
+  carteira (`POST /api/carteira/depositos`), que credita na hora sem cobrar nada; o Pix (AbacatePay) entra no
+  lugar do sandbox depois (ver `docs-arquitetura/adrs/0004-pagamentos-pix.md`). Também aparece na escolha de
+  campo, quando a loja de flechas responde "saldo insuficiente" e no resultado quando o jogador fica sem moedas.
 - **Meu perfil**: foto, nome, email, papel, membro desde, apelido editável (3 a 20 letras, números ou `_`; se já
   estiver em uso, o servidor responde 409 e a tela avisa), as últimas 10 movimentações da carteira e
   "Excluir minha conta" (confirmação digitando `EXCLUIR`; a conta é anonimizada e o jogador sai).
@@ -140,7 +144,8 @@ docker run -p 3000:80 -e GATEWAY_URL=http://api-gateway:8080 frontend
 - `src/auth.js`: login com o Auth0 (`configurado`, `iniciar`, `entrar`, `sair`, `token`, `usuarioAuth0`)
 - `src/api.js`: cliente do `/api` (token Bearer, erros `ProblemDetail` → `ErroApi`, 401 → login, 403 → conta bloqueada)
 - `src/sessao.js`: fila dos tiros (ordem e intervalo mínimo) e reconciliação do HUD com o servidor
-- `src/conta.js`: menu de login, "Meu perfil", "Administração" e conta bloqueada
+- `src/conta.js`: menu de login, "Meu perfil", "Comprar moedas", "Administração" e conta bloqueada
+- `src/creditos.js`: pacotes de moedas e mensagens da compra
 - `src/telas.js`: formatação, validação do apelido e HTML das tabelas (puro, testado)
 - `src/*.test.js`: testes (vitest); `src/conta.test.js` carrega o `index.html` no jsdom com Auth0 e API falsos
 - `src/cenarios.js`: os 4 cenários (camadas pré-desenhadas, clima e animações)

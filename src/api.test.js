@@ -95,6 +95,11 @@ describe("rotas", () => {
     expect(ultimaChamada()).toMatchObject({ url: "/api/usuarios/me", method: "DELETE" });
   });
 
+  it("compra de moedas vira um depósito na carteira", async () => {
+    await api.comprarMoedas(500);
+    expect(ultimaChamada()).toMatchObject({ url: "/api/carteira/depositos", method: "POST", corpo: { valor: 500 } });
+  });
+
   it("sessões do Flecha Certeira", async () => {
     const id = "6f1c2a3b-0000-4000-8000-000000000001";
     await api.abrirSessao("bosque", { wood: 10, iron: 5 });

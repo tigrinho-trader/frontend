@@ -1,12 +1,13 @@
-// Conta do jogador: login (Auth0), menu, "Meu perfil", "Administração" e conta bloqueada.
+// Conta do jogador: login (Auth0), menu, "Meu perfil", "Comprar moedas", "Administração" e conta bloqueada.
 // Liga a API ao login e decide o que o menu mostra. O jogo em si fica em jogo.js.
 import * as auth from './auth.js';
 import * as api from './api.js';
 import { ErroApi, configurarApi } from './api.js';
-import { setState, atualizarCarteira, estadoAtual } from './jogo.js';
+import { setState, atualizarCarteira, estadoAtual, saldoAtual, voltarDaCompra } from './jogo.js';
+import { PACOTE_POR_ID, htmlPacotes, mensagemErroCompra } from './creditos.js';
 import { RANGE_BY_SLUG } from './regras.js';
 import {
-  ROTULO_PAPEL, escaparHtml, formatarComSinal, formatarData, htmlExtrato, htmlLinhasUsuarios, iniciais,
+  ROTULO_PAPEL, escaparHtml, formatarComSinal, formatarData, formatarMoedas, htmlExtrato, htmlLinhasUsuarios, iniciais,
   mensagemErro, nomeExibicao, paginacao, urlSegura, validarApelido,
 } from './telas.js';
 
@@ -258,6 +259,48 @@ async function excluirConta(e) {
 }
 
 // ---------------------------------------------------------------------------
+// Comprar moedas
+// ---------------------------------------------------------------------------
+const creditos = { selecionado: null, voltarPara: 'menu', comprando: false };
+
+function desenharCreditos() {
+  $('creditos-saldo').textContent = formatarMoedas(saldoAtual());
+  $('creditos-pacotes').innerHTML = htmlPacotes(undefined, creditos.selecionado);
+  const pacote = PACOTE_POR_ID[creditos.selecionado];
+  $('creditos-confirmar').hidden = !pacote;
+  if (pacote) $('creditos-qtd').textContent = formatarMoedas(pacote.moedas);
+  $('btn-creditos-pagar').disabled = creditos.comprando;
+}
+
+/** Abre a loja de moedas lembrando a tela de onde o jogador veio. */
+function abrirCreditos(voltarPara = 'menu') {
+  creditos.voltarPara = voltarPara;
+  creditos.selecionado = null;
+  msg('creditos-msg', '');
+  desenharCreditos();
+  setState('creditos');
+}
+
+async function comprarPacote() {
+  const pacote = PACOTE_POR_ID[creditos.selecionado];
+  if (!pacote || creditos.comprando) return;
+  creditos.comprando = true;
+  desenharCreditos();
+  msg('creditos-msg', 'Processando…');
+  try {
+    await api.comprarMoedas(pacote.moedas);
+    await atualizarCarteira().catch(() => {});
+    creditos.selecionado = null;
+    msg('creditos-msg', `Pronto! ${formatarMoedas(pacote.moedas)} moedas entraram na sua carteira.`, 'ok');
+  } catch (erro) {
+    if (erro.status !== 401 && erro.status !== 403) msg('creditos-msg', mensagemErroCompra(erro), 'erro');
+  } finally {
+    creditos.comprando = false;
+    if (estadoAtual() === 'creditos') desenharCreditos();
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Administração
 // ---------------------------------------------------------------------------
 const admin = { pagina: 0, tamanho: 20, itens: [], total: 0, bloqueandoId: null, carregando: false, pedido: 0 };
@@ -400,6 +443,20 @@ $('excluir-texto').addEventListener('input', e => {
   $('btn-excluir-confirmar').disabled = e.target.value.trim() !== 'EXCLUIR';
 });
 $('form-excluir').addEventListener('submit', excluirConta);
+
+$('btn-comprar').addEventListener('click', () => abrirCreditos('menu'));
+$('btn-ranges-comprar').addEventListener('click', () => abrirCreditos('ranges'));
+$('btn-buy-comprar').addEventListener('click', () => abrirCreditos('buy'));
+$('btn-result-comprar').addEventListener('click', () => abrirCreditos('menu'));
+$('creditos-pacotes').addEventListener('click', e => {
+  const btn = e.target.closest('button[data-pacote]');
+  if (!btn || creditos.comprando) return;
+  creditos.selecionado = btn.dataset.pacote;
+  msg('creditos-msg', '');
+  desenharCreditos();
+});
+$('btn-creditos-pagar').addEventListener('click', comprarPacote);
+$('btn-creditos-voltar').addEventListener('click', () => voltarDaCompra(creditos.voltarPara));
 
 $('btn-admin').addEventListener('click', abrirAdmin);
 $('btn-admin-voltar').addEventListener('click', () => setState('menu'));

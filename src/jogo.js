@@ -128,7 +128,7 @@ const game = {
 
 const OVERLAYS = {
   menu: 'menu', ranges: 'ranges', buy: 'buy', refill: 'refill', paused: 'pause', result: 'result',
-  perfil: 'perfil', admin: 'admin', bloqueado: 'bloqueado',
+  perfil: 'perfil', admin: 'admin', bloqueado: 'bloqueado', creditos: 'creditos',
 };
 
 export function setState(s) {
@@ -142,6 +142,18 @@ export function setState(s) {
 }
 
 export const estadoAtual = () => game.state;
+export const saldoAtual = () => game.wallet;
+
+/** Volta para a tela de onde o jogador foi comprar moedas, já com o saldo novo. */
+export function voltarDaCompra(estado) {
+  if (estado === 'buy') {
+    mostrarErroCompra(null);
+    setState('buy');
+    renderBuy();
+  } else {
+    setState(estado);
+  }
+}
 
 /** Atualiza o saldo em todas as telas que o mostram. */
 function mostrarSaldo() {
@@ -288,6 +300,7 @@ function mostrarErroCompra(erro) {
   const el = $('buy-erro');
   el.hidden = !erro;
   $('btn-buy-fechar-aberta').hidden = erro?.status !== 409;
+  $('btn-buy-comprar').hidden = !(erro?.status === 422 && /saldo insuficiente/i.test(erro?.mensagem || ''));
   $('buy-erro-texto').textContent = erro
     ? (erro.status === 409 ? 'Você já tem uma rodada aberta no servidor. Encerre-a para começar outra.' : mensagemErro(erro))
     : '';
@@ -545,6 +558,7 @@ function atualizarFalido() {
   again.style.display = broke ? 'none' : '';
   $('btn-change-range').style.display = broke ? 'none' : '';
   $('btn-restart').style.display = broke ? '' : 'none';
+  $('btn-result-comprar').style.display = broke ? '' : 'none';
 }
 
 // ---------------------------------------------------------------------------

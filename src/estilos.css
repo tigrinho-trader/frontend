@@ -660,3 +660,64 @@ h3.secao {
 [hidden] { display: none !important; }
 
 @keyframes pulsar { 0%, 100% { opacity: 0.45; } 50% { opacity: 0.9; } }
+
+/* Comprar moedas */
+.btn.ouro {
+  background: linear-gradient(#ffd54f, #f9a825);
+  border-color: #8a5200;
+  color: #4a2a00;
+  text-shadow: 0 calc(var(--s) * 1px) 0 rgba(255, 255, 255, 0.5);
+  box-shadow: 0 calc(var(--s) * 6px) 0 #8a5200;
+}
+.btn.ouro.small { box-shadow: 0 calc(var(--s) * 4px) 0 #8a5200; }
+.btn.ouro:active { box-shadow: 0 calc(var(--s) * 2px) 0 #8a5200; }
+
+.pacotes {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: calc(var(--s) * 12px);
+  margin: calc(var(--s) * 8px) 0 calc(var(--s) * 14px);
+}
+.pacote {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(var(--s) * 4px);
+  padding: calc(var(--s) * 22px) calc(var(--s) * 8px) calc(var(--s) * 14px);
+  font-family: 'Nunito', sans-serif;
+  color: #4a2f17;
+  background: linear-gradient(#fffaf0, #f6e6c8);
+  border: calc(var(--s) * 4px) solid #c9a77c;
+  border-radius: calc(var(--s) * 16px);
+  box-shadow: 0 calc(var(--s) * 4px) 0 #a8875c;
+  cursor: pointer;
+  transition: transform 0.08s, border-color 0.15s;
+}
+.pacote:hover { transform: translateY(calc(var(--s) * -2px)); }
+.pacote.selecionado { border-color: #f9a825; background: linear-gradient(#fff8dc, #ffe9a8); box-shadow: 0 0 0 calc(var(--s) * 3px) #ffd54f, 0 calc(var(--s) * 4px) 0 #a8875c; }
+.pacote-moedas { font-family: 'Lilita One', 'Nunito', sans-serif; font-size: calc(var(--s) * 30px); color: #c77c00; }
+.pacote-nome { font-weight: 900; font-size: calc(var(--s) * 17px); }
+.pacote-destaque {
+  position: absolute;
+  top: calc(var(--s) * -12px);
+  padding: calc(var(--s) * 2px) calc(var(--s) * 10px);
+  font-size: calc(var(--s) * 12px);
+  font-weight: 900;
+  color: #fff;
+  background: #e53935;
+  border-radius: calc(var(--s) * 10px);
+  white-space: nowrap;
+}
+.creditos-resumo { font-size: calc(var(--s) * 20px); margin-bottom: calc(var(--s) * 6px); }
+.aviso-teste {
+  margin: 0 auto calc(var(--s) * 10px);
+  padding: calc(var(--s) * 6px) calc(var(--s) * 12px);
+  max-width: 90%;
+  font-size: calc(var(--s) * 15px);
+  color: #5d4037;
+  background: #fff3cd;
+  border: calc(var(--s) * 2px) dashed #f9a825;
+  border-radius: calc(var(--s) * 10px);
+}
+#creditos .msg { text-align: center; }

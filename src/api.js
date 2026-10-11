@@ -143,6 +143,8 @@ export const alterarPapel = (usuarioId, papel) =>
 // ---------------------------------------------------------------------------
 export const carteira = () => requisitar('GET', '/carteira');
 export const extrato = () => requisitar('GET', '/carteira/extrato');
+/** Compra de moedas. Hoje é o pagamento de teste (sandbox) da carteira; depois, Pix. */
+export const comprarMoedas = valor => requisitar('POST', '/carteira/depositos', { corpo: { valor } });
 
 // ---------------------------------------------------------------------------
 // trading-service: sessões do Flecha Certeira

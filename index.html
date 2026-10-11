@@ -58,6 +58,7 @@
         <!-- Logado -->
         <div class="so-logado">
           <button class="btn" id="btn-play">Jogar</button>
+          <button class="btn ouro" id="btn-comprar">Comprar moedas</button>
           <div class="menu-acoes">
             <button class="btn secondary small" id="btn-perfil">Meu perfil</button>
             <button class="btn secondary small" id="btn-admin" hidden>Administração</button>
@@ -112,6 +113,22 @@
       </div>
     </div>
 
+    <!-- Comprar moedas -->
+    <div class="overlay" id="creditos">
+      <div class="card shop">
+        <h2>Comprar moedas</h2>
+        <p class="sub">Saldo atual: <span class="coin"></span><b id="creditos-saldo">0</b></p>
+        <div class="pacotes" id="creditos-pacotes"></div>
+        <div class="creditos-confirmar" id="creditos-confirmar" hidden>
+          <p class="creditos-resumo">Você vai receber <span class="coin"></span><b id="creditos-qtd">0</b> moedas na sua carteira.</p>
+          <p class="aviso-teste">Modo de teste: nenhum dinheiro real é cobrado. O pagamento por Pix entra numa próxima etapa.</p>
+          <button type="button" class="btn" id="btn-creditos-pagar">Confirmar compra</button>
+        </div>
+        <p class="msg" id="creditos-msg" role="status"></p>
+        <button class="btn secondary" id="btn-creditos-voltar">Voltar</button>
+      </div>
+    </div>
+
     <!-- Administração de usuários (só ADMIN) -->
     <div class="overlay" id="admin">
       <div class="card conta larga">
@@ -163,6 +180,7 @@
         <h2>Escolha o campo de tiro</h2>
         <p class="sub">Saldo: <span class="coin"></span><b id="ranges-wallet">0</b></p>
         <div class="range-grid" id="range-grid"></div>
+        <button class="btn ouro small" id="btn-ranges-comprar">Comprar moedas</button>
         <button class="btn secondary" id="btn-ranges-back">Voltar</button>
       </div>
     </div>
@@ -181,6 +199,7 @@
         <div class="erro-caixa" id="buy-erro" hidden>
           <span id="buy-erro-texto"></span>
           <button type="button" class="mini" id="btn-buy-fechar-aberta" hidden>Encerrar a rodada aberta</button>
+          <button type="button" class="mini" id="btn-buy-comprar" hidden>Comprar moedas</button>
         </div>
         <button class="btn" id="btn-enter">Pagar e entrar</button>
         <button class="btn secondary" id="btn-buy-back">Voltar</button>
@@ -227,6 +246,7 @@
         <p class="broke" id="res-broke">Você ficou sem moedas para entrar em qualquer campo!</p>
         <button class="btn" id="btn-again">Jogar de novo</button>
         <button class="btn secondary" id="btn-change-range">Trocar de campo</button>
+        <button class="btn ouro" id="btn-result-comprar">Comprar moedas</button>
         <button class="btn" id="btn-restart">Voltar ao menu</button>
       </div>
     </div>
