@@ -1,13 +1,108 @@
 <!doctype html>
-<html lang="pt-br">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Tigrinho Trader</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐯</text></svg>" />
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
-  </body>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>Flecha Certeira</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@700;900&display=swap" rel="stylesheet">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏹</text></svg>">
+</head>
+<body>
+  <div id="wrap" data-state="menu">
+    <canvas id="game"></canvas>
+
+    <div id="hud-buttons">
+      <button id="btn-pause" class="icon-btn" title="Pausar (P)">⏸</button>
+      <button id="btn-mute" class="icon-btn" title="Som (M)">🔊</button>
+    </div>
+
+    <!-- Menu inicial -->
+    <div class="overlay" id="menu">
+      <div class="card">
+        <h1>Flecha Certeira</h1>
+        <p class="sub">Pague para atirar, acerte os pássaros e saia com mais moedas!</p>
+        <ul class="howto">
+          <li>Escolha um <b>campo de tiro</b>, pague a <b>entrada</b> e <b>compre suas flechas</b>. Nos campos mais caros os pássaros valem <b>muito mais moedas</b>, mas voam mais rápido.</li>
+          <li>Há 4 flechas: <b>madeira, ferro, ouro e diamante</b>. As mais caras multiplicam as moedas de cada pássaro, mas cada erro sai mais caro. Troque de flecha clicando na aljava ou nas teclas <b>1 a 4</b>.</li>
+          <li><b>Arraste para trás</b> e solte para atirar. Na linha pontilhada, cada ponto amarelo vale <b>0,5 segundo</b> de voo.</li>
+          <li>Os pássaros não param: <b>mire onde o pássaro VAI estar</b>.</li>
+          <li>Acabaram as flechas? Compre mais ou encerre. Se errar muito, você <b>sai com menos moedas</b> do que entrou!</li>
+        </ul>
+        <button class="btn" id="btn-play">Jogar</button>
+        <p class="best">Seu saldo: <span class="coin"></span><b id="menu-wallet">0</b></p>
+      </div>
+    </div>
+
+    <!-- Escolha do campo de tiro -->
+    <div class="overlay" id="ranges">
+      <div class="card wide">
+        <h2>Escolha o campo de tiro</h2>
+        <p class="sub">Saldo: <span class="coin"></span><b id="ranges-wallet">0</b></p>
+        <div class="range-grid" id="range-grid"></div>
+        <button class="btn secondary" id="btn-ranges-back">Voltar</button>
+      </div>
+    </div>
+
+    <!-- Compra de flechas -->
+    <div class="overlay" id="buy">
+      <div class="card shop">
+        <h2 id="buy-title">Campo</h2>
+        <p class="sub">Monte sua aljava: flechas melhores custam mais e arrancam mais moedas dos pássaros.</p>
+        <div class="arrow-shop" id="arrow-shop"></div>
+        <p class="buy-summary">
+          Entrada <b id="buy-fee">0</b> + <span id="buy-arrows-label">flechas</span> <b id="buy-arrows">0</b> =
+          <span class="buy-total">Total <span class="coin"></span><b id="buy-total">0</b></span>
+          <span class="buy-after">saldo depois: <b id="buy-after">0</b></span>
+        </p>
+        <button class="btn" id="btn-enter">Pagar e entrar</button>
+        <button class="btn secondary" id="btn-buy-back">Voltar</button>
+      </div>
+    </div>
+
+    <!-- Acabaram as flechas: comprar mais ou encerrar -->
+    <div class="overlay" id="refill">
+      <div class="card shop">
+        <h2>Acabaram as flechas!</h2>
+        <p class="sub">Até agora: gastou <b id="ref-spent">0</b>, ganhou <b id="ref-earned">0</b> → <b id="ref-net">0</b></p>
+        <p class="sub">Saldo: <span class="coin"></span><b id="ref-wallet">0</b> · comprar mais flechas?</p>
+        <div class="refill-options" id="refill-options"></div>
+        <button class="btn secondary" id="btn-refill-end">Encerrar rodada</button>
+      </div>
+    </div>
+
+    <!-- Pausa -->
+    <div class="overlay" id="pause">
+      <div class="card small">
+        <h2>Pausado</h2>
+        <button class="btn" id="btn-resume">Continuar</button>
+        <button class="btn secondary" id="btn-quit">Sair do campo</button>
+        <p class="note">Se sair agora, as flechas que sobraram são perdidas (não há reembolso).</p>
+      </div>
+    </div>
+
+    <!-- Resultado da rodada -->
+    <div class="overlay" id="result">
+      <div class="card">
+        <h2 id="res-title">Lucro!</h2>
+        <div class="net" id="res-net">+0</div>
+        <table class="stats">
+          <tr><td>Campo</td><td id="res-range">-</td></tr>
+          <tr><td>Entrada</td><td id="res-fee" class="neg">-0</td></tr>
+          <tr><td id="res-arrows-label">Flechas compradas</td><td id="res-arrows" class="neg">-0</td></tr>
+          <tr><td>Pássaros acertados</td><td id="res-hits">0</td></tr>
+          <tr><td>Moedas ganhas</td><td id="res-earned" class="pos">+0</td></tr>
+          <tr class="total"><td>Saldo atual</td><td><span class="coin"></span><span id="res-wallet">0</span></td></tr>
+        </table>
+        <p class="broke" id="res-broke">Você ficou sem moedas para entrar em qualquer campo!</p>
+        <button class="btn" id="btn-again">Jogar de novo</button>
+        <button class="btn secondary" id="btn-change-range">Trocar de campo</button>
+        <button class="btn" id="btn-restart">Recomeçar com 100 moedas</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
 </html>

@@ -1,41 +1,1637 @@
-// Formatacao e resumos usados pelas telas.
+// Flecha Certeira: o jogo (canvas, controles, telas e HUD).
+// As regras e a economia ficam em regras.js; os cenários em cenarios.js.
+import {
+  START_COINS, DEFAULT_ARROWS, MAX_ARROWS, REFILL_QTY, BIRD_TYPES, RANGES, ARROW_TYPES, ARROW_BY_ID,
+  clamp, formatMult, birdValue, arrowCost, coinsForHit, emptyQuiver, countArrows, orderCost, minCost,
+  canEnter as canEnterWith, isBroke as isBrokeWith, fitOrder, changeOrder, pickBirdType,
+  segmentHitsCircle, arrowPosition,
+} from './regras.js';
+import { Scenery } from './cenarios.js';
 
-const numero = (casas) =>
-  new Intl.NumberFormat("pt-BR", { minimumFractionDigits: casas, maximumFractionDigits: casas });
+// ---------------------------------------------------------------------------
+// Configuração geral
+// ---------------------------------------------------------------------------
+const W = 1280, H = 720;          // resolução lógica do jogo
+const GROUND_Y = 640;             // altura do chão
+const G = 900;                    // gravidade (px/s²)
+const MIN_SPEED = 300, MAX_SPEED = 1350;
+const MAX_DRAG = 230;             // distância de arraste para força máxima
+const ARROW_LEN = 62;
+const LAUNCH = { x: 180, y: 518 }; // ponto de onde a flecha sai (o arco)
+const PREVIEW_STEP = 0.05;        // segundos entre pontos da trajetória
 
-export function formatarMoedas(valor) {
-  return numero(2).format(Number(valor) || 0);
+// ---------------------------------------------------------------------------
+// Utilitários
+// ---------------------------------------------------------------------------
+const rand = (a, b) => a + Math.random() * (b - a);
+const $ = id => document.getElementById(id);
+
+function loadWallet() {
+  try {
+    const v = localStorage.getItem('flecha-certeira-wallet');
+    return v === null ? START_COINS : Math.max(0, Number(v) || 0);
+  } catch { return START_COINS; }
+}
+function saveWallet(v) {
+  try { localStorage.setItem('flecha-certeira-wallet', String(v)); } catch { /* sem storage */ }
 }
 
-/** Preco com casas suficientes pra ver o movimento: BTC com 2, moedas baratas com ate 6. */
-export function formatarPreco(valor) {
-  const v = Number(valor) || 0;
-  const casas = v >= 1000 ? 2 : v >= 1 ? 4 : 6;
-  return numero(casas).format(v);
-}
+// ---------------------------------------------------------------------------
+// Som (sintetizado com WebAudio, sem arquivos)
+// ---------------------------------------------------------------------------
+let actx = null, muted = false;
 
-export function nomeAtivo(simbolo) {
-  return simbolo.replace(/USDT$/, "");
-}
-
-/** Vitorias seguidas a partir da rodada mais recente ja resolvida (empate nao quebra nem soma). */
-export function sequenciaVitorias(ordens) {
-  let seguidas = 0;
-  for (const o of ordens) {
-    if (o.status === "ABERTA" || o.status === "EMPATOU") continue;
-    if (o.status !== "GANHOU") break;
-    seguidas++;
+function audio() {
+  if (!actx) {
+    try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch { actx = null; }
   }
-  return seguidas;
+  if (actx && actx.state === 'suspended') actx.resume();
+  return actx;
 }
 
-/** Como a rodada aparece no diario: aposta "sem toque" de cima/baixo ou as rodadas classicas. */
-export function descreverRodada(ordem) {
-  if (ordem.tipo === "BARREIRA") {
-    const acima = Number(ordem.alvo) > Number(ordem.precoEntrada);
-    return { icone: acima ? "☁️" : "⛰️", texto: `Sem toque ${acima ? "acima" : "abaixo"}` };
-  }
-  const tipos = { ALTA: ["▲", "Sobe"], BAIXA: ["▼", "Desce"], LATERAL: ["◆", "Parado"] };
-  const [icone, texto] = tipos[ordem.tipo] || ["•", ordem.tipo];
-  return { icone, texto };
+function tone(freq, freqEnd, dur, type = 'sine', vol = 0.2, delay = 0) {
+  if (muted) return;
+  const a = audio();
+  if (!a) return;
+  const t0 = a.currentTime + delay;
+  const osc = a.createOscillator(), gain = a.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, t0);
+  osc.frequency.exponentialRampToValueAtTime(Math.max(1, freqEnd), t0 + dur);
+  gain.gain.setValueAtTime(vol, t0);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  osc.connect(gain).connect(a.destination);
+  osc.start(t0);
+  osc.stop(t0 + dur + 0.02);
 }
+
+const sfx = {
+  shoot() { tone(520, 140, 0.14, 'triangle', 0.18); },
+  hit() { tone(700, 1200, 0.08, 'square', 0.07); tone(180, 60, 0.18, 'sine', 0.25); },
+  combo() { [660, 880, 1100].forEach((f, i) => tone(f, f, 0.1, 'triangle', 0.12, i * 0.07)); },
+  thud() { tone(140, 50, 0.1, 'sine', 0.12); },
+  coin() { tone(988, 988, 0.07, 'square', 0.05); tone(1319, 1319, 0.16, 'square', 0.05, 0.07); },
+  pay() { tone(330, 220, 0.12, 'triangle', 0.12); tone(1319, 1319, 0.08, 'square', 0.04, 0.05); },
+  win() { [523, 659, 784, 1047].forEach((f, i) => tone(f, f, 0.18, 'triangle', 0.15, i * 0.12)); },
+  lose() { [392, 330, 262].forEach((f, i) => tone(f, f * 0.95, 0.25, 'triangle', 0.15, i * 0.18)); },
+};
+
+// ---------------------------------------------------------------------------
+// Canvas e escala
+// ---------------------------------------------------------------------------
+const canvas = $('game');
+const ctx = canvas.getContext('2d');
+const wrap = $('wrap');
+
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const scale = Math.min(window.innerWidth / W, window.innerHeight / H);
+  const cw = Math.floor(W * scale), ch = Math.floor(H * scale);
+  wrap.style.width = cw + 'px';
+  wrap.style.height = ch + 'px';
+  wrap.style.setProperty('--s', scale);
+  canvas.style.width = cw + 'px';
+  canvas.style.height = ch + 'px';
+  canvas.width = Math.floor(cw * dpr);
+  canvas.height = Math.floor(ch * dpr);
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ---------------------------------------------------------------------------
+// Estado do jogo
+// ---------------------------------------------------------------------------
+const game = {
+  state: 'menu',            // menu | ranges | playing | paused | result
+  wallet: loadWallet(),
+  range: RANGES[0],
+  quiver: emptyQuiver(),    // flechas restantes de cada tipo
+  selected: 'wood',         // tipo de flecha na mão do arqueiro
+  shotsFired: 0,
+  totalShots: 0,            // tiros em todas as rodadas (para a dica do primeiro tiro)
+  hits: 0,
+  earned: 0,                // moedas ganhas na rodada atual
+  spent: 0,                 // entrada + flechas compradas na rodada atual
+  bought: emptyQuiver(),    // flechas compradas na rodada, por tipo
+  order: { ...emptyQuiver(), wood: DEFAULT_ARROWS },   // escolha na loja
+  birds: [],
+  arrows: [],
+  particles: [],
+  texts: [],
+  spawnTimer: 0,
+  pending: null,            // 'win' | 'lose' enquanto espera a animação terminar
+  endTimer: 0,
+  banner: 0,
+  shake: 0,
+  time: 0,
+  aim: { active: false, valid: false, sx: 0, sy: 0, cx: 0, cy: 0, angle: -0.6, power: 0 },
+};
+
+const OVERLAYS = { menu: 'menu', ranges: 'ranges', buy: 'buy', refill: 'refill', paused: 'pause', result: 'result' };
+
+function setState(s) {
+  game.state = s;
+  wrap.dataset.state = s;
+  for (const [state, id] of Object.entries(OVERLAYS)) {
+    $(id).classList.toggle('show', state === s);
+  }
+  if (s === 'menu') $('menu-wallet').textContent = game.wallet;
+  if (s === 'ranges') renderRanges();
+}
+
+function setWallet(v) {
+  game.wallet = v;
+  saveWallet(v);
+}
+
+// Atalhos que usam o saldo atual
+const canEnter = range => canEnterWith(game.wallet, range);
+const isBroke = () => isBrokeWith(game.wallet);
+const arrowsLeft = () => countArrows(game.quiver);
+
+function renderRanges() {
+  $('ranges-wallet').textContent = game.wallet;
+  const grid = $('range-grid');
+  grid.innerHTML = '';
+  RANGES.forEach((r, i) => {
+    const ok = canEnter(r);
+    const card = document.createElement('div');
+    card.className = 'range' + (ok ? '' : ' locked');
+    const pips = '➶'.repeat(r.tier) + `<span class="off">${'➶'.repeat(4 - r.tier)}</span>`;
+    const top = ARROW_TYPES[ARROW_TYPES.length - 1];
+    card.innerHTML = `
+      <span class="tier" title="Dificuldade">${pips}</span>
+      <h3>${r.name}</h3>
+      <p>${r.desc}</p>
+      <p>Entrada <b><span class="coin"></span>${r.fee}</b> · flechas de <b><span class="coin"></span>${r.arrowPrice}</b> a <b><span class="coin"></span>${arrowCost(top, r)}</b></p>
+      <p>Pássaros valem <span class="mult">×${r.mult}</span>:
+         vermelho <b>${birdValue(BIRD_TYPES.red, r)}</b>, dourado <b>${birdValue(BIRD_TYPES.gold, r)}</b> moedas</p>
+      <button class="btn" data-range="${i}" ${ok ? '' : 'disabled'}>
+        ${ok ? 'Escolher' : `Precisa de ${minCost(r)}`}
+      </button>`;
+    grid.appendChild(card);
+  });
+}
+
+// Ícone de cada flecha para as telas em HTML (desenhado com o mesmo código do jogo)
+const ARROW_ICONS = {};
+function arrowIcon(type) {
+  if (!ARROW_ICONS[type.id]) {
+    const c = document.createElement('canvas');
+    c.width = 180;
+    c.height = 60;
+    const x = c.getContext('2d');
+    x.scale(2, 2);
+    x.translate(82, 15);
+    x.rotate(-0.25);
+    drawArrowShape(type, x);
+    ARROW_ICONS[type.id] = c.toDataURL();
+  }
+  return ARROW_ICONS[type.id];
+}
+
+function openBuy(range) {
+  if (!canEnter(range)) return;
+  game.range = range;
+  // Se o pedido anterior ficou caro demais, corta das flechas mais caras primeiro
+  game.order = fitOrder(game.order, range, game.wallet);
+  setState('buy');
+  renderBuy();
+}
+
+function renderBuy() {
+  const r = game.range, order = game.order;
+  const arrowsCost = orderCost(order, r), total = r.fee + arrowsCost, count = countArrows(order);
+  const left = game.wallet - total;
+  $('buy-title').textContent = r.name;
+
+  $('arrow-shop').innerHTML = ARROW_TYPES.map(t => {
+    const cost = arrowCost(t, r), n = order[t.id];
+    const canAdd = left >= cost && count < MAX_ARROWS;
+    return `
+      <div class="arrow-row${n ? ' active' : ''}" title="${t.desc}">
+        <img src="${arrowIcon(t)}" alt="">
+        <div class="arrow-info">
+          <b class="arrow-name">${t.name}</b>
+          <span>moedas <b class="mult">×${formatMult(t.coins)}</b> · <span class="coin"></span>${cost} cada</span>
+        </div>
+        <div class="arrow-qty">
+          <button class="chip" data-type="${t.id}" data-d="-5" ${n ? '' : 'disabled'}>−5</button>
+          <button class="step sm" data-type="${t.id}" data-d="-1" ${n ? '' : 'disabled'}>−</button>
+          <span class="n">${n}</span>
+          <button class="step sm" data-type="${t.id}" data-d="1" ${canAdd ? '' : 'disabled'}>+</button>
+          <button class="chip" data-type="${t.id}" data-d="5" ${canAdd ? '' : 'disabled'}>+5</button>
+        </div>
+      </div>`;
+  }).join('');
+
+  $('buy-fee').textContent = r.fee;
+  $('buy-arrows-label').textContent = `${count} flecha${count === 1 ? '' : 's'}`;
+  $('buy-arrows').textContent = arrowsCost;
+  $('buy-total').textContent = total;
+  $('buy-after').textContent = left;
+  $('btn-enter').disabled = count === 0 || left < 0;
+}
+
+function updateOrder(typeId, delta) {
+  game.order = changeOrder(game.order, game.range, game.wallet, typeId, delta);
+  renderBuy();
+}
+
+function selectArrow(id) {
+  if (game.quiver[id] > 0) game.selected = id;
+}
+
+// Se a flecha escolhida acabou, pega a próxima que ainda tiver
+function ensureSelection() {
+  if (game.quiver[game.selected] > 0) return;
+  const next = ARROW_TYPES.find(t => game.quiver[t.id] > 0);
+  if (next) game.selected = next.id;
+}
+
+function enterRange() {
+  const range = game.range, order = game.order;
+  const total = range.fee + orderCost(order, range);
+  if (total > game.wallet || countArrows(order) === 0) return;
+  audio();
+  setWallet(game.wallet - total);
+  sfx.pay();
+  game.spent = total;
+  game.quiver = { ...order };
+  game.bought = { ...order };
+  game.selected = 'wood';
+  ensureSelection();
+  game.shotsFired = 0;
+  game.hits = 0;
+  game.earned = 0;
+  game.birds = [];
+  game.arrows = [];
+  game.particles = [];
+  game.texts = [];
+  game.spawnTimer = 0.2;
+  game.pending = null;
+  game.endTimer = 0;
+  game.banner = 2.6;
+  game.aim.active = false;
+  setState('playing');
+}
+
+const canRefill = () => game.wallet >= REFILL_QTY * game.range.arrowPrice;
+
+function openRefill() {
+  const r = game.range, net = game.earned - game.spent;
+  $('ref-spent').textContent = game.spent;
+  $('ref-earned').textContent = game.earned;
+  const netEl = $('ref-net');
+  netEl.textContent = (net > 0 ? '+' : '') + net;
+  netEl.className = net > 0 ? 'pos' : net < 0 ? 'neg' : '';
+  $('ref-wallet').textContent = game.wallet;
+  $('refill-options').innerHTML = ARROW_TYPES.map(t => {
+    const cost = REFILL_QTY * arrowCost(t, r);
+    return `
+      <button class="refill-opt" data-type="${t.id}" ${game.wallet >= cost ? '' : 'disabled'}>
+        <img src="${arrowIcon(t)}" alt="">
+        <b>+${REFILL_QTY} ${t.name}</b>
+        <span>moedas ×${formatMult(t.coins)} · <span class="coin"></span>${cost}</span>
+      </button>`;
+  }).join('');
+  game.aim.active = false;
+  setState('refill');
+}
+
+function buyMoreArrows(typeId) {
+  const cost = REFILL_QTY * arrowCost(ARROW_BY_ID[typeId], game.range);
+  if (cost > game.wallet) return;
+  setWallet(game.wallet - cost);
+  game.spent += cost;
+  game.bought[typeId] += REFILL_QTY;
+  game.quiver[typeId] += REFILL_QTY;
+  game.selected = typeId;
+  game.pending = null;
+  sfx.pay();
+  setState('playing');
+}
+
+function endSession() {
+  const net = game.earned - game.spent;
+  const title = $('res-title');
+  title.textContent = net > 0 ? 'Lucro!' : net < 0 ? 'Prejuízo...' : 'Empatou!';
+  title.className = net > 0 ? 'pos' : net < 0 ? 'neg' : '';
+  const netEl = $('res-net');
+  netEl.innerHTML = `<span class="coin"></span>${net > 0 ? '+' : ''}${net}`;
+  netEl.className = 'net ' + (net > 0 ? 'pos' : net < 0 ? 'neg' : '');
+  $('res-range').textContent = game.range.name;
+  $('res-fee').textContent = `−${game.range.fee}`;
+  $('res-arrows-label').textContent = 'Flechas: ' + ARROW_TYPES
+    .filter(t => game.bought[t.id] > 0)
+    .map(t => `${game.bought[t.id]} ${t.name.toLowerCase()}`)
+    .join(', ');
+  $('res-arrows').textContent = `−${game.spent - game.range.fee}`;
+  $('res-hits').textContent = `${game.hits} de ${game.shotsFired} flechas`;
+  $('res-earned').textContent = `+${game.earned}`;
+  $('res-wallet').textContent = game.wallet;
+
+  const again = $('btn-again');
+  again.textContent = 'Jogar de novo';
+  again.disabled = !canEnter(game.range);
+  const broke = isBroke();
+  $('res-broke').style.display = broke ? 'block' : 'none';
+  again.style.display = broke ? 'none' : '';
+  $('btn-change-range').style.display = broke ? 'none' : '';
+  $('btn-restart').style.display = broke ? '' : 'none';
+
+  setState('result');
+  net >= 0 ? sfx.win() : sfx.lose();
+}
+
+// ---------------------------------------------------------------------------
+// Pássaros
+// ---------------------------------------------------------------------------
+function spawnBird() {
+  const cfg = game.range;
+  const type = BIRD_TYPES[pickBirdType(cfg.pool)];
+  const dir = Math.random() < 0.5 ? 1 : -1;
+  const amp = Math.random() < cfg.wobbleChance ? rand(15, cfg.wobbleAmp) : 0;
+  const baseY = rand(70 + amp, 420);
+  const phase = rand(0, Math.PI * 2);
+  game.birds.push({
+    type, dir,
+    x: dir > 0 ? -60 : W + 60,
+    y: baseY + amp * Math.sin(phase),
+    baseY, amp, phase,
+    freq: rand(1.2, 2.6),
+    vx: dir * type.speed * cfg.speedMul * rand(0.85, 1.15),
+    vy: 0,
+    t: 0,
+    flap: rand(0, 6),
+    blink: rand(1, 4),
+    state: 'flying',
+    rot: 0,
+    spin: 0,
+  });
+}
+
+function updateSpawner(dt) {
+  game.spawnTimer -= dt;
+  const flying = game.birds.filter(b => b.state === 'flying').length;
+  if (game.spawnTimer <= 0 && flying < game.range.maxBirds) {
+    spawnBird();
+    game.spawnTimer = game.range.spawnEvery * rand(0.7, 1.3);
+  }
+}
+
+function updateBirds(dt) {
+  for (const b of game.birds) {
+    b.t += dt;
+    if (b.state === 'flying') {
+      b.flap += dt * (b.type.r < 20 ? 18 : 13);
+      b.blink -= dt;
+      if (b.blink < -0.12) b.blink = rand(1.5, 4);
+      b.x += b.vx * dt;
+      b.y = b.baseY + b.amp * Math.sin(b.phase + b.t * b.freq);
+      if (b.type.shiny && Math.random() < dt * 30) spark(b.x - b.dir * b.type.r, b.y + rand(-8, 8));
+      if ((b.dir > 0 && b.x > W + 80) || (b.dir < 0 && b.x < -80)) b.dead = true;
+    } else {
+      b.vy += G * dt;
+      b.x += b.vx * dt;
+      b.y += b.vy * dt;
+      b.rot += b.spin * dt;
+      if (b.y > GROUND_Y - b.type.r * 0.4) {
+        dust(b.x, GROUND_Y, 12);
+        b.dead = true;
+      }
+    }
+  }
+  game.birds = game.birds.filter(b => !b.dead);
+}
+
+function hitBird(arrow, bird) {
+  bird.state = 'falling';
+  bird.vy = -140;
+  bird.vx *= 0.25;
+  bird.spin = rand(6, 10) * (Math.random() < 0.5 ? -1 : 1);
+
+  arrow.hits++;
+  game.hits++;
+  // valor do pássaro × força da flecha × combo
+  const coins = coinsForHit(bird.type, game.range, arrow.type, arrow.hits);
+  game.earned += coins;
+  setWallet(game.wallet + coins);
+
+  addText(bird.x, bird.y - 34, `+${coins}`, '#ffd54f', 38, true);
+  if (arrow.type.coins > 1) {
+    addText(bird.x, bird.y + bird.type.r + 26, `flecha de ${arrow.type.name.toLowerCase()} ×${formatMult(arrow.type.coins)}`, '#ffffff', 20);
+  }
+  if (arrow.hits > 1) {
+    addText(bird.x, bird.y - 80, `COMBO x${arrow.hits}!`, '#ff8a50', 44);
+    sfx.combo();
+  }
+  if (game.earned >= game.spent && game.earned - coins < game.spent) {
+    addText(W / 2, 140, 'Investimento recuperado!', '#aed581', 34);
+  }
+  impact(bird);
+  flyingCoins(bird.x, bird.y, Math.min(coins, 10));
+  sfx.hit();
+  sfx.coin();
+  game.shake = 0.18;
+}
+
+// ---------------------------------------------------------------------------
+// Flechas
+// ---------------------------------------------------------------------------
+function launchVelocity() {
+  const speed = MIN_SPEED + (MAX_SPEED - MIN_SPEED) * game.aim.power;
+  return { vx: Math.cos(game.aim.angle) * speed, vy: Math.sin(game.aim.angle) * speed };
+}
+
+function shoot() {
+  ensureSelection();
+  if (game.quiver[game.selected] <= 0) return;
+  const v = launchVelocity();
+  game.arrows.push({
+    x0: LAUNCH.x, y0: LAUNCH.y, vx0: v.vx, vy0: v.vy, t: 0,
+    x: LAUNCH.x, y: LAUNCH.y, px: LAUNCH.x, py: LAUNCH.y,
+    angle: game.aim.angle,
+    type: ARROW_BY_ID[game.selected],
+    trail: [],
+    state: 'flying',
+    life: 0,
+    hits: 0,
+  });
+  game.quiver[game.selected]--;
+  ensureSelection();
+  game.shotsFired++;
+  game.totalShots++;
+  sfx.shoot();
+}
+
+function updateArrows(dt) {
+  for (const ar of game.arrows) {
+    if (ar.state === 'flying') {
+      ar.px = ar.x;
+      ar.py = ar.y;
+      ar.t += dt;
+      // Posição pela fórmula exata: a flecha segue exatamente a curva mostrada na mira
+      ({ x: ar.x, y: ar.y } = arrowPosition(ar.x0, ar.y0, ar.vx0, ar.vy0, G, ar.t));
+      ar.angle = Math.atan2(ar.vy0 + G * ar.t, ar.vx0);
+      ar.trail.push({ x: ar.x, y: ar.y });
+      if (ar.type.sparkle && Math.random() < dt * 40) spark(ar.x - Math.cos(ar.angle) * 20, ar.y - Math.sin(ar.angle) * 20, ar.type.sparkle);
+      if (ar.trail.length > 12) ar.trail.shift();
+
+      for (const b of game.birds) {
+        if (b.state !== 'flying') continue;
+        if (segmentHitsCircle(ar.px, ar.py, ar.x, ar.y, b.x, b.y, b.type.r * 0.95 + 3)) hitBird(ar, b);
+      }
+
+      if (ar.y >= GROUND_Y + 6) {
+        ar.y = GROUND_Y + 6;
+        ar.state = 'stuck';
+        ar.trail = [];
+        dust(ar.x, GROUND_Y, 7);
+        sfx.thud();
+      } else if (ar.x < -150 || ar.x > W + 150) {
+        ar.dead = true;
+      }
+    } else {
+      ar.life += dt;
+      if (ar.life > 3) ar.dead = true;
+    }
+  }
+  game.arrows = game.arrows.filter(a => !a.dead);
+}
+
+// ---------------------------------------------------------------------------
+// Partículas e textos flutuantes
+// ---------------------------------------------------------------------------
+function impact(b) {
+  game.particles.push({ kind: 'ring', x: b.x, y: b.y, size: b.type.r, vx: 0, vy: 0, rot: 0, vr: 0, g: 0, life: 0, max: 0.35, color: '#fff' });
+  game.particles.push({ kind: 'flash', x: b.x, y: b.y, size: b.type.r * 2.2, vx: 0, vy: 0, rot: 0, vr: 0, g: 0, life: 0, max: 0.18, color: '#fff' });
+  for (let i = 0; i < 16; i++) {
+    game.particles.push({
+      kind: 'feather',
+      x: b.x + rand(-6, 6), y: b.y + rand(-6, 6),
+      vx: rand(-200, 200), vy: rand(-240, 40),
+      rot: rand(0, 6), vr: rand(-7, 7),
+      size: rand(6, 11) * (b.type.r / 25 * 0.5 + 0.5),
+      color: i % 3 ? b.type.color : b.type.belly,
+      g: 230, life: 0, max: rand(0.9, 1.6),
+    });
+  }
+  for (let i = 0; i < 7; i++) {
+    const a = (i / 7) * Math.PI * 2 + rand(-0.2, 0.2);
+    const sp = rand(160, 280);
+    game.particles.push({
+      kind: 'star',
+      x: b.x, y: b.y,
+      vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+      rot: rand(0, 6), vr: rand(-10, 10),
+      size: rand(5, 8),
+      color: '#ffeb3b',
+      g: 350, life: 0, max: rand(0.45, 0.7),
+    });
+  }
+}
+
+function dust(x, y, n) {
+  for (let i = 0; i < n; i++) {
+    game.particles.push({
+      kind: 'dust',
+      x: x + rand(-10, 10), y: y - 4,
+      vx: rand(-100, 100), vy: rand(-170, -40),
+      rot: 0, vr: 0,
+      size: rand(4, 8),
+      color: scene().dust[i % 2],
+      g: 380, life: 0, max: rand(0.45, 0.8),
+    });
+  }
+}
+
+function spark(x, y, color = '#fff59d') {
+  game.particles.push({
+    kind: 'spark', x, y,
+    vx: rand(-20, 20), vy: rand(-20, 20),
+    rot: rand(0, 6), vr: 0,
+    size: rand(3, 6),
+    color,
+    g: 0, life: 0, max: rand(0.35, 0.6),
+  });
+}
+
+function addText(x, y, text, color, size, coin = false) {
+  game.texts.push({ x, y, text, color, size, coin, life: 0, max: 1.2 });
+}
+
+// Moedas que saem do pássaro e voam até a carteira no HUD
+const WALLET_POS = { x: W / 2 - 150, y: 46 };
+function flyingCoins(x, y, n) {
+  for (let i = 0; i < n; i++) {
+    game.particles.push({
+      kind: 'coin',
+      sx: x + rand(-15, 15), sy: y + rand(-15, 15),
+      cx: x + rand(-120, 120), cy: y - rand(60, 200),   // ponto de controle da curva
+      x, y, vx: 0, vy: 0, rot: 0, vr: 0, g: 0,
+      size: 9,
+      delay: i * 0.05,
+      life: 0, max: 0.75 + i * 0.05,
+    });
+  }
+}
+
+function updateParticles(dt) {
+  for (const p of game.particles) {
+    p.life += dt;
+    if (p.kind === 'coin') {
+      const k = clamp((p.life - p.delay) / (p.max - p.delay), 0, 1);
+      const e = k * k;
+      p.x = (1 - e) * (1 - e) * p.sx + 2 * (1 - e) * e * p.cx + e * e * WALLET_POS.x;
+      p.y = (1 - e) * (1 - e) * p.sy + 2 * (1 - e) * e * p.cy + e * e * WALLET_POS.y;
+      p.rot = game.time * 8 + p.delay * 20;
+      continue;
+    }
+    p.vx *= p.kind === 'feather' ? 0.97 : 0.985;
+    p.vy += p.g * dt;
+    if (p.kind === 'feather') p.vy = Math.min(p.vy, 90); // penas planam
+    p.x += p.vx * dt + (p.kind === 'feather' ? Math.sin(p.life * 7 + p.rot) * 40 * dt : 0);
+    p.y += p.vy * dt;
+    p.rot += p.vr * dt;
+  }
+  game.particles = game.particles.filter(p => p.life < p.max);
+
+  for (const t of game.texts) {
+    t.life += dt;
+    t.y -= 38 * dt;
+  }
+  game.texts = game.texts.filter(t => t.life < t.max);
+}
+
+// ---------------------------------------------------------------------------
+// Cenário do campo atual (veja scenery.js)
+// ---------------------------------------------------------------------------
+const scene = () => Scenery.get(game.range.theme);
+
+// ---------------------------------------------------------------------------
+// Loop de atualização
+// ---------------------------------------------------------------------------
+// Telas fora do campo de tiro: só o cenário aparece ao fundo
+const inLobby = () => ['menu', 'ranges', 'buy'].includes(game.state);
+
+function update(dt) {
+  game.time += dt;
+  scene().update(dt, game.time);
+
+  if (inLobby()) {
+    // Pássaros voando no fundo do menu, só de enfeite
+    updateSpawner(dt);
+    updateBirds(dt);
+    updateParticles(dt);
+    return;
+  }
+  if (game.state !== 'playing') return;
+
+  game.banner = Math.max(0, game.banner - dt);
+  game.shake = Math.max(0, game.shake - dt);
+
+  updateSpawner(dt);
+  updateBirds(dt);
+  updateArrows(dt);
+  updateParticles(dt);
+
+  // Sem flechas: espera a última cair e oferece comprar mais (se der) ou encerra
+  if (!game.pending) {
+    if (arrowsLeft() === 0 && !game.arrows.some(a => a.state === 'flying')) {
+      game.pending = 'out';
+      game.endTimer = 0.9;
+    }
+  } else {
+    game.endTimer -= dt;
+    if (game.endTimer <= 0) {
+      game.pending = null;
+      if (canRefill()) openRefill();
+      else endSession();
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Desenho
+// ---------------------------------------------------------------------------
+function roundRect(c, x, y, w, h, r) {
+  c.beginPath();
+  c.moveTo(x + r, y);
+  c.arcTo(x + w, y, x + w, y + h, r);
+  c.arcTo(x + w, y + h, x, y + h, r);
+  c.arcTo(x, y + h, x, y, r);
+  c.arcTo(x, y, x + w, y, r);
+  c.closePath();
+}
+
+function drawBirdShadow(b) {
+  const height = GROUND_Y - b.y;
+  const k = clamp(1 - height / 650, 0.15, 1);
+  ctx.fillStyle = `rgba(30,50,15,${0.22 * k})`;
+  ctx.beginPath();
+  ctx.ellipse(b.x, GROUND_Y - 6, b.type.r * (1.4 - k * 0.5), b.type.r * 0.22, 0, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function featherShape(len, wid) {
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.quadraticCurveTo(len * 0.5, -wid, len, 0);
+  ctx.quadraticCurveTo(len * 0.5, wid, 0, 0);
+  ctx.closePath();
+}
+
+// Corpo do pássaro voltado para a direita (+x), centrado em (0,0)
+function drawBirdBody(T, r, flap, dead, blinking) {
+  const lw = Math.max(1.6, r * 0.09);
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+
+  // Cauda (3 penas)
+  for (const [a, l] of [[-0.45, 1.0], [0, 1.15], [0.45, 0.95]]) {
+    ctx.save();
+    ctx.translate(-r * 0.75, r * 0.05);
+    ctx.rotate(Math.PI + a);
+    featherShape(r * 0.85 * l, r * 0.22);
+    ctx.fillStyle = T.dark;
+    ctx.fill();
+    ctx.strokeStyle = T.outline;
+    ctx.lineWidth = lw * 0.7;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Topete (2 penas)
+  for (const [a, l] of [[-1.9, 0.75], [-1.45, 0.95]]) {
+    ctx.save();
+    ctx.translate(-r * 0.05, -r * 0.82);
+    ctx.rotate(a);
+    featherShape(r * 0.7 * l, r * 0.2);
+    ctx.fillStyle = T.color;
+    ctx.fill();
+    ctx.strokeStyle = T.outline;
+    ctx.lineWidth = lw * 0.7;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Corpo com volume
+  if (T.shiny) { ctx.shadowColor = 'rgba(255,240,150,0.95)'; ctx.shadowBlur = 24; }
+  const body = ctx.createRadialGradient(-r * 0.35, -r * 0.45, r * 0.1, 0, 0, r * 1.05);
+  body.addColorStop(0, T.light);
+  body.addColorStop(0.5, T.color);
+  body.addColorStop(1, T.dark);
+  ctx.fillStyle = body;
+  ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // Barriga
+  ctx.save();
+  ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.clip();
+  const belly = ctx.createLinearGradient(0, r * 0.2, 0, r);
+  belly.addColorStop(0, T.belly);
+  belly.addColorStop(1, T.bellyDark);
+  ctx.fillStyle = belly;
+  ctx.beginPath(); ctx.ellipse(r * 0.2, r * 0.82, r * 0.88, r * 0.56, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+
+  ctx.strokeStyle = T.outline;
+  ctx.lineWidth = lw;
+  ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke();
+
+  // Reflexo de luz
+  ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+  ctx.lineWidth = r * 0.1;
+  ctx.beginPath(); ctx.arc(0, 0, r * 0.78, Math.PI * 1.1, Math.PI * 1.45); ctx.stroke();
+
+  // Asa batendo
+  ctx.save();
+  ctx.translate(-r * 0.2, r * 0.05);
+  const f = Math.sin(flap);
+  ctx.rotate(-0.25 + f * 0.6);
+  ctx.scale(1, 0.75 + Math.abs(f) * 0.35);
+  const wing = ctx.createLinearGradient(0, -r * 0.3, 0, r * 0.3);
+  wing.addColorStop(0, T.color);
+  wing.addColorStop(1, T.dark);
+  ctx.fillStyle = wing;
+  ctx.beginPath(); ctx.ellipse(-r * 0.35, 0, r * 0.58, r * 0.28, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = T.outline;
+  ctx.lineWidth = lw * 0.8;
+  ctx.stroke();
+  ctx.restore();
+
+  // Olhos
+  const ey = -r * 0.2, er = r * 0.25;
+  for (const ex of [r * 0.16, r * 0.56]) {
+    const eg = ctx.createRadialGradient(ex - er * 0.3, ey - er * 0.3, er * 0.1, ex, ey, er);
+    eg.addColorStop(0, '#ffffff');
+    eg.addColorStop(1, '#dfe3e8');
+    ctx.fillStyle = eg;
+    ctx.beginPath(); ctx.arc(ex, ey, er, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = T.outline;
+    ctx.lineWidth = lw * 0.6;
+    ctx.stroke();
+    if (dead) {
+      ctx.strokeStyle = '#222';
+      ctx.lineWidth = Math.max(1.5, r * 0.07);
+      ctx.beginPath();
+      ctx.moveTo(ex - er * 0.5, ey - er * 0.5); ctx.lineTo(ex + er * 0.5, ey + er * 0.5);
+      ctx.moveTo(ex + er * 0.5, ey - er * 0.5); ctx.lineTo(ex - er * 0.5, ey + er * 0.5);
+      ctx.stroke();
+    } else if (blinking) {
+      ctx.strokeStyle = '#222';
+      ctx.lineWidth = Math.max(1.5, r * 0.07);
+      ctx.beginPath(); ctx.moveTo(ex - er * 0.7, ey); ctx.lineTo(ex + er * 0.7, ey); ctx.stroke();
+    } else {
+      ctx.fillStyle = '#1a1a1a';
+      ctx.beginPath(); ctx.arc(ex + er * 0.32, ey + er * 0.12, er * 0.47, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.beginPath(); ctx.arc(ex + er * 0.45, ey - er * 0.05, er * 0.16, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
+  // Sobrancelha brava
+  ctx.fillStyle = '#2b1b17';
+  ctx.beginPath();
+  ctx.moveTo(-r * 0.12, -r * 0.66);
+  ctx.quadraticCurveTo(r * 0.4, -r * 0.62, r * 0.86, -r * 0.4);
+  ctx.lineTo(r * 0.82, -r * 0.27);
+  ctx.quadraticCurveTo(r * 0.38, -r * 0.44, -r * 0.08, -r * 0.48);
+  ctx.closePath();
+  ctx.fill();
+
+  // Bico (duas partes)
+  ctx.strokeStyle = '#8a3c00';
+  ctx.lineWidth = lw * 0.6;
+  const lower = ctx.createLinearGradient(0, r * 0.1, 0, r * 0.4);
+  lower.addColorStop(0, '#f57c00');
+  lower.addColorStop(1, '#d35400');
+  ctx.fillStyle = lower;
+  ctx.beginPath();
+  ctx.moveTo(r * 0.6, r * 0.14);
+  ctx.quadraticCurveTo(r * 0.95, r * 0.18, r * 1.12, r * 0.2);
+  ctx.quadraticCurveTo(r * 0.9, r * 0.4, r * 0.6, r * 0.34);
+  ctx.closePath();
+  ctx.fill(); ctx.stroke();
+  const upper = ctx.createLinearGradient(0, -r * 0.05, 0, r * 0.2);
+  upper.addColorStop(0, '#ffd54f');
+  upper.addColorStop(1, '#ff9800');
+  ctx.fillStyle = upper;
+  ctx.beginPath();
+  ctx.moveTo(r * 0.58, -r * 0.06);
+  ctx.quadraticCurveTo(r * 1.05, -r * 0.02, r * 1.32, r * 0.16);
+  ctx.quadraticCurveTo(r * 0.95, r * 0.2, r * 0.58, r * 0.16);
+  ctx.closePath();
+  ctx.fill(); ctx.stroke();
+}
+
+function drawBird(b) {
+  ctx.save();
+  ctx.translate(b.x, b.y);
+  if (b.state === 'falling') ctx.rotate(b.rot);
+  ctx.scale(b.dir, 1);
+  drawBirdBody(b.type, b.type.r, b.flap, b.state === 'falling', b.blink < 0);
+  ctx.restore();
+}
+
+// Flecha com a ponta em (0,0) apontando para +x, nas cores do seu tipo
+function drawArrowShape(type = ARROW_TYPES[0], c = ctx) {
+  c.lineCap = 'round';
+  c.strokeStyle = type.shaft[0];
+  c.lineWidth = 4;
+  c.beginPath(); c.moveTo(-ARROW_LEN, 0); c.lineTo(-10, 0); c.stroke();
+  c.strokeStyle = type.shaft[1];
+  c.lineWidth = 2;
+  c.beginPath(); c.moveTo(-ARROW_LEN, -0.5); c.lineTo(-10, -0.5); c.stroke();
+
+  const k = type.headSize;
+  if (type.glow) { c.shadowColor = type.glow; c.shadowBlur = 12; }
+  const head = c.createLinearGradient(0, -6 * k, 0, 6 * k);
+  head.addColorStop(0, type.head[0]);
+  head.addColorStop(0.5, type.head[1]);
+  head.addColorStop(1, type.head[2]);
+  c.fillStyle = head;
+  c.strokeStyle = type.headStroke;
+  c.lineWidth = 1;
+  c.beginPath();
+  if (type.id === 'diamond') {
+    // ponta lapidada
+    c.moveTo(2, 0); c.lineTo(-8 * k, -6 * k); c.lineTo(-16 * k, -3 * k); c.lineTo(-12 * k, 0); c.lineTo(-16 * k, 3 * k); c.lineTo(-8 * k, 6 * k);
+  } else {
+    c.moveTo(1, 0); c.lineTo(-15 * k, -6.5 * k); c.lineTo(-11 * k, 0); c.lineTo(-15 * k, 6.5 * k);
+  }
+  c.closePath();
+  c.fill();
+  c.shadowBlur = 0;
+  c.stroke();
+  if (type.id === 'diamond') {
+    c.strokeStyle = 'rgba(255,255,255,0.8)';
+    c.beginPath(); c.moveTo(2, 0); c.lineTo(-12 * k, 0); c.moveTo(-8 * k, -6 * k); c.lineTo(-6 * k, 0); c.stroke();
+  }
+
+  for (const s of [-1, 1]) {
+    c.fillStyle = s < 0 ? type.fletch[0] : type.fletch[1];
+    c.beginPath();
+    c.moveTo(-ARROW_LEN + 18, 0);
+    c.quadraticCurveTo(-ARROW_LEN + 6, s * 3, -ARROW_LEN - 3, s * 9);
+    c.lineTo(-ARROW_LEN + 2, 0);
+    c.closePath();
+    c.fill();
+  }
+  c.strokeStyle = 'rgba(255,255,255,0.7)';
+  c.lineWidth = 1;
+  c.beginPath(); c.moveTo(-ARROW_LEN + 10, -2.5); c.lineTo(-ARROW_LEN + 6, -5); c.moveTo(-ARROW_LEN + 10, 2.5); c.lineTo(-ARROW_LEN + 6, 5); c.stroke();
+  c.fillStyle = '#3e2723';
+  c.fillRect(-ARROW_LEN - 2, -1.5, 3, 3);
+}
+
+function drawArrows() {
+  for (const ar of game.arrows) {
+    // Rastro
+    if (ar.trail.length > 1) {
+      ctx.lineCap = 'round';
+      for (let i = 1; i < ar.trail.length; i++) {
+        const k = i / ar.trail.length;
+        ctx.strokeStyle = `rgba(${ar.type.trail},${k * (ar.type.glow ? 0.7 : 0.45)})`;
+        ctx.lineWidth = k * (ar.type.glow ? 5 : 3.5);
+        ctx.beginPath();
+        ctx.moveTo(ar.trail[i - 1].x - Math.cos(ar.angle) * ARROW_LEN, ar.trail[i - 1].y - Math.sin(ar.angle) * ARROW_LEN);
+        ctx.lineTo(ar.trail[i].x - Math.cos(ar.angle) * ARROW_LEN, ar.trail[i].y - Math.sin(ar.angle) * ARROW_LEN);
+        ctx.stroke();
+      }
+    }
+
+    ctx.save();
+    if (ar.state === 'stuck') ctx.globalAlpha = clamp(3 - ar.life, 0, 1);
+    ctx.translate(ar.x, ar.y);
+    ctx.rotate(ar.angle);
+    drawArrowShape(ar.type);
+    ctx.restore();
+
+    // Indicador quando a flecha sobe acima da tela
+    if (ar.state === 'flying' && ar.y < -10 && ar.x > 0 && ar.x < W) {
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      ctx.strokeStyle = 'rgba(0,40,80,0.4)';
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(ar.x, 6); ctx.lineTo(ar.x - 9, 22); ctx.lineTo(ar.x + 9, 22); ctx.closePath();
+      ctx.fill(); ctx.stroke();
+    }
+  }
+}
+
+function drawArcher() {
+  const a = game.aim;
+  const ang = a.angle;
+  const pull = a.active ? a.power : 0;
+  const stringBack = -22 - pull * 38;
+  const handX = LAUNCH.x + Math.cos(ang) * stringBack;
+  const handY = LAUNCH.y + Math.sin(ang) * stringBack;
+  const breath = Math.sin(game.time * 2.2) * 1.2;
+  const sway = Math.sin(game.time * 1.6) * 3;
+  const skin = '#f5c9a0', skinDark = '#d9a57a';
+
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  // Capa
+  const cape = ctx.createLinearGradient(100, 510, 140, 580);
+  cape.addColorStop(0, '#1b5e20');
+  cape.addColorStop(1, '#0d3b12');
+  ctx.fillStyle = cape;
+  ctx.beginPath();
+  ctx.moveTo(140, 512 + breath);
+  ctx.quadraticCurveTo(110 + sway, 540, 100 + sway, 578);
+  ctx.lineTo(118 + sway * 0.5, 572);
+  ctx.lineTo(128, 580);
+  ctx.quadraticCurveTo(128, 545, 146, 516 + breath);
+  ctx.closePath();
+  ctx.fill();
+
+  // Aljava
+  ctx.save();
+  ctx.translate(124, 526 + breath);
+  ctx.rotate(-0.35);
+  for (let i = 0; i < 3; i++) {
+    ctx.fillStyle = i % 2 ? '#c62828' : '#ef5350';
+    ctx.beginPath(); ctx.moveTo(-6 + i * 6, -28); ctx.lineTo(-10 + i * 6, -42); ctx.lineTo(-2 + i * 6, -42); ctx.closePath(); ctx.fill();
+  }
+  const q = ctx.createLinearGradient(-10, 0, 10, 0);
+  q.addColorStop(0, '#a1887f');
+  q.addColorStop(1, '#5d4037');
+  ctx.fillStyle = q;
+  roundRect(ctx, -10, -30, 20, 46, 5);
+  ctx.fill();
+  ctx.strokeStyle = '#3e2723';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.fillStyle = '#ffca28';
+  ctx.fillRect(-10, -22, 20, 3);
+  ctx.restore();
+
+  // Pernas e botas
+  const leg = (x1, x2) => {
+    ctx.strokeStyle = '#4e5d2a';
+    ctx.lineWidth = 9;
+    ctx.beginPath(); ctx.moveTo(x1, 560); ctx.lineTo(x2, 586); ctx.stroke();
+    const boot = ctx.createLinearGradient(0, 580, 0, 596);
+    boot.addColorStop(0, '#8d5a3a');
+    boot.addColorStop(1, '#4e2c17');
+    ctx.fillStyle = boot;
+    roundRect(ctx, x2 - 7, 580, 17, 14, 5);
+    ctx.fill();
+    ctx.strokeStyle = '#2e1a0e';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  };
+  leg(136, 128);
+  leg(148, 154);
+
+  // Túnica
+  const tunic = ctx.createLinearGradient(120, 0, 162, 0);
+  tunic.addColorStop(0, '#2e7d32');
+  tunic.addColorStop(0.55, '#43a047');
+  tunic.addColorStop(1, '#2e7d32');
+  ctx.fillStyle = tunic;
+  ctx.beginPath();
+  ctx.moveTo(128, 514 + breath);
+  ctx.lineTo(156, 514 + breath);
+  ctx.lineTo(162, 566);
+  ctx.lineTo(149, 562); ctx.lineTo(141, 568); ctx.lineTo(132, 562); ctx.lineTo(121, 566);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = '#1b4d1f';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.fillStyle = '#5d4037';
+  ctx.fillRect(124, 543, 36, 6);
+  ctx.fillStyle = '#ffca28';
+  roundRect(ctx, 138, 542, 8, 8, 2);
+  ctx.fill();
+
+  // Braço de trás (puxando a corda)
+  ctx.strokeStyle = '#2e7d32';
+  ctx.lineWidth = 8;
+  ctx.beginPath(); ctx.moveTo(138, 521 + breath); ctx.lineTo(handX, handY); ctx.stroke();
+
+  // Cabeça
+  ctx.fillStyle = '#5d3a1a';
+  ctx.beginPath(); ctx.arc(138, 500 + breath, 16, 0, Math.PI * 2); ctx.fill();
+  const face = ctx.createRadialGradient(146, 494 + breath, 3, 143, 500 + breath, 17);
+  face.addColorStop(0, '#ffe0c2');
+  face.addColorStop(1, skin);
+  ctx.fillStyle = face;
+  ctx.beginPath(); ctx.arc(143, 500 + breath, 15, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = skinDark;
+  ctx.beginPath(); ctx.arc(158, 503 + breath, 3.2, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.beginPath(); ctx.ellipse(150, 498 + breath, 3.2, 3.8, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#2b1b17';
+  ctx.beginPath(); ctx.arc(151.5, 498.5 + breath, 2, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#5d3a1a';
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(146, 492 + breath); ctx.lineTo(154, 491 + breath); ctx.stroke();
+  ctx.strokeStyle = '#a0522d';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.arc(152, 506 + breath, 3, 0.2, Math.PI - 0.6); ctx.stroke();
+
+  // Chapéu de Robin Hood
+  const hat = ctx.createLinearGradient(0, 470, 0, 496);
+  hat.addColorStop(0, '#66bb6a');
+  hat.addColorStop(1, '#2e7d32');
+  ctx.fillStyle = hat;
+  ctx.beginPath();
+  ctx.moveTo(124, 494 + breath);
+  ctx.quadraticCurveTo(138, 470 + breath, 162, 491 + breath);
+  ctx.quadraticCurveTo(144, 488 + breath, 124, 494 + breath);
+  ctx.moveTo(126, 492 + breath);
+  ctx.quadraticCurveTo(112, 482 + breath, 104, 488 + breath);
+  ctx.quadraticCurveTo(114, 478 + breath, 132, 482 + breath);
+  ctx.fill();
+  ctx.strokeStyle = '#1b5e20';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.strokeStyle = '#e53935';
+  ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(134, 484 + breath); ctx.quadraticCurveTo(124, 464 + breath, 108 + sway * 0.3, 462 + breath); ctx.stroke();
+
+  // Braço da frente (segurando o arco)
+  ctx.strokeStyle = '#388e3c';
+  ctx.lineWidth = 8;
+  ctx.beginPath(); ctx.moveTo(150, 521 + breath); ctx.lineTo(LAUNCH.x, LAUNCH.y); ctx.stroke();
+
+  // Arco, corda e flecha encaixada
+  ctx.save();
+  ctx.translate(LAUNCH.x, LAUNCH.y);
+  ctx.rotate(ang);
+  const R = 40, span = 1.15;
+  const tipX = -R + R * Math.cos(span), tipY = R * Math.sin(span);
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+  ctx.lineWidth = 1.4;
+  ctx.beginPath(); ctx.moveTo(tipX, -tipY); ctx.lineTo(stringBack, 0); ctx.lineTo(tipX, tipY); ctx.stroke();
+
+  if (game.quiver[game.selected] > 0 && game.state === 'playing' && !game.pending) {
+    ctx.save();
+    ctx.translate(stringBack + ARROW_LEN, 0);
+    drawArrowShape(ARROW_BY_ID[game.selected]);
+    ctx.restore();
+  }
+
+  ctx.strokeStyle = '#3e2312';
+  ctx.lineWidth = 8;
+  ctx.beginPath(); ctx.arc(-R, 0, R, -span, span); ctx.stroke();
+  const bowGrad = ctx.createLinearGradient(-R, -R, 0, R);
+  bowGrad.addColorStop(0, '#d7a466');
+  bowGrad.addColorStop(0.5, '#a86b32');
+  bowGrad.addColorStop(1, '#d7a466');
+  ctx.strokeStyle = bowGrad;
+  ctx.lineWidth = 5;
+  ctx.beginPath(); ctx.arc(-R, 0, R, -span, span); ctx.stroke();
+  ctx.fillStyle = '#e8d5b0';
+  for (const s of [-1, 1]) { ctx.beginPath(); ctx.arc(tipX, s * tipY, 3, 0, Math.PI * 2); ctx.fill(); }
+  ctx.fillStyle = '#4e2c17';
+  roundRect(ctx, -4, -8, 8, 16, 2);
+  ctx.fill();
+
+  // Mãos
+  ctx.fillStyle = skin;
+  ctx.beginPath(); ctx.arc(0, 0, 5, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(stringBack, 0, 5, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+
+function drawTrajectory() {
+  const a = game.aim;
+  if (!a.active || !a.valid) return;
+
+  // Elástico do arraste
+  ctx.save();
+  ctx.setLineDash([6, 6]);
+  ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(a.sx, a.sy); ctx.lineTo(a.cx, a.cy); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = 'rgba(255,255,255,0.25)';
+  ctx.beginPath(); ctx.arc(a.sx, a.sy, 10, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.restore();
+
+  // Curva da flecha (a mesma fórmula usada no voo real)
+  const v = launchVelocity();
+  const pulse = (game.time * 2) % 1;   // pontinho que "corre" pela curva
+  ctx.textAlign = 'center';
+  for (let i = 1; i <= 160; i++) {
+    const t = i * PREVIEW_STEP;
+    const { x, y } = arrowPosition(LAUNCH.x, LAUNCH.y, v.vx, v.vy, G, t);
+    if (y > GROUND_Y || x < -20 || x > W + 20) break;
+    if (y < -20) continue;
+
+    const major = i % 10 === 0;           // a cada 0,5 s
+    const alpha = Math.max(0.3, 1 - t / 4);
+    const running = Math.abs(((t * 2) % 1) - pulse) < 0.06;
+    const r = major ? 6 : running ? 3.8 : 2.6;
+
+    ctx.fillStyle = `rgba(10,40,80,${alpha * 0.22})`;
+    ctx.beginPath(); ctx.arc(x, y, r + 3.5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = major ? `rgba(255,224,90,${alpha})` : `rgba(255,255,255,${alpha})`;
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = major ? `rgba(120,60,0,${alpha * 0.9})` : `rgba(15,45,85,${alpha * 0.7})`;
+    ctx.lineWidth = major ? 2 : 1.4;
+    ctx.stroke();
+
+    if (i % 20 === 0) {                   // rótulo a cada 1 s
+      const label = `${i / 20}s`;
+      ctx.font = '900 14px Nunito, sans-serif';
+      const tw = ctx.measureText(label).width;
+      ctx.fillStyle = `rgba(20,40,70,${alpha * 0.65})`;
+      roundRect(ctx, x - tw / 2 - 6, y - 30, tw + 12, 18, 9);
+      ctx.fill();
+      ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+      ctx.fillText(label, x, y - 16);
+    }
+  }
+
+  // Força e ângulo
+  const deg = Math.round(-a.angle * 180 / Math.PI);
+  ctx.font = '900 17px Nunito, sans-serif';
+  const label = `Força ${Math.round(a.power * 100)}%  ·  ${deg}°`;
+  const tw = ctx.measureText(label).width;
+  plaque(150 - tw / 2 - 14, 420, tw + 28, 32, 12);
+  ctx.fillStyle = '#fff';
+  ctx.fillText(label, 150, 442);
+  const barW = tw + 4;
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  roundRect(ctx, 150 - barW / 2, 456, barW, 7, 3.5);
+  ctx.fill();
+  const pg = ctx.createLinearGradient(150 - barW / 2, 0, 150 + barW / 2, 0);
+  pg.addColorStop(0, '#8bc34a');
+  pg.addColorStop(0.6, '#ffeb3b');
+  pg.addColorStop(1, '#f44336');
+  ctx.fillStyle = pg;
+  roundRect(ctx, 150 - barW / 2, 456, Math.max(7, barW * a.power), 7, 3.5);
+  ctx.fill();
+}
+
+function starPath(r) {
+  ctx.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const rr = i % 2 ? r * 0.45 : r;
+    const a = i / 10 * Math.PI * 2 - Math.PI / 2;
+    i ? ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr) : ctx.moveTo(Math.cos(a) * rr, Math.sin(a) * rr);
+  }
+  ctx.closePath();
+}
+
+function drawParticles() {
+  for (const p of game.particles) {
+    if (p.kind === 'coin') {
+      if (p.life < p.delay) continue;
+      const squash = Math.abs(Math.cos(p.rot));
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.scale(Math.max(0.25, squash), 1);
+      drawCoin(0, 0, p.size);
+      ctx.restore();
+      continue;
+    }
+    const k = p.life / p.max;
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.rot);
+    ctx.globalAlpha = clamp(1 - k, 0, 1);
+    switch (p.kind) {
+      case 'feather':
+        ctx.translate(-p.size, 0);
+        featherShape(p.size * 2, p.size * 0.55);
+        ctx.fillStyle = p.color;
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(p.size * 2, 0); ctx.stroke();
+        break;
+      case 'dust':
+        ctx.fillStyle = p.color;
+        ctx.beginPath(); ctx.arc(0, 0, p.size * (1 + k), 0, Math.PI * 2); ctx.fill();
+        break;
+      case 'star':
+        ctx.fillStyle = p.color;
+        starPath(p.size);
+        ctx.fill();
+        ctx.strokeStyle = '#f57f17';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        break;
+      case 'spark':
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.moveTo(0, -p.size); ctx.lineTo(p.size * 0.25, 0); ctx.lineTo(0, p.size); ctx.lineTo(-p.size * 0.25, 0); ctx.closePath();
+        ctx.moveTo(-p.size, 0); ctx.lineTo(0, p.size * 0.25); ctx.lineTo(p.size, 0); ctx.lineTo(0, -p.size * 0.25); ctx.closePath();
+        ctx.fill();
+        break;
+      case 'ring':
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 6 * (1 - k);
+        ctx.beginPath(); ctx.arc(0, 0, p.size * (1 + k * 1.8), 0, Math.PI * 2); ctx.stroke();
+        break;
+      case 'flash': {
+        ctx.globalCompositeOperation = 'lighter';
+        const fg = ctx.createRadialGradient(0, 0, 0, 0, 0, p.size);
+        fg.addColorStop(0, 'rgba(255,255,230,0.9)');
+        fg.addColorStop(1, 'rgba(255,255,230,0)');
+        ctx.fillStyle = fg;
+        ctx.beginPath(); ctx.arc(0, 0, p.size, 0, Math.PI * 2); ctx.fill();
+        break;
+      }
+    }
+    ctx.restore();
+  }
+
+  // Textos de pontuação com "pop"
+  ctx.textAlign = 'center';
+  for (const t of game.texts) {
+    const k = t.life / t.max;
+    const scale = k < 0.12 ? 1.7 - (k / 0.12) * 0.7 : 1;
+    ctx.save();
+    ctx.translate(t.x, t.y);
+    ctx.scale(scale, scale);
+    ctx.globalAlpha = clamp(1.5 - k * 1.5, 0, 1);
+    ctx.font = `${t.size}px 'Lilita One', sans-serif`;
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 7;
+    ctx.strokeStyle = 'rgba(60,25,5,0.9)';
+    ctx.strokeText(t.text, 0, 0);
+    const tg = ctx.createLinearGradient(0, -t.size * 0.8, 0, 0);
+    tg.addColorStop(0, '#ffffff');
+    tg.addColorStop(1, t.color);
+    ctx.fillStyle = tg;
+    ctx.fillText(t.text, 0, 0);
+    if (t.coin) {
+      const tw = ctx.measureText(t.text).width;
+      drawCoin(tw / 2 + t.size * 0.42, -t.size * 0.34, t.size * 0.34);
+    }
+    ctx.restore();
+  }
+}
+
+// Placa de madeira usada no HUD
+function plaque(x, y, w, h, r) {
+  ctx.fillStyle = 'rgba(30,15,5,0.3)';
+  roundRect(ctx, x, y + 4, w, h, r);
+  ctx.fill();
+  const g = ctx.createLinearGradient(0, y, 0, y + h);
+  g.addColorStop(0, '#b5804b');
+  g.addColorStop(1, '#7a4c26');
+  ctx.fillStyle = g;
+  roundRect(ctx, x, y, w, h, r);
+  ctx.fill();
+  ctx.save();
+  ctx.clip();
+  ctx.strokeStyle = 'rgba(60,30,10,0.12)';
+  ctx.lineWidth = 1.5;
+  for (let yy = y + 7; yy < y + h; yy += 9) {
+    ctx.beginPath(); ctx.moveTo(x, yy); ctx.bezierCurveTo(x + w * 0.3, yy - 2, x + w * 0.7, yy + 2, x + w, yy); ctx.stroke();
+  }
+  ctx.restore();
+  ctx.strokeStyle = '#4a2a10';
+  ctx.lineWidth = 3;
+  roundRect(ctx, x, y, w, h, r);
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,230,190,0.35)';
+  ctx.lineWidth = 1.5;
+  roundRect(ctx, x + 3, y + 3, w - 6, h - 6, Math.max(2, r - 3));
+  ctx.stroke();
+}
+
+function outlinedText(text, x, y, font, fill, stroke, lw) {
+  ctx.font = font;
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = lw;
+  ctx.strokeStyle = stroke;
+  ctx.strokeText(text, x, y);
+  ctx.fillStyle = fill;
+  ctx.fillText(text, x, y);
+}
+
+function drawCoin(x, y, r) {
+  ctx.save();
+  ctx.translate(x, y);
+  const g = ctx.createRadialGradient(-r * 0.35, -r * 0.4, r * 0.1, 0, 0, r);
+  g.addColorStop(0, '#fff7c2');
+  g.addColorStop(0.35, '#ffd54f');
+  g.addColorStop(0.8, '#f9a825');
+  g.addColorStop(1, '#c77c00');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#8a5200';
+  ctx.lineWidth = Math.max(1, r * 0.14);
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(138,82,0,0.55)';
+  ctx.lineWidth = Math.max(1, r * 0.1);
+  ctx.beginPath(); ctx.arc(0, 0, r * 0.62, 0, Math.PI * 2); ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,0.7)';
+  ctx.beginPath(); ctx.ellipse(-r * 0.3, -r * 0.35, r * 0.25, r * 0.14, -0.6, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+
+// Espaços da aljava no HUD (clicáveis para trocar de flecha)
+const HUD_SLOTS = ARROW_TYPES.map((t, i) => ({ id: t.id, x: 28 + i * 76, y: 58, w: 72, h: 52 }));
+
+function drawHUD() {
+  const r = game.range;
+
+  // Placa esquerda: campo e aljava com os tipos de flecha
+  plaque(16, 14, 330, 106, 16);
+  ctx.textAlign = 'left';
+  outlinedText(r.name, 32, 46, "24px 'Lilita One', sans-serif", '#ffffff', '#4a2a10', 5);
+
+  HUD_SLOTS.forEach((s, i) => {
+    const type = ARROW_BY_ID[s.id], n = game.quiver[s.id], sel = game.selected === s.id && n > 0;
+    ctx.save();
+    ctx.globalAlpha = n > 0 ? 1 : 0.35;
+    ctx.fillStyle = sel ? 'rgba(255,213,79,0.3)' : 'rgba(40,20,5,0.4)';
+    roundRect(ctx, s.x, s.y, s.w, s.h, 10);
+    ctx.fill();
+    if (sel) {
+      ctx.strokeStyle = '#ffd54f';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+    }
+    ctx.save();
+    ctx.translate(s.x + 38, s.y + 12);
+    ctx.rotate(-0.8);
+    ctx.scale(0.5, 0.5);
+    drawArrowShape(type);
+    ctx.restore();
+    ctx.textAlign = 'right';
+    outlinedText(`${n}`, s.x + s.w - 6, s.y + s.h - 7, "22px 'Lilita One', sans-serif", n > 0 && n <= 2 ? '#ff8a80' : '#ffffff', '#4a2a10', 4);
+    ctx.textAlign = 'left';
+    ctx.font = '900 11px Nunito, sans-serif';
+    ctx.fillStyle = 'rgba(255,240,215,0.85)';
+    ctx.fillText(String(i + 1), s.x + 6, s.y + 14);
+    ctx.restore();
+  });
+
+  // Placa central: carteira e resultado da rodada
+  const pw = 400, px = W / 2 - pw / 2;
+  plaque(px, 14, pw, 96, 16);
+  drawCoin(WALLET_POS.x, WALLET_POS.y, 15);
+  ctx.textAlign = 'left';
+  outlinedText(`${game.wallet}`, WALLET_POS.x + 24, WALLET_POS.y + 11, "32px 'Lilita One', sans-serif", '#ffe57f', '#4a2a10', 5);
+
+  const net = game.earned - game.spent;
+  ctx.textAlign = 'right';
+  ctx.font = '900 13px Nunito, sans-serif';
+  ctx.fillStyle = 'rgba(255,240,215,0.9)';
+  ctx.fillText('RESULTADO DA RODADA', px + pw - 18, 34);
+  outlinedText(`${net > 0 ? '+' : ''}${net}`, px + pw - 18, 62, "28px 'Lilita One', sans-serif",
+    net > 0 ? '#b9f6ca' : net < 0 ? '#ff8a80' : '#ffffff', '#4a2a10', 5);
+
+  // Barra: quanto já recuperou do que gastou
+  const barX = px + 18, barW = pw - 36, barY = 76, prog = game.spent ? clamp(game.earned / game.spent, 0, 1) : 0;
+  ctx.fillStyle = 'rgba(40,20,5,0.55)';
+  roundRect(ctx, barX, barY, barW, 22, 11);
+  ctx.fill();
+  if (prog > 0) {
+    const bw = Math.max(22, barW * prog);
+    const bg = ctx.createLinearGradient(0, barY, 0, barY + 22);
+    bg.addColorStop(0, prog >= 1 ? '#fff176' : '#aed581');
+    bg.addColorStop(1, prog >= 1 ? '#f9a825' : '#558b2f');
+    ctx.fillStyle = bg;
+    roundRect(ctx, barX, barY, bw, 22, 11);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    roundRect(ctx, barX + 4, barY + 3, bw - 8, 6, 3);
+    ctx.fill();
+  }
+  ctx.textAlign = 'center';
+  ctx.font = '900 14px Nunito, sans-serif';
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = 'rgba(40,20,5,0.8)';
+  const barLabel = `ganhou ${game.earned} de ${game.spent} investidos`;
+  ctx.strokeText(barLabel, W / 2, barY + 16);
+  ctx.fillStyle = '#fff';
+  ctx.fillText(barLabel, W / 2, barY + 16);
+
+  // Faixa de entrada no campo
+  if (game.banner > 0) drawBanner();
+
+  // Dica até o primeiro tiro do jogador
+  if (game.totalShots === 0 && game.banner <= 0 && !game.aim.active) {
+    const pulse = 0.8 + Math.sin(game.time * 3.5) * 0.2;
+    ctx.save();
+    ctx.globalAlpha = pulse;
+    ctx.textAlign = 'center';
+    ctx.font = '900 22px Nunito, sans-serif';
+    const msg = 'Clique, arraste para trás e solte. Mire onde o pássaro VAI estar!';
+    const tw = ctx.measureText(msg).width;
+    plaque(W / 2 - tw / 2 - 20, 664, tw + 40, 42, 16);
+    ctx.fillStyle = '#fff';
+    ctx.fillText(msg, W / 2, 692);
+    ctx.restore();
+  }
+}
+
+function drawBanner() {
+  const t = 2.6 - game.banner;            // tempo desde o início
+  const appear = clamp(t / 0.35, 0, 1);
+  const vanish = clamp(game.banner / 0.4, 0, 1);
+  const ease = 1 - Math.pow(1 - appear, 3);
+  const cy = H / 2 - 40;
+  const w = 660 * (0.6 + 0.4 * ease), h = 96;
+
+  ctx.save();
+  ctx.globalAlpha = Math.min(appear, vanish);
+  ctx.translate(W / 2, cy);
+
+  // Pontas dobradas da fita
+  for (const s of [-1, 1]) {
+    ctx.fillStyle = '#8e1b14';
+    ctx.beginPath();
+    ctx.moveTo(s * (w / 2 - 30), -h / 2 + 22);
+    ctx.lineTo(s * (w / 2 + 50), -h / 2 + 22);
+    ctx.lineTo(s * (w / 2 + 25), h / 2 - 15 + 22 - h / 2 + h / 2);
+    ctx.lineTo(s * (w / 2 + 50), h / 2 + 22);
+    ctx.lineTo(s * (w / 2 - 30), h / 2 + 22);
+    ctx.closePath();
+    ctx.fill();
+  }
+  const rg = ctx.createLinearGradient(0, -h / 2, 0, h / 2);
+  rg.addColorStop(0, '#ef5350');
+  rg.addColorStop(1, '#b71c1c');
+  ctx.fillStyle = rg;
+  roundRect(ctx, -w / 2, -h / 2, w, h, 10);
+  ctx.fill();
+  ctx.strokeStyle = '#6d0f0a';
+  ctx.lineWidth = 3;
+  ctx.stroke();
+  ctx.setLineDash([8, 6]);
+  ctx.strokeStyle = 'rgba(255,220,200,0.6)';
+  ctx.lineWidth = 2;
+  roundRect(ctx, -w / 2 + 8, -h / 2 + 8, w - 16, h - 16, 6);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.textAlign = 'center';
+  outlinedText(game.range.name, 0, 18, "50px 'Lilita One', sans-serif", '#ffeb3b', '#5a0f08', 9);
+
+  ctx.font = '900 22px Nunito, sans-serif';
+  const sub = `${arrowsLeft()} flechas · pássaros valem ×${game.range.mult} · você investiu ${game.spent} moedas`;
+  const tw = ctx.measureText(sub).width;
+  ctx.fillStyle = 'rgba(40,20,5,0.7)';
+  roundRect(ctx, -tw / 2 - 18, h / 2 + 34, tw + 36, 38, 19);
+  ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.fillText(sub, 0, h / 2 + 60);
+  ctx.restore();
+}
+
+function render() {
+  ctx.setTransform(canvas.width / W, 0, 0, canvas.height / H, 0, 0);
+
+  ctx.save();
+  if (game.shake > 0) ctx.translate(rand(-4, 4) * game.shake * 6, rand(-4, 4) * game.shake * 6);
+
+  const sc = scene();
+  sc.drawBack(ctx, game.time);
+
+  for (const b of game.birds) drawBirdShadow(b);
+  for (const b of game.birds) drawBird(b);
+
+  if (!inLobby()) {
+    drawArcher();
+    drawArrows();
+  }
+  sc.drawFront(ctx, game.time);
+  drawParticles();
+  if (!inLobby()) drawTrajectory();
+  ctx.restore();
+
+  sc.drawVignette(ctx);
+  if (!inLobby()) drawHUD();
+}
+
+// ---------------------------------------------------------------------------
+// Controles
+// ---------------------------------------------------------------------------
+function toGameCoords(e) {
+  const r = canvas.getBoundingClientRect();
+  return { x: (e.clientX - r.left) / r.width * W, y: (e.clientY - r.top) / r.height * H };
+}
+
+function canAim() {
+  return game.state === 'playing' && !game.pending && arrowsLeft() > 0;
+}
+
+function updateAim() {
+  const a = game.aim;
+  const dx = a.sx - a.cx, dy = a.sy - a.cy;
+  const dist = Math.hypot(dx, dy);
+  a.power = clamp(dist / MAX_DRAG, 0, 1);
+  if (dist > 4) a.angle = Math.atan2(dy, dx);
+  a.valid = dist >= 18;
+}
+
+canvas.addEventListener('pointerdown', e => {
+  if (!canAim()) return;
+  audio(); // navegadores só liberam som depois de uma interação
+  const p = toGameCoords(e);
+
+  // Clique na aljava do HUD troca de flecha em vez de mirar
+  const slot = HUD_SLOTS.find(s => p.x >= s.x && p.x <= s.x + s.w && p.y >= s.y && p.y <= s.y + s.h);
+  if (slot) { selectArrow(slot.id); return; }
+
+  const a = game.aim;
+  a.active = true;
+  a.valid = false;
+  a.sx = a.cx = p.x;
+  a.sy = a.cy = p.y;
+  a.power = 0;
+  canvas.setPointerCapture(e.pointerId);
+});
+
+canvas.addEventListener('pointermove', e => {
+  if (!game.aim.active) return;
+  const p = toGameCoords(e);
+  game.aim.cx = p.x;
+  game.aim.cy = p.y;
+  updateAim();
+});
+
+canvas.addEventListener('pointerup', () => {
+  const a = game.aim;
+  if (!a.active) return;
+  a.active = false;
+  if (a.valid && canAim()) shoot();
+});
+
+canvas.addEventListener('pointercancel', () => { game.aim.active = false; });
+
+function togglePause() {
+  if (game.state === 'playing') { game.aim.active = false; setState('paused'); }
+  else if (game.state === 'paused') setState('playing');
+}
+
+function toggleMute() {
+  muted = !muted;
+  $('btn-mute').textContent = muted ? '🔇' : '🔊';
+}
+
+window.addEventListener('keydown', e => {
+  const k = e.key.toLowerCase();
+  if (k === 'p' || k === 'escape') togglePause();
+  else if (k === 'm') toggleMute();
+  else if (game.state === 'playing' && k >= '1' && k <= String(ARROW_TYPES.length)) selectArrow(ARROW_TYPES[Number(k) - 1].id);
+});
+
+// Se a aba perder o foco, pausa o jogo
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && game.state === 'playing') togglePause();
+});
+
+$('btn-play').addEventListener('click', () => {
+  audio();
+  if (isBroke()) setWallet(START_COINS);   // sem moedas para nada: recomeça com o saldo inicial
+  setState('ranges');
+});
+$('btn-ranges-back').addEventListener('click', () => setState('menu'));
+$('range-grid').addEventListener('click', e => {
+  const btn = e.target.closest('button[data-range]');
+  if (btn && !btn.disabled) openBuy(RANGES[Number(btn.dataset.range)]);
+});
+
+$('arrow-shop').addEventListener('click', e => {
+  const btn = e.target.closest('button[data-type]');
+  if (btn && !btn.disabled) updateOrder(btn.dataset.type, Number(btn.dataset.d));
+});
+$('btn-enter').addEventListener('click', enterRange);
+$('btn-buy-back').addEventListener('click', () => setState('ranges'));
+
+$('refill-options').addEventListener('click', e => {
+  const btn = e.target.closest('button[data-type]');
+  if (btn && !btn.disabled) buyMoreArrows(btn.dataset.type);
+});
+$('btn-refill-end').addEventListener('click', endSession);
+
+$('btn-quit').addEventListener('click', endSession);
+$('btn-again').addEventListener('click', () => openBuy(game.range));
+$('btn-change-range').addEventListener('click', () => setState('ranges'));
+$('btn-restart').addEventListener('click', () => { setWallet(START_COINS); setState('ranges'); });
+$('btn-resume').addEventListener('click', togglePause);
+$('btn-pause').addEventListener('click', togglePause);
+$('btn-mute').addEventListener('click', toggleMute);
+
+// ---------------------------------------------------------------------------
+// Loop principal
+// ---------------------------------------------------------------------------
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.033, (now - last) / 1000);
+  last = now;
+  update(dt);
+  render();
+  requestAnimationFrame(frame);
+}
+
+setState('menu');
+requestAnimationFrame(frame);

@@ -4,49 +4,59 @@ Parte do projeto **Tigrinho Trader** (disciplina Projeto de Software).
 
 ## Finalidade
 
-Jogos casuais em que a aposta está dentro da mecânica do jogo, com moedas fictícias e o preço real das criptos
-(Binance). Fala exclusivamente com o `api-gateway` via REST (`/api/...`); não conhece os serviços internos.
+**Flecha Certeira**: jogo de arco e flecha no navegador, com moedas fictícias. O arqueiro paga a entrada de um
+campo de tiro, compra flechas e tenta acertar pássaros em movimento. A graça é **prever** o caminho: a flecha
+segue uma parábola e os pássaros não param, então é preciso mirar onde o pássaro *vai* estar.
 
-Os dois jogos usam a aposta **BARREIRA** ("sem toque") do `trading-service`: o jogador escolhe um preço-alvo e
-ganha se o mercado **não encostar** nele até o fim. Quanto mais perto do preço, mais paga (até 20x); o
-multiplicador vem da volatilidade real do ativo e é mostrado ao vivo (`src/barreira.js` repete a conta do backend).
+É um site estático (canvas + módulos ES, sem framework). O saldo fica salvo no navegador (`localStorage`);
+o jogo não chama o `api-gateway`.
 
-## Jogos
+## Como funciona
 
-| Jogo | Como funciona |
-|---|---|
-| ✈️ Voo Congelado | O avião voa sobre o gráfico ao vivo e o jogador escolhe a altura (mouse, dedo ou ↑↓). Num momento aleatório chega o gelo e o avião congela ali: essa altura vira o alvo. Se a linha do preço encostar no avião antes do gelo derreter (15/30/60s), ele cai. |
-| 🐯 Arena do Tigre | Expedição de ~3 minutos em 5 ondas. Cada onda oferece 3 animais: os do céu atacam de cima (alvo acima do preço), os do chão de baixo. O jogador escolhe quantos e quais enfrentar; durante 30s o tigre atravessa a arena na altura do preço, e cada linha de ataque que ele cruzar é um golpe (aposta perdida). Bicho mais forte fica mais perto e paga mais; a última onda tem um chefe. |
+- O jogador começa com **100 moedas**. Para atirar, escolhe um **campo**, paga a **entrada** e monta a
+  **aljava**. Quando as flechas acabam, dá para comprar mais ou encerrar. O resultado mostra lucro ou prejuízo.
+- **Mira:** arrastar para trás e soltar, como um estilingue. A linha pontilhada é a trajetória exata; cada
+  ponto amarelo vale 0,5 s de voo.
+- **Combo:** uma flecha que atravessa vários pássaros multiplica as moedas.
 
-O tigre do jogador evolui: XP, nível, título e troféus saem do histórico de rodadas no servidor
-(`src/tigre.js`), então o progresso continua em qualquer navegador.
+| Campo | Entrada | Flecha (base) | Pássaros valem | Cenário |
+|---|---|---|---|---|
+| Campo do Vilarejo | 5 | 1 | ×2 | dia de sol, vila e moinho |
+| Bosque dos Arqueiros | 15 | 3 | ×4 | fim de tarde, floresta, folhas caindo |
+| Pico das Águias | 40 | 8 | ×10 | montanhas nevadas, nevasca |
+| Reserva Real | 100 | 20 | ×25 | pôr do sol, castelo, tochas |
 
-> Login com Auth0 entra na Etapa 3. Até lá o jogador digita um nome, que vai no cabeçalho `X-Usuario-Id`.
+| Flecha | Preço | Moedas | Tecla |
+|---|---|---|---|
+| Madeira | ×1 | ×1 | 1 |
+| Ferro | ×2 | ×2,5 | 2 |
+| Ouro | ×4 | ×5,5 | 3 |
+| Diamante | ×8 | ×12 | 4 |
+
+Flechas melhores rendem um pouco mais por moeda gasta, mas cada erro custa mais caro.
+
+Atalhos: **1–4** trocam de flecha, **P/Esc** pausa e **M** liga ou desliga o som.
 
 ## Rodando
 
-Com o backend no ar (`docker compose up --build` no repo `api-gateway`, que já sobe este frontend em
-http://localhost:3000):
-
 ```bash
 npm install
-npm run dev                                      # http://localhost:5173, /api vai pro gateway em localhost:8080
-GATEWAY_URL=http://localhost:8090 npm run dev    # se o gateway estiver em outra porta
-npm test                                         # vitest (logica do jogo e cliente da API)
-npm run build
+npm run dev          # http://localhost:5173
+npm test             # vitest (regras e economia)
+npm run build        # gera dist/
 ```
 
-Na imagem Docker o nginx serve o build e repassa `/api` para `GATEWAY_URL` (padrão `http://api-gateway:8080`).
+Na imagem Docker o nginx só serve o build estático.
 
 ## Estrutura
 
-- `src/api.js`: cliente do gateway
-- `src/barreira.js`: preço da aposta "sem toque" (mesma conta do `CalculadoraBarreira` do backend)
-- `src/tigre.js`: XP, nível e troféus do tigre a partir das rodadas
-- `src/jogos/VooCongelado.jsx` + `src/jogos/voo/cena.js`: o jogo do avião (cena em canvas)
-- `src/jogos/ArenaTigre.jsx` + `src/jogos/arena/bestiario.js`: a arena e os animais
-- `src/som.js`: efeitos sonoros sintetizados (WebAudio), com botão de mudo
-- `src/ganchos.js`: cotações ao vivo, parâmetros da barreira, rodadas e carteira
+- `src/regras.js`: dados e regras puras (pássaros, campos, flechas, loja, física), testados em `src/regras.test.js`
+- `src/jogo.js`: o jogo (canvas, HUD, telas, controles e som sintetizado com WebAudio)
+- `src/cenarios.js`: os 4 cenários (camadas pré-desenhadas, clima e animações)
+- `src/estilos.css`: telas de menu, loja, recarga e resultado
+- `index.html`: estrutura das telas
+
+Para equilibrar o jogo, ajuste `RANGES` (campos) e `ARROW_TYPES` (flechas) em `src/regras.js`.
 
 ## Repositorios do projeto
 
