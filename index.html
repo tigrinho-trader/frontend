@@ -119,10 +119,28 @@
         <h2>Comprar moedas</h2>
         <p class="sub">Saldo atual: <span class="coin"></span><b id="creditos-saldo">0</b></p>
         <div class="pacotes" id="creditos-pacotes"></div>
+        <p class="aviso-config" id="creditos-indisponivel" hidden>A compra de moedas está desligada no momento.</p>
         <div class="creditos-confirmar" id="creditos-confirmar" hidden>
-          <p class="creditos-resumo">Você vai receber <span class="coin"></span><b id="creditos-qtd">0</b> moedas na sua carteira.</p>
-          <p class="aviso-teste">Modo de teste: nenhum dinheiro real é cobrado. O pagamento por Pix entra numa próxima etapa.</p>
+          <p class="creditos-resumo">Você vai receber <span class="coin"></span><b id="creditos-qtd">0</b> moedas<span id="creditos-preco"></span>.</p>
+          <p class="aviso-teste" id="creditos-aviso-sandbox">Modo de teste: nenhum dinheiro real é cobrado.</p>
           <button type="button" class="btn" id="btn-creditos-pagar">Confirmar compra</button>
+        </div>
+        <div class="pix" id="creditos-pix" hidden>
+          <img class="pix-qr" id="pix-qr" alt="QR Code do Pix" width="180" height="180">
+          <div class="pix-dados">
+            <p class="pix-status" id="pix-status">Aguardando o pagamento…</p>
+            <p class="pix-tempo">Expira em <b id="pix-tempo">--:--</b></p>
+            <label for="pix-copia">Pix copia e cola</label>
+            <div class="linha-form">
+              <input type="text" id="pix-copia" readonly spellcheck="false">
+              <button type="button" class="btn small" id="btn-pix-copiar">Copiar</button>
+            </div>
+            <div class="pix-acoes">
+              <button type="button" class="btn small" id="btn-pix-verificar">Já paguei</button>
+              <button type="button" class="btn ouro small" id="btn-pix-simular" hidden>Simular pagamento (teste)</button>
+            </div>
+            <p class="aviso-teste" id="pix-aviso-dev" hidden>Ambiente de testes do AbacatePay: nenhum dinheiro real é cobrado.</p>
+          </div>
         </div>
         <p class="msg" id="creditos-msg" role="status"></p>
         <button class="btn secondary" id="btn-creditos-voltar">Voltar</button>

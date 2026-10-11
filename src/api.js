@@ -145,6 +145,11 @@ export const carteira = () => requisitar('GET', '/carteira');
 export const extrato = () => requisitar('GET', '/carteira/extrato');
 /** Compra de moedas. Hoje é o pagamento de teste (sandbox) da carteira; depois, Pix. */
 export const comprarMoedas = valor => requisitar('POST', '/carteira/depositos', { corpo: { valor } });
+/** Compra por Pix (AbacatePay): configuração da loja, nova cobrança, status e simulação (só em modo de teste). */
+export const configCompras = () => requisitar('GET', '/carteira/compras/config');
+export const iniciarCompraPix = moedas => requisitar('POST', '/carteira/compras', { corpo: { moedas } });
+export const consultarCompraPix = compraId => requisitar('GET', `/carteira/compras/${id(compraId)}`);
+export const simularPagamentoPix = compraId => requisitar('POST', `/carteira/compras/${id(compraId)}/simular-pagamento`);
 
 // ---------------------------------------------------------------------------
 // trading-service: sessões do Flecha Certeira

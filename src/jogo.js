@@ -838,8 +838,9 @@ const scene = () => Scenery.get(game.range.theme);
 // ---------------------------------------------------------------------------
 // Loop de atualização
 // ---------------------------------------------------------------------------
-// Telas fora do campo de tiro: só o cenário aparece ao fundo
-const inLobby = () => ['menu', 'ranges', 'buy'].includes(game.state);
+// Telas fora do campo de tiro (menu, loja e conta): só o cenário aparece ao fundo
+const TELAS_FORA_DO_CAMPO = ['menu', 'ranges', 'buy', 'creditos', 'perfil', 'admin', 'bloqueado'];
+const inLobby = () => TELAS_FORA_DO_CAMPO.includes(game.state);
 
 function update(dt) {
   game.time += dt;

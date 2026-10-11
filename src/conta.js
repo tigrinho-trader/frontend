@@ -4,7 +4,10 @@ import * as auth from './auth.js';
 import * as api from './api.js';
 import { ErroApi, configurarApi } from './api.js';
 import { setState, atualizarCarteira, estadoAtual, saldoAtual, voltarDaCompra } from './jogo.js';
-import { PACOTE_POR_ID, htmlPacotes, mensagemErroCompra } from './creditos.js';
+import {
+  PACOTES, TEXTO_STATUS_FINAL, htmlPacotes, mensagemErroCompra, pacotesDoServidor, precoEmReais, qrCodeSeguro,
+  tempoRestante,
+} from './creditos.js';
 import { RANGE_BY_SLUG } from './regras.js';
 import {
   ROTULO_PAPEL, escaparHtml, formatarComSinal, formatarData, formatarMoedas, htmlExtrato, htmlLinhasUsuarios, iniciais,
@@ -259,44 +262,202 @@ async function excluirConta(e) {
 }
 
 // ---------------------------------------------------------------------------
-// Comprar moedas
+// Comprar moedas (Pix pelo AbacatePay; sem Pix configurado, pagamento de teste)
 // ---------------------------------------------------------------------------
-const creditos = { selecionado: null, voltarPara: 'menu', comprando: false };
+export const INTERVALO_CONSULTA_PIX = 3000;
+
+const creditos = {
+  selecionado: null, voltarPara: 'menu', comprando: false,
+  modo: 'sandbox',            // 'pix' | 'sandbox' | 'indisponivel'
+  centavosPorMoeda: null, pacotes: PACOTES,
+  compra: null,               // compra Pix pendente sendo acompanhada
+  consulta: null, relogio: null,
+};
+
+const pacoteSelecionado = () => creditos.pacotes.find(p => p.id === creditos.selecionado);
+
+function pararAcompanhamento() {
+  clearTimeout(creditos.consulta);
+  clearInterval(creditos.relogio);
+  creditos.consulta = null;
+  creditos.relogio = null;
+}
 
 function desenharCreditos() {
   $('creditos-saldo').textContent = formatarMoedas(saldoAtual());
-  $('creditos-pacotes').innerHTML = htmlPacotes(undefined, creditos.selecionado);
-  const pacote = PACOTE_POR_ID[creditos.selecionado];
-  $('creditos-confirmar').hidden = !pacote;
-  if (pacote) $('creditos-qtd').textContent = formatarMoedas(pacote.moedas);
+  const pix = creditos.compra;
+  const indisponivel = creditos.modo === 'indisponivel';
+  $('creditos-indisponivel').hidden = !indisponivel;
+  $('creditos-pacotes').hidden = !!pix || indisponivel;
+  $('creditos-pacotes').innerHTML = htmlPacotes(creditos.pacotes, creditos.selecionado,
+    creditos.modo === 'pix' ? creditos.centavosPorMoeda : null);
+
+  const pacote = pacoteSelecionado();
+  $('creditos-confirmar').hidden = !pacote || !!pix || indisponivel;
+  if (pacote) {
+    $('creditos-qtd').textContent = formatarMoedas(pacote.moedas);
+    $('creditos-preco').textContent = creditos.modo === 'pix'
+      ? ` por ${precoEmReais(pacote.moedas, creditos.centavosPorMoeda)}` : ' na sua carteira';
+  }
+  $('creditos-aviso-sandbox').hidden = creditos.modo !== 'sandbox';
+  $('btn-creditos-pagar').textContent = creditos.modo === 'pix' ? 'Gerar Pix' : 'Confirmar compra';
   $('btn-creditos-pagar').disabled = creditos.comprando;
+
+  $('creditos-pix').hidden = !pix;
+  if (pix) {
+    const qr = qrCodeSeguro(pix.brCodeBase64);
+    $('pix-qr').hidden = !qr;
+    if (qr) $('pix-qr').src = qr;
+    $('pix-copia').value = pix.brCode || '';
+    $('btn-pix-simular').hidden = !pix.devMode;
+    $('pix-aviso-dev').hidden = !pix.devMode;
+    $('btn-pix-verificar').disabled = creditos.comprando;
+    $('btn-pix-simular').disabled = creditos.comprando;
+    $('pix-tempo').textContent = tempoRestante(pix.expiraEm) || 'expirando…';
+  }
+}
+
+/** Carrega a configuração da loja: Pix ligado, só o pagamento de teste, ou nada. */
+async function carregarConfigCompras() {
+  try {
+    const cfg = await api.configCompras();
+    creditos.centavosPorMoeda = Number(cfg?.centavosPorMoeda) || 1;
+    if (cfg?.pixHabilitado) {
+      creditos.modo = 'pix';
+      creditos.pacotes = pacotesDoServidor(cfg.pacotes);
+    } else {
+      creditos.modo = cfg?.sandboxHabilitado === false ? 'indisponivel' : 'sandbox';
+      creditos.pacotes = PACOTES;
+    }
+  } catch (erro) {
+    // carteira antiga (sem /compras): segue no pagamento de teste
+    creditos.modo = 'sandbox';
+    creditos.pacotes = PACOTES;
+    if (erro.status !== 404 && erro.status !== 401 && erro.status !== 403) {
+      msg('creditos-msg', mensagemErroCompra(erro), 'erro');
+    }
+  }
 }
 
 /** Abre a loja de moedas lembrando a tela de onde o jogador veio. */
-function abrirCreditos(voltarPara = 'menu') {
+async function abrirCreditos(voltarPara = 'menu') {
+  pararAcompanhamento();
   creditos.voltarPara = voltarPara;
   creditos.selecionado = null;
+  creditos.compra = null;
   msg('creditos-msg', '');
   desenharCreditos();
   setState('creditos');
+  await carregarConfigCompras();
+  if (estadoAtual() === 'creditos') desenharCreditos();
 }
 
-async function comprarPacote() {
-  const pacote = PACOTE_POR_ID[creditos.selecionado];
-  if (!pacote || creditos.comprando) return;
+function sairDosCreditos() {
+  pararAcompanhamento();
+  creditos.compra = null;
+  voltarDaCompra(creditos.voltarPara);
+}
+
+/** Aplica a resposta do servidor sobre a compra Pix acompanhada. */
+async function atualizarCompraPix(compra) {
+  if (compra?.status === 'PENDENTE') {
+    creditos.compra = compra;
+    return;
+  }
+  pararAcompanhamento();
+  creditos.compra = null;
+  creditos.selecionado = null;
+  if (compra?.status === 'PAGA') {
+    await atualizarCarteira().catch(() => {});
+    msg('creditos-msg', `Pagamento confirmado! ${formatarMoedas(compra.moedas)} moedas entraram na sua carteira.`, 'ok');
+  } else {
+    msg('creditos-msg', TEXTO_STATUS_FINAL[compra?.status] || TEXTO_STATUS_FINAL.FALHOU, 'erro');
+  }
+}
+
+/** Pergunta ao servidor (que pergunta ao AbacatePay) se o Pix já foi pago. */
+async function verificarPix({ simular = false } = {}) {
+  const compra = creditos.compra;
+  if (!compra || creditos.comprando) return;
+  clearTimeout(creditos.consulta);
   creditos.comprando = true;
   desenharCreditos();
-  msg('creditos-msg', 'Processando…');
   try {
-    await api.comprarMoedas(pacote.moedas);
-    await atualizarCarteira().catch(() => {});
-    creditos.selecionado = null;
-    msg('creditos-msg', `Pronto! ${formatarMoedas(pacote.moedas)} moedas entraram na sua carteira.`, 'ok');
+    const r = simular ? await api.simularPagamentoPix(compra.id) : await api.consultarCompraPix(compra.id);
+    await atualizarCompraPix(r);
+    if (creditos.compra && !simular) {
+      msg('creditos-msg', 'Ainda não recebemos o pagamento. Assim que o Pix cair, as moedas entram sozinhas.');
+    }
   } catch (erro) {
     if (erro.status !== 401 && erro.status !== 403) msg('creditos-msg', mensagemErroCompra(erro), 'erro');
   } finally {
     creditos.comprando = false;
-    if (estadoAtual() === 'creditos') desenharCreditos();
+    if (estadoAtual() === 'creditos') {
+      desenharCreditos();
+      agendarConsulta();
+    }
+  }
+}
+
+/** Enquanto a tela estiver aberta e o Pix pendente, confere sozinho de tempos em tempos. */
+function agendarConsulta() {
+  clearTimeout(creditos.consulta);
+  if (!creditos.compra || estadoAtual() !== 'creditos') return;
+  creditos.consulta = setTimeout(async () => {
+    if (!creditos.compra || estadoAtual() !== 'creditos' || creditos.comprando) return;
+    try {
+      await atualizarCompraPix(await api.consultarCompraPix(creditos.compra.id));
+    } catch { /* tenta de novo na próxima volta */ }
+    if (estadoAtual() === 'creditos') {
+      desenharCreditos();
+      agendarConsulta();
+    }
+  }, INTERVALO_CONSULTA_PIX);
+}
+
+function atualizarRelogioPix() {
+  if (estadoAtual() === 'creditos' && creditos.compra) {
+    $('pix-tempo').textContent = tempoRestante(creditos.compra.expiraEm) || 'expirando…';
+  }
+}
+
+async function comprarPacote() {
+  const pacote = pacoteSelecionado();
+  if (!pacote || creditos.comprando) return;
+  creditos.comprando = true;
+  desenharCreditos();
+  msg('creditos-msg', creditos.modo === 'pix' ? 'Gerando o Pix…' : 'Processando…');
+  try {
+    if (creditos.modo === 'pix') {
+      creditos.compra = await api.iniciarCompraPix(pacote.moedas);
+      msg('creditos-msg', 'Pague com o app do seu banco: leia o QR Code ou use o copia e cola.');
+      clearInterval(creditos.relogio);
+      creditos.relogio = setInterval(atualizarRelogioPix, 1000);
+    } else {
+      await api.comprarMoedas(pacote.moedas);
+      await atualizarCarteira().catch(() => {});
+      creditos.selecionado = null;
+      msg('creditos-msg', `Pronto! ${formatarMoedas(pacote.moedas)} moedas entraram na sua carteira.`, 'ok');
+    }
+  } catch (erro) {
+    if (erro.status !== 401 && erro.status !== 403) msg('creditos-msg', mensagemErroCompra(erro), 'erro');
+  } finally {
+    creditos.comprando = false;
+    if (estadoAtual() === 'creditos') {
+      desenharCreditos();
+      agendarConsulta();
+    }
+  }
+}
+
+async function copiarPix() {
+  const campo = $('pix-copia');
+  try {
+    await navigator.clipboard.writeText(campo.value);
+    msg('creditos-msg', 'Código Pix copiado!', 'ok');
+  } catch {
+    campo.select();
+    msg('creditos-msg', 'Selecionei o código: copie com Ctrl+C.');
   }
 }
 
@@ -450,13 +611,16 @@ $('btn-buy-comprar').addEventListener('click', () => abrirCreditos('buy'));
 $('btn-result-comprar').addEventListener('click', () => abrirCreditos('menu'));
 $('creditos-pacotes').addEventListener('click', e => {
   const btn = e.target.closest('button[data-pacote]');
-  if (!btn || creditos.comprando) return;
+  if (!btn || creditos.comprando || creditos.compra) return;
   creditos.selecionado = btn.dataset.pacote;
   msg('creditos-msg', '');
   desenharCreditos();
 });
 $('btn-creditos-pagar').addEventListener('click', comprarPacote);
-$('btn-creditos-voltar').addEventListener('click', () => voltarDaCompra(creditos.voltarPara));
+$('btn-creditos-voltar').addEventListener('click', sairDosCreditos);
+$('btn-pix-copiar').addEventListener('click', copiarPix);
+$('btn-pix-verificar').addEventListener('click', () => verificarPix());
+$('btn-pix-simular').addEventListener('click', () => verificarPix({ simular: true }));
 
 $('btn-admin').addEventListener('click', abrirAdmin);
 $('btn-admin-voltar').addEventListener('click', () => setState('menu'));

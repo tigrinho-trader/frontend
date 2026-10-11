@@ -98,9 +98,10 @@ VITE_AUTH0_AUDIENCE" e o jogo não chama a API. No Docker elas entram como `--bu
 
 - **Menu**: sem login, "Entrar" e "Criar conta". Logado: foto e apelido, saldo, "Jogar", "Comprar moedas",
   "Meu perfil", "Administração" (só para `ADMIN`) e "Sair".
-- **Comprar moedas**: pacotes de 100, 500, 1.000 e 5.000 moedas. Hoje usa o pagamento de teste (sandbox) da
-  carteira (`POST /api/carteira/depositos`), que credita na hora sem cobrar nada; o Pix (AbacatePay) entra no
-  lugar do sandbox depois (ver `docs-arquitetura/adrs/0004-pagamentos-pix.md`). Também aparece na escolha de
+- **Comprar moedas**: com o Pix ligado na carteira (`ABACATEPAY_API_KEY`), o jogador escolhe o pacote (preço em
+  R$), recebe o QR Code e o copia e cola, e o jogo confere o pagamento a cada 3 s (ou no botão "Já paguei"): quem
+  confirma é o servidor, perguntando ao AbacatePay. Com chave de teste (`abc_dev_`) aparece "Simular pagamento".
+  Sem Pix configurado, cai no pagamento de teste (sandbox), que credita na hora. Também aparece na escolha de
   campo, quando a loja de flechas responde "saldo insuficiente" e no resultado quando o jogador fica sem moedas.
 - **Meu perfil**: foto, nome, email, papel, membro desde, apelido editável (3 a 20 letras, números ou `_`; se já
   estiver em uso, o servidor responde 409 e a tela avisa), as últimas 10 movimentações da carteira e

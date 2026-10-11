@@ -389,3 +389,101 @@ describe("comprar moedas", () => {
     expect($("wrap").dataset.state).toBe("ranges");
   });
 });
+
+describe("comprar moedas por Pix", () => {
+  const QR = "data:image/png;base64,iVBORw0KGgo=";
+  function compra(extra = {}) {
+    return {
+      id: "c-1", moedas: 1000, centavos: 1000, status: "PENDENTE", brCode: "00020126pix-copia-e-cola",
+      brCodeBase64: QR, expiraEm: new Date(Date.now() + 30 * 60_000).toISOString(), devMode: true,
+      criadaEm: null, pagaEm: null, saldo: null, ...extra,
+    };
+  }
+
+  beforeEach(() => {
+    rotas["GET /carteira/compras/config"] = [200, { pixHabilitado: true, sandboxHabilitado: true, pacotes: [100, 500, 1000, 5000], centavosPorMoeda: 1 }];
+    rotas["POST /carteira/compras"] = [201, compra()];
+  });
+
+  async function abrirEGerarPix() {
+    await iniciarApp();
+    $("btn-comprar").click();
+    await estabilizar();
+    expect($("creditos-pacotes").textContent.replace(/\s/g, " ")).toContain("R$ 10,00");
+    $("creditos-pacotes").querySelector('[data-pacote="p1000"]').click();
+    expect($("btn-creditos-pagar").textContent).toBe("Gerar Pix");
+    expect($("creditos-preco").textContent.replace(/\s/g, " ")).toBe(" por R$ 10,00");
+    expect($("creditos-aviso-sandbox").hidden).toBe(true);
+    $("btn-creditos-pagar").click();
+    await estabilizar();
+  }
+
+  it("gera o Pix com QR Code e copia e cola, e a simulação credita", async () => {
+    let saldo = 1000;
+    rotas["GET /carteira"] = () => [200, { usuarioId: EU.id, saldo, atualizadaEm: null }];
+    rotas["POST /carteira/compras/c-1/simular-pagamento"] = () => {
+      saldo = 2000;
+      return [200, compra({ status: "PAGA", saldo: 2000 })];
+    };
+    await abrirEGerarPix();
+
+    expect(chamadas.find((c) => c.chave === "POST /carteira/compras").corpo).toEqual({ moedas: 1000 });
+    expect($("creditos-pix").hidden).toBe(false);
+    expect($("creditos-pacotes").hidden).toBe(true);
+    expect($("pix-qr").getAttribute("src")).toBe(QR);
+    expect($("pix-copia").value).toBe("00020126pix-copia-e-cola");
+    expect($("pix-tempo").textContent).toMatch(/^\d\d:\d\d$/);
+    expect($("btn-pix-simular").hidden).toBe(false);
+    expect($("pix-aviso-dev").hidden).toBe(false);
+
+    $("btn-pix-simular").click();
+    await estabilizar();
+    expect($("creditos-pix").hidden).toBe(true);
+    expect($("creditos-msg").textContent).toContain("Pagamento confirmado! 1.000 moedas");
+    expect($("creditos-saldo").textContent).toBe("2.000");
+    $("btn-creditos-voltar").click();
+    expect($("menu-wallet").textContent).toBe("2.000");
+  });
+
+  it("'Já paguei' com o Pix ainda pendente avisa e continua esperando", async () => {
+    rotas["GET /carteira/compras/c-1"] = [200, compra()];
+    await abrirEGerarPix();
+    $("btn-pix-verificar").click();
+    await estabilizar();
+    expect($("creditos-msg").textContent).toContain("Ainda não recebemos o pagamento");
+    expect($("creditos-pix").hidden).toBe(false);
+  });
+
+  it("Pix expirado volta para a escolha de pacotes com o aviso", async () => {
+    rotas["GET /carteira/compras/c-1"] = [200, compra({ status: "EXPIRADA" })];
+    await abrirEGerarPix();
+    $("btn-pix-verificar").click();
+    await estabilizar();
+    expect($("creditos-msg").textContent).toContain("expirou");
+    expect($("creditos-pix").hidden).toBe(true);
+    expect($("creditos-pacotes").hidden).toBe(false);
+  });
+
+  it("cobrança fora do modo de teste não mostra o botão de simular; QR suspeito não é exibido", async () => {
+    rotas["POST /carteira/compras"] = [201, compra({ devMode: false, brCodeBase64: "https://evil.example/qr.png" })];
+    await abrirEGerarPix();
+    expect($("btn-pix-simular").hidden).toBe(true);
+    expect($("pix-qr").hidden).toBe(true);
+  });
+
+  it("erro do Pix ao gerar mostra a mensagem e mantém os pacotes", async () => {
+    rotas["POST /carteira/compras"] = [503, { detail: "AbacatePay indisponivel" }];
+    await abrirEGerarPix();
+    expect($("creditos-msg").textContent).toContain("O Pix está indisponível agora");
+    expect($("creditos-pix").hidden).toBe(true);
+  });
+
+  it("loja desligada quando não há Pix nem pagamento de teste", async () => {
+    rotas["GET /carteira/compras/config"] = [200, { pixHabilitado: false, sandboxHabilitado: false, pacotes: [], centavosPorMoeda: 1 }];
+    await iniciarApp();
+    $("btn-comprar").click();
+    await estabilizar();
+    expect($("creditos-indisponivel").hidden).toBe(false);
+    expect($("creditos-pacotes").hidden).toBe(true);
+  });
+});

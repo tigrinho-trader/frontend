@@ -100,6 +100,18 @@ describe("rotas", () => {
     expect(ultimaChamada()).toMatchObject({ url: "/api/carteira/depositos", method: "POST", corpo: { valor: 500 } });
   });
 
+  it("compra por Pix", async () => {
+    const id = "6f1c2a3b-0000-4000-8000-0000000000aa";
+    await api.configCompras();
+    expect(ultimaChamada()).toMatchObject({ url: "/api/carteira/compras/config", method: "GET" });
+    await api.iniciarCompraPix(1000);
+    expect(ultimaChamada()).toMatchObject({ url: "/api/carteira/compras", method: "POST", corpo: { moedas: 1000 } });
+    await api.consultarCompraPix(id);
+    expect(ultimaChamada()).toMatchObject({ url: `/api/carteira/compras/${id}`, method: "GET" });
+    await api.simularPagamentoPix(id);
+    expect(ultimaChamada()).toMatchObject({ url: `/api/carteira/compras/${id}/simular-pagamento`, method: "POST" });
+  });
+
   it("sessões do Flecha Certeira", async () => {
     const id = "6f1c2a3b-0000-4000-8000-000000000001";
     await api.abrirSessao("bosque", { wood: 10, iron: 5 });
