@@ -9,7 +9,7 @@ campo de tiro, compra flechas e tenta acertar pássaros em movimento. A graça �
 segue uma parábola e os pássaros não param, então é preciso mirar onde o pássaro *vai* estar.
 
 É um site estático (canvas + módulos ES, sem framework) que fala com o `api-gateway` em `/api`. O jogador
-entra com **login do Auth0**, e as moedas ficam na **carteira do servidor** (wallet-service): cada rodada é uma
+entra com **login OpenID Connect** (por padrão um Keycloak local), e as moedas ficam na **carteira do servidor** (wallet-service): cada rodada é uma
 sessão no trading-service, que é a fonte da verdade do dinheiro. Nada de moedas no `localStorage`.
 
 ## Como funciona
@@ -59,40 +59,60 @@ o menu avisa o resultado (o servidor também encerra sozinho sessões paradas h�
 Limitação conhecida: o navegador informa quais pássaros acertou; o servidor só valida se é plausível (flechas
 disponíveis, pássaros do campo, combo até 5, ritmo dos tiros).
 
-## Login (Auth0)
+## Login (OpenID Connect)
 
-O login usa o Universal Login do Auth0 com o SDK `@auth0/auth0-spa-js` (`src/auth.js`), com o token guardado no
-`localStorage` e **refresh token** (`cacheLocation: 'localstorage'`, `useRefreshTokens: true`). Cada chamada à API
-leva `Authorization: Bearer <access token>`; o api-gateway valida o JWT e repassa a identidade aos serviços.
+O login é **OpenID Connect genérico** (Authorization Code + PKCE) com a biblioteca `oidc-client-ts`
+(`src/auth.js`; ela fica num arquivo separado do build e só é baixada quando o login começa). O usuário fica
+guardado no `localStorage` e o access token é renovado sozinho antes de vencer (`automaticSilentRenew`, com o
+refresh token). Cada chamada à API leva `Authorization: Bearer <access token>`; o api-gateway valida o JWT e
+repassa a identidade aos serviços.
 
-### Variáveis (build do Vite)
+### Padrão: Keycloak local
 
-Copie `.env.example` para `.env` (fica fora do git) e preencha:
+Sem nenhuma variável, o jogo usa o **Keycloak do docker-compose** (repo api-gateway, reino em
+`infra/keycloak/tigrinho-realm.json`) — não é preciso criar conta em serviço externo:
 
-| Variável | Valor |
+| Item | Valor |
 |---|---|
-| `VITE_AUTH0_DOMAIN` | domínio do tenant, ex.: `tigrinho-trader.us.auth0.com` |
-| `VITE_AUTH0_CLIENT_ID` | Client ID da aplicação SPA |
-| `VITE_AUTH0_AUDIENCE` | Identifier da API, ex.: `https://api.tigrinho-trader` (o mesmo `AUTH0_AUDIENCE` do api-gateway) |
+| Servidor | http://localhost:8180 (console de administração: `admin` / `admin`, só em desenvolvimento) |
+| Reino | `tigrinho` (emissor `http://localhost:8180/realms/tigrinho`) |
+| Cliente | `flecha-certeira` (público, PKCE, sem segredo) |
+| Usuário de desenvolvimento | `admin` (ou `admin@tigrinho.local`) / senha `admin123` — **só para ambiente local** |
 
-Sem as três, o menu mostra "Login não configurado — defina VITE_AUTH0_DOMAIN, VITE_AUTH0_CLIENT_ID e
-VITE_AUTH0_AUDIENCE" e o jogo não chama a API. No Docker elas entram como `--build-arg` (são gravadas no build).
+"Entrar" abre a tela de login do Keycloak (em português) e "Criar conta" abre direto a página de **cadastro**
+do Keycloak (`prompt=create`); depois do cadastro o jogador volta logado. Se o Keycloak não estiver no ar, o
+menu avisa: "Não foi possível falar com o servidor de login (http://localhost:8180). Ele está no ar? Suba com
+docker compose."
 
-### Configuração no painel do Auth0
+### Variáveis (build do Vite, todas opcionais)
 
-1. **Applications > Applications > Create Application**, tipo **Single Page Application**. Em *Settings*:
-   - **Allowed Callback URLs**: `http://localhost:5173, http://localhost:3000`
-   - **Allowed Logout URLs**: `http://localhost:5173, http://localhost:3000`
-   - **Allowed Web Origins**: `http://localhost:5173, http://localhost:3000`
-   - (acrescente a URL de produção em todas, quando houver)
-2. Na mesma aplicação, em **Refresh Token Rotation**, ligue **Rotation** (o SDK usa refresh token no lugar de
-   cookies de terceiros, que os navegadores bloqueiam).
-3. **Applications > APIs > Create API** com o Identifier `https://api.tigrinho-trader` (RS256). Em *Settings*,
-   ligue **Allow Offline Access** (necessário para o refresh token).
-4. Email, nome e foto entram no access token por uma Action pós-login com o namespace
-   `https://tigrinho-trader/` (veja `docs-arquitetura/AUTH0.md`).
+Para trocar o provedor, copie `.env.example` para `.env` (fica fora do git) e descomente o que precisar:
 
-"Criar conta" abre o Universal Login direto na tela de cadastro (`screen_hint: 'signup'`).
+| Variável | Padrão | Para que serve |
+|---|---|---|
+| `VITE_OIDC_AUTHORITY` | `http://localhost:8180/realms/tigrinho` | emissor (issuer) do provedor |
+| `VITE_OIDC_CLIENT_ID` | `flecha-certeira` | cliente público do jogo |
+| `VITE_OIDC_AUDIENCE` | vazio | audiência pedida no login (o Keycloak não precisa; o Auth0 precisa) |
+| `VITE_OIDC_PROVEDOR` | `keycloak` | `auth0` faz o "Criar conta" usar `screen_hint=signup` |
+
+Se `VITE_OIDC_AUTHORITY` ou `VITE_OIDC_CLIENT_ID` forem definidos **vazios**, o menu mostra "Login não
+configurado — defina VITE_OIDC_AUTHORITY e VITE_OIDC_CLIENT_ID" e o jogo não chama a API. No Docker elas entram
+como `--build-arg` (são gravadas no build). O provedor precisa aceitar `http://localhost:5173/` e
+`http://localhost:3000/` como URL de retorno, de logout e origem web (o reino do Keycloak já vem assim).
+
+### Alternativa: Auth0
+
+```bash
+VITE_OIDC_AUTHORITY=https://<tenant>.us.auth0.com
+VITE_OIDC_CLIENT_ID=<client id da aplicação Single Page Application>
+VITE_OIDC_AUDIENCE=https://api.tigrinho-trader
+VITE_OIDC_PROVEDOR=auth0
+```
+
+No Auth0, a aplicação SPA precisa das mesmas URLs de retorno, logout e origem, e a API
+(`https://api.tigrinho-trader`) precisa de **Allow Offline Access** (com o provedor `auth0` o jogo pede
+`offline_access` para receber refresh token). No api-gateway use `AUTH_ISSUER=https://<tenant>.us.auth0.com/` e
+`AUTH_AUDIENCE=https://api.tigrinho-trader`.
 
 ## Telas da conta
 
@@ -118,7 +138,7 @@ Nenhuma tela usa `alert`, `confirm` ou `prompt`.
 
 ```bash
 npm install
-cp .env.example .env        # e preencha as variáveis do Auth0
+cp .env.example .env        # opcional: só para trocar o provedor de login
 npm run dev                 # http://localhost:5173 (repassa /api para o gateway em localhost:8080)
 GATEWAY_URL=http://localhost:8090 npm run dev   # se o gateway estiver em outra porta
 npm test                    # vitest
@@ -126,15 +146,14 @@ npm test -- --coverage      # com cobertura
 npm run build               # gera dist/
 ```
 
-O jogo precisa do api-gateway (e dos serviços) rodando para entrar e jogar.
+O jogo precisa do api-gateway, dos serviços e do Keycloak (http://localhost:8180) rodando para entrar e
+jogar; todos sobem com o docker compose do api-gateway.
 
 Docker: o nginx serve o build e repassa `/api/` para `GATEWAY_URL` (padrão `http://api-gateway:8080`):
 
 ```bash
-docker build -t frontend \
-  --build-arg VITE_AUTH0_DOMAIN=tigrinho-trader.us.auth0.com \
-  --build-arg VITE_AUTH0_CLIENT_ID=<client id> \
-  --build-arg VITE_AUTH0_AUDIENCE=https://api.tigrinho-trader .
+docker build -t frontend .   # login no Keycloak local (padrão)
+# outro provedor: --build-arg VITE_OIDC_AUTHORITY=... --build-arg VITE_OIDC_CLIENT_ID=... (e AUDIENCE/PROVEDOR)
 docker run -p 3000:80 -e GATEWAY_URL=http://api-gateway:8080 frontend
 ```
 
@@ -142,13 +161,13 @@ docker run -p 3000:80 -e GATEWAY_URL=http://api-gateway:8080 frontend
 
 - `src/regras.js`: dados e regras puras (pássaros, campos com o `slug` da API, flechas, loja, física), testados em `src/regras.test.js`
 - `src/jogo.js`: o jogo (canvas, HUD, telas, controles e som sintetizado com WebAudio) ligado às sessões do servidor
-- `src/auth.js`: login com o Auth0 (`configurado`, `iniciar`, `entrar`, `sair`, `token`, `usuarioAuth0`)
+- `src/auth.js`: login OIDC com `oidc-client-ts` (`configurado`, `iniciar`, `entrar`, `sair`, `token`, `usuarioOidc`)
 - `src/api.js`: cliente do `/api` (token Bearer, erros `ProblemDetail` → `ErroApi`, 401 → login, 403 → conta bloqueada)
 - `src/sessao.js`: fila dos tiros (ordem e intervalo mínimo) e reconciliação do HUD com o servidor
 - `src/conta.js`: menu de login, "Meu perfil", "Comprar moedas", "Administração" e conta bloqueada
 - `src/creditos.js`: pacotes de moedas e mensagens da compra
 - `src/telas.js`: formatação, validação do apelido e HTML das tabelas (puro, testado)
-- `src/*.test.js`: testes (vitest); `src/conta.test.js` carrega o `index.html` no jsdom com Auth0 e API falsos
+- `src/*.test.js`: testes (vitest); `src/conta.test.js` carrega o `index.html` no jsdom com login e API falsos
 - `src/cenarios.js`: os 4 cenários (camadas pré-desenhadas, clima e animações)
 - `src/estilos.css`: telas de menu, loja, recarga, resultado, perfil e administração
 - `index.html`: estrutura das telas

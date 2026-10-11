@@ -1,4 +1,4 @@
-// Conta do jogador: login (Auth0), menu, "Meu perfil", "Comprar moedas", "Administração" e conta bloqueada.
+// Conta do jogador: login (OpenID Connect), menu, "Meu perfil", "Comprar moedas", "Administração" e conta bloqueada.
 // Liga a API ao login e decide o que o menu mostra. O jogo em si fica em jogo.js.
 import * as auth from './auth.js';
 import * as api from './api.js';
@@ -49,6 +49,12 @@ function pintarAvatar(el, usuario) {
   }
 }
 
+/** Texto de um erro do login: o aviso pronto de ErroLogin (ex.: servidor fora do ar) ou `prefixo` + mensagem. */
+function mensagemLogin(erro, prefixo = '') {
+  if (erro?.name === 'ErroLogin') return erro.message;
+  return `${prefixo}${mensagemErro(erro)}`;
+}
+
 function mostrarPerfilNoMenu() {
   pintarAvatar($('menu-avatar'), perfil);
   $('menu-apelido').textContent = nomeExibicao(perfil);
@@ -60,7 +66,7 @@ function mostrarPerfilNoMenu() {
 // ---------------------------------------------------------------------------
 const CHAVE_RELOGIN = 'flecha-certeira-relogin';
 
-/** Evita laço de redirecionamento: só volta ao Auth0 se não voltou há menos de 30 s. */
+/** Evita laço de redirecionamento: só volta ao servidor de login se não voltou há menos de 30 s. */
 function podeRelogar() {
   try {
     const ultimo = Number(sessionStorage.getItem(CHAVE_RELOGIN)) || 0;
@@ -73,11 +79,17 @@ function podeRelogar() {
 function sessaoExpirada() {
   if (bloqueado) return;
   if (auth.configurado() && podeRelogar()) {
-    auth.entrar().catch(() => {});
+    auth.entrar().catch(e => {
+      perfil = null;
+      avisoMenu(mensagemLogin(e), 'erro');
+      modoMenu('anonimo');
+      setState('menu');
+    });
     return;
   }
   perfil = null;
-  $('menu-erro').textContent = 'O servidor recusou seu login (401). Confira se VITE_AUTH0_AUDIENCE é a mesma audiência configurada no api-gateway e entre de novo.';
+  $('menu-erro').textContent = 'O servidor recusou seu login (401). Confira se o emissor e a audiência do login '
+    + '(VITE_OIDC_AUTHORITY / VITE_OIDC_AUDIENCE) batem com AUTH_ISSUER / AUTH_AUDIENCE do api-gateway e entre de novo.';
   modoMenu('erro');
   setState('menu');
 }
@@ -164,7 +176,7 @@ export async function iniciarConta() {
   try {
     resultado = await auth.iniciar();
   } catch (e) {
-    avisoMenu(`Não foi possível iniciar o login: ${mensagemErro(e)}`, 'erro');
+    avisoMenu(mensagemLogin(e, 'Não foi possível iniciar o login: '), 'erro');
     modoMenu('anonimo');
     return;
   }
@@ -583,8 +595,8 @@ function envioTabela(e) {
 // ---------------------------------------------------------------------------
 // Botões
 // ---------------------------------------------------------------------------
-$('btn-entrar').addEventListener('click', () => auth.entrar().catch(e => avisoMenu(mensagemErro(e), 'erro')));
-$('btn-criar-conta').addEventListener('click', () => auth.entrar({ criarConta: true }).catch(e => avisoMenu(mensagemErro(e), 'erro')));
+$('btn-entrar').addEventListener('click', () => auth.entrar().catch(e => avisoMenu(mensagemLogin(e), 'erro')));
+$('btn-criar-conta').addEventListener('click', () => auth.entrar({ criarConta: true }).catch(e => avisoMenu(mensagemLogin(e), 'erro')));
 $('btn-sair').addEventListener('click', sair);
 $('btn-sair-erro').addEventListener('click', sair);
 $('btn-bloqueado-sair').addEventListener('click', sair);

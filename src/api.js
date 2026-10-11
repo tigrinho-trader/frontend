@@ -1,4 +1,4 @@
-// Cliente HTTP do api-gateway (/api). Põe o access token do Auth0 em cada chamada,
+// Cliente HTTP do api-gateway (/api). Põe o access token do login (OIDC) em cada chamada,
 // lê os erros em ProblemDetail e avisa o app quando a sessão expira (401) ou a conta
 // está bloqueada (403).
 

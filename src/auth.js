@@ -1,113 +1,228 @@
-// Login com o Auth0 (Universal Login) usando o SDK @auth0/auth0-spa-js.
-// A configuração vem das variáveis de build do Vite (VITE_AUTH0_*). Sem elas o jogo
-// mostra o aviso "Login não configurado" em vez de quebrar.
+// Login por OpenID Connect (Authorization Code + PKCE) com a biblioteca oidc-client-ts.
+// Por padrão o provedor é o Keycloak local do docker-compose (http://localhost:8180, reino "tigrinho");
+// o Auth0 (ou outro provedor OIDC) funciona só trocando as variáveis de build do Vite (VITE_OIDC_*).
 
-// O SDK só é baixado quando o login está configurado (import dinâmico = arquivo separado no build).
-async function criarClienteAuth0(opcoes) {
-  const { createAuth0Client } = await import('@auth0/auth0-spa-js');
-  return createAuth0Client(opcoes);
+/** Valores padrão: Keycloak local, sem precisar de nenhuma variável. */
+export const PADRAO = {
+  authority: 'http://localhost:8180/realms/tigrinho',
+  clientId: 'flecha-certeira',
+  audience: '',
+  provedor: 'keycloak',
+};
+
+// A biblioteca só é baixada quando o login começa (import dinâmico = arquivo separado no build).
+export async function criarGerenciadorOidc(configuracoes, janela = globalThis.window) {
+  const { UserManager, WebStorageStateStore } = await import('oidc-client-ts');
+  return new UserManager({
+    ...configuracoes,
+    userStore: new WebStorageStateStore({ store: janela.localStorage }),
+    stateStore: new WebStorageStateStore({ store: janela.sessionStorage }),
+  });
 }
 
-/** Lê a configuração do Auth0 das variáveis do Vite (strings vazias contam como ausentes). */
+/**
+ * Lê a configuração do login das variáveis do Vite. Variável ausente usa o padrão (Keycloak local);
+ * variável definida como texto vazio fica vazia (e o login aparece como "não configurado").
+ */
 export function lerConfiguracao(env = {}) {
-  const limpar = v => (typeof v === 'string' ? v.trim() : '');
+  const ler = (nome, padrao) => (typeof env[nome] === 'string' ? env[nome].trim() : padrao);
+  const authority = ler('VITE_OIDC_AUTHORITY', PADRAO.authority);
+  const provedorPadrao = /\.auth0\.com(\/|$)/i.test(authority) ? 'auth0' : PADRAO.provedor;
   return {
-    domain: limpar(env.VITE_AUTH0_DOMAIN),
-    clientId: limpar(env.VITE_AUTH0_CLIENT_ID),
-    audience: limpar(env.VITE_AUTH0_AUDIENCE),
+    authority,
+    clientId: ler('VITE_OIDC_CLIENT_ID', PADRAO.clientId),
+    audience: ler('VITE_OIDC_AUDIENCE', PADRAO.audience),
+    provedor: (ler('VITE_OIDC_PROVEDOR', '') || provedorPadrao).toLowerCase(),
   };
+}
+
+/** Falha de rede (servidor de login fora do ar, porta errada, tempo esgotado). */
+export function ehFalhaDeRede(erro) {
+  if (!erro) return false;
+  if (erro.name === 'ErrorTimeout') return true;
+  return /failed to fetch|fetch failed|networkerror|network error|network timed out|load failed/i.test(erro.message || '');
+}
+
+/** Erro com texto pronto para o menu; `servidorFora` = o provedor de login não respondeu. */
+export class ErroLogin extends Error {
+  constructor(mensagem, { servidorFora = false, causa = null } = {}) {
+    super(mensagem);
+    this.name = 'ErroLogin';
+    this.servidorFora = servidorFora;
+    this.causa = causa;
+  }
 }
 
 /**
  * Cria o serviço de login. `criarCliente` e `janela` podem ser trocados nos testes
- * por um cliente falso e um `window` falso.
+ * por um UserManager falso e um `window` falso.
  */
-export function criarAuth({ env = import.meta.env, criarCliente = criarClienteAuth0, janela = globalThis.window } = {}) {
+export function criarAuth({ env = import.meta.env, criarCliente = criarGerenciadorOidc, janela = globalThis.window } = {}) {
   const config = lerConfiguracao(env);
   let cliente = null;
 
-  const configurado = () => Boolean(config.domain && config.clientId && config.audience);
-  const origem = () => janela.location.origin;
+  const configurado = () => Boolean(config.authority && config.clientId);
+  const origem = () => `${janela.location.origin}/`;
+  const ehAuth0 = () => config.provedor === 'auth0';
+  /** audience só vai para o provedor quando foi configurada (Auth0 precisa; Keycloak não). */
+  const parametrosExtras = () => (config.audience ? { audience: config.audience } : {});
+
+  function enderecoServidor() {
+    try {
+      return new URL(config.authority).origin;
+    } catch {
+      return config.authority;
+    }
+  }
+
+  /**
+   * Troca erros de rede por uma mensagem clara. Com `descoberta`, qualquer outra falha também vira um
+   * aviso sobre o servidor de login (ex.: reino inexistente → 404 no .well-known/openid-configuration).
+   */
+  function traduzir(erro, { descoberta = false } = {}) {
+    if (erro instanceof ErroLogin) return erro;
+    if (ehFalhaDeRede(erro)) {
+      return new ErroLogin(
+        `Não foi possível falar com o servidor de login (${enderecoServidor()}). Ele está no ar? Suba com docker compose.`,
+        { servidorFora: true, causa: erro },
+      );
+    }
+    if (!descoberta) return erro;
+    return new ErroLogin(
+      `O servidor de login (${enderecoServidor()}) respondeu com erro: ${erro?.message || erro}. Confira VITE_OIDC_AUTHORITY.`,
+      { causa: erro },
+    );
+  }
 
   function exigirCliente() {
-    if (!configurado()) throw new Error('Login não configurado');
-    if (!cliente) throw new Error('Login ainda não iniciado');
+    if (!configurado()) throw new ErroLogin('Login não configurado');
+    if (!cliente) throw new ErroLogin('Login ainda não iniciado');
     return cliente;
   }
 
-  /** Remove ?code=&state= (ou ?error=) da barra de endereço depois do retorno do Auth0. */
+  /** Remove ?code=&state= (ou ?error=) da barra de endereço depois do retorno do provedor. */
   function limparUrl() {
     const titulo = janela.document?.title ?? '';
     janela.history.replaceState({}, titulo, janela.location.pathname + (janela.location.hash || ''));
   }
 
+  /** Usuário guardado; se o access token venceu, tenta renovar (refresh token). */
+  async function usuarioValido() {
+    const usuario = await cliente.getUser();
+    if (!usuario || !usuario.expired) return usuario;
+    try {
+      return await cliente.signinSilent();
+    } catch (e) {
+      if (ehFalhaDeRede(e)) throw traduzir(e);
+      await cliente.removeUser();
+      return null;
+    }
+  }
+
   return {
     configurado,
 
-    /** Variáveis que faltam, para o aviso na tela. */
+    /** Variáveis que estão vazias, para o aviso na tela. */
     faltando() {
       return [
-        ['VITE_AUTH0_DOMAIN', config.domain],
-        ['VITE_AUTH0_CLIENT_ID', config.clientId],
-        ['VITE_AUTH0_AUDIENCE', config.audience],
+        ['VITE_OIDC_AUTHORITY', config.authority],
+        ['VITE_OIDC_CLIENT_ID', config.clientId],
       ].filter(([, v]) => !v).map(([nome]) => nome);
     },
 
+    /** Provedor em uso ('keycloak', 'auth0', ...) e o endereço dele, para mensagens. */
+    provedor: () => ({ nome: config.provedor, endereco: enderecoServidor() }),
+
     /**
-     * Cria o cliente e, se a página voltou do Auth0 (?code=&state=), conclui o login.
-     * Retorna { autenticado, erro } — erro é a mensagem do Auth0 (ex.: login cancelado).
+     * Cria o cliente e, se a página voltou do provedor (?code=&state=), conclui o login.
+     * Retorna { autenticado, erro } — erro é a mensagem do provedor (ex.: login cancelado).
+     * Lança ErroLogin com `servidorFora` se o servidor de login não responder.
      */
     async iniciar() {
       if (!configurado()) return { autenticado: false, erro: null };
       if (!cliente) {
         cliente = await criarCliente({
-          domain: config.domain,
-          clientId: config.clientId,
-          cacheLocation: 'localstorage',
-          useRefreshTokens: true,
-          authorizationParams: { redirect_uri: origem(), audience: config.audience },
-        });
+          authority: config.authority,
+          client_id: config.clientId,
+          redirect_uri: origem(),
+          post_logout_redirect_uri: origem(),
+          response_type: 'code',
+          // Auth0 só entrega refresh token com offline_access; o Keycloak entrega sempre.
+          scope: ehAuth0() ? 'openid profile email offline_access' : 'openid profile email',
+          automaticSilentRenew: true,
+          requestTimeoutInSeconds: 10,
+          extraQueryParams: parametrosExtras(),
+        }, janela);
       }
 
       let erro = null;
       const params = new URLSearchParams(janela.location.search);
       if (params.has('code') && params.has('state')) {
         try {
-          await cliente.handleRedirectCallback();
+          await cliente.signinRedirectCallback(janela.location.href);
         } catch (e) {
+          if (ehFalhaDeRede(e)) throw traduzir(e);
           erro = e?.error_description || e?.message || 'Não foi possível concluir o login.';
         } finally {
           limparUrl();
         }
-      } else if (params.has('error') && params.has('state')) {
+      } else if (params.has('error')) {
         erro = params.get('error_description') || params.get('error');
         limparUrl();
       }
 
-      return { autenticado: await cliente.isAuthenticated(), erro };
+      const usuario = await usuarioValido();
+      if (usuario) return { autenticado: true, erro };
+
+      // Sem sessão: confere já se o servidor de login responde, para avisar antes do clique em "Entrar".
+      try {
+        await cliente.metadataService?.getMetadata();
+      } catch (e) {
+        throw traduzir(e, { descoberta: true });
+      }
+      return { autenticado: false, erro };
     },
 
-    /** Vai para o Universal Login. `criarConta: true` abre direto a tela de cadastro. */
+    /** Vai para a tela de login do provedor. `criarConta: true` abre direto o cadastro. */
     async entrar({ criarConta = false } = {}) {
       const c = exigirCliente();
-      await c.loginWithRedirect(criarConta ? { authorizationParams: { screen_hint: 'signup' } } : {});
+      const extras = parametrosExtras();
+      const args = {};
+      if (criarConta) {
+        if (ehAuth0()) extras.screen_hint = 'signup';
+        else args.prompt = 'create';
+      }
+      if (Object.keys(extras).length) args.extraQueryParams = extras;
+      try {
+        await c.signinRedirect(args);
+      } catch (e) {
+        throw traduzir(e, { descoberta: true });
+      }
     },
 
+    /** Sai no provedor; se ele não tiver logout (end_session_endpoint) ou não responder, sai só aqui. */
     async sair() {
       const c = exigirCliente();
-      await c.logout({ logoutParams: { returnTo: origem() } });
+      try {
+        await c.signoutRedirect();
+      } catch {
+        await c.removeUser();
+        janela.location.reload();
+      }
     },
 
-    /** Access token (JWT) para o api-gateway; renova sozinho com o refresh token. */
+    /** Access token (JWT) para o api-gateway; renova sozinho quando vence. Sem sessão, lança erro. */
     async token() {
-      const c = exigirCliente();
-      return c.getTokenSilently({ authorizationParams: { audience: config.audience } });
+      exigirCliente();
+      const usuario = await usuarioValido();
+      if (!usuario?.access_token) throw new ErroLogin('Sem sessão de login');
+      return usuario.access_token;
     },
 
     /** Dados do ID token (nome, email, foto) — só para exibir enquanto o perfil não chega. */
-    async usuarioAuth0() {
+    async usuarioOidc() {
       if (!configurado() || !cliente) return null;
-      return (await cliente.getUser()) ?? null;
+      return (await cliente.getUser())?.profile ?? null;
     },
   };
 }
@@ -117,8 +232,9 @@ const auth = criarAuth();
 
 export const configurado = () => auth.configurado();
 export const faltando = () => auth.faltando();
+export const provedor = () => auth.provedor();
 export const iniciar = () => auth.iniciar();
 export const entrar = opcoes => auth.entrar(opcoes);
 export const sair = () => auth.sair();
 export const token = () => auth.token();
-export const usuarioAuth0 = () => auth.usuarioAuth0();
+export const usuarioOidc = () => auth.usuarioOidc();

@@ -1,27 +1,41 @@
 // @vitest-environment jsdom
 // Teste de fumaça das telas: carrega o index.html de verdade, o jogo e a conta,
-// com o Auth0 e o api-gateway falsos (fetch simulado).
+// com o login (OIDC) e o api-gateway falsos (fetch simulado).
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const HTML = readFileSync(resolve(process.cwd(), "index.html"), "utf-8");
 
-// Auth0 falso, controlado por cada teste
+// Login falso, controlado por cada teste
 const authFalso = {
   configurado: true,
   autenticado: true,
   erro: null,
+  falhaIniciar: null,
+  falhaEntrar: null,
 };
 vi.mock("./auth.js", () => ({
   configurado: () => authFalso.configurado,
   faltando: () => [],
-  iniciar: async () => ({ autenticado: authFalso.autenticado, erro: authFalso.erro }),
-  entrar: vi.fn(async () => {}),
+  provedor: () => ({ nome: "keycloak", endereco: "http://localhost:8180" }),
+  iniciar: async () => {
+    if (authFalso.falhaIniciar) throw authFalso.falhaIniciar;
+    return { autenticado: authFalso.autenticado, erro: authFalso.erro };
+  },
+  entrar: vi.fn(async () => {
+    if (authFalso.falhaEntrar) throw authFalso.falhaEntrar;
+  }),
   sair: vi.fn(async () => {}),
   token: async () => "tok",
-  usuarioAuth0: async () => null,
+  usuarioOidc: async () => null,
 }));
+
+/** Erro como o ErroLogin do auth.js (servidor de login fora do ar). */
+const SERVIDOR_FORA = "Não foi possível falar com o servidor de login (http://localhost:8180). Ele está no ar? Suba com docker compose.";
+function erroServidorFora() {
+  return Object.assign(new Error(SERVIDOR_FORA), { name: "ErroLogin", servidorFora: true });
+}
 
 const EU = {
   id: "auth0|eu", email: "eu@x.com", nome: "Eu Mesmo", apelido: "eu_mesmo", avatarUrl: null,
@@ -73,6 +87,9 @@ beforeEach(() => {
   authFalso.configurado = true;
   authFalso.autenticado = true;
   authFalso.erro = null;
+  authFalso.falhaIniciar = null;
+  authFalso.falhaEntrar = null;
+  sessionStorage.clear();
   chamadas.length = 0;
   rotas = {
     "GET /usuarios/me": [200, EU],
@@ -93,12 +110,13 @@ afterEach(() => {
 });
 
 describe("menu e login", () => {
-  it("sem as variáveis do Auth0 mostra o aviso e trava os botões", async () => {
+  it("com AUTHORITY/CLIENT_ID vazios mostra o aviso e trava os botões", async () => {
     authFalso.configurado = false;
     await iniciarApp();
     expect($("menu").dataset.conta).toBe("anonimo");
     expect($("aviso-config").hidden).toBe(false);
-    expect($("aviso-config").textContent).toContain("VITE_AUTH0_DOMAIN, VITE_AUTH0_CLIENT_ID e VITE_AUTH0_AUDIENCE");
+    expect($("aviso-config").textContent).toContain("Login não configurado — defina VITE_OIDC_AUTHORITY e VITE_OIDC_CLIENT_ID");
+    expect($("aviso-config").textContent).not.toMatch(/AUTH0/);
     expect($("btn-entrar").disabled).toBe(true);
     expect(chamadas).toHaveLength(0);
   });
@@ -113,6 +131,50 @@ describe("menu e login", () => {
     const auth = await import("./auth.js");
     $("btn-criar-conta").click();
     expect(auth.entrar).toHaveBeenCalledWith({ criarConta: true });
+  });
+
+  it("servidor de login fora do ar: aviso claro no menu e botões liberados para tentar de novo", async () => {
+    authFalso.falhaIniciar = erroServidorFora();
+    await iniciarApp();
+    expect($("menu").dataset.conta).toBe("anonimo");
+    expect($("menu-aviso").hidden).toBe(false);
+    expect($("menu-aviso").textContent).toBe(SERVIDOR_FORA);
+    expect($("btn-entrar").disabled).toBe(false);
+    expect(chamadas).toHaveLength(0);
+  });
+
+  it("outra falha ao iniciar o login aparece com o motivo", async () => {
+    authFalso.falhaIniciar = new Error("algo estranho");
+    await iniciarApp();
+    expect($("menu-aviso").textContent).toBe("Não foi possível iniciar o login: algo estranho");
+  });
+
+  it("Entrar com o servidor de login fora do ar mostra o aviso", async () => {
+    authFalso.autenticado = false;
+    await iniciarApp();
+    authFalso.falhaEntrar = erroServidorFora();
+    $("btn-entrar").click();
+    await estabilizar();
+    expect($("menu-aviso").textContent).toBe(SERVIDOR_FORA);
+  });
+
+  it("401 da API volta ao login; se o servidor de login não responde, avisa no menu", async () => {
+    rotas["GET /usuarios/me"] = [401, { detail: "Token inválido", status: 401 }];
+    authFalso.falhaEntrar = erroServidorFora();
+    await iniciarApp();
+    const auth = await import("./auth.js");
+    expect(auth.entrar).toHaveBeenCalledWith();
+    expect($("menu").dataset.conta).toBe("anonimo");
+    expect($("menu-aviso").textContent).toBe(SERVIDOR_FORA);
+  });
+
+  it("401 repetido em menos de 30 s não entra em laço: mostra o erro sem citar Auth0", async () => {
+    rotas["GET /usuarios/me"] = [401, { detail: "Token inválido", status: 401 }];
+    sessionStorage.setItem("flecha-certeira-relogin", String(Date.now()));
+    await iniciarApp();
+    expect($("menu").dataset.conta).toBe("erro");
+    expect($("menu-erro").textContent).toContain("VITE_OIDC_AUTHORITY");
+    expect($("menu-erro").textContent).not.toMatch(/AUTH0/);
   });
 
   it("logado: apelido, saldo da carteira e Administração para ADMIN", async () => {
