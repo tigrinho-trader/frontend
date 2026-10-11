@@ -60,6 +60,7 @@ export class ErroLogin extends Error {
 export function criarAuth({ env = import.meta.env, criarCliente = criarGerenciadorOidc, janela = globalThis.window } = {}) {
   const config = lerConfiguracao(env);
   let cliente = null;
+  let configCliente = null;
 
   const configurado = () => Boolean(config.authority && config.clientId);
   const origem = () => `${janela.location.origin}/`;
@@ -141,7 +142,7 @@ export function criarAuth({ env = import.meta.env, criarCliente = criarGerenciad
     async iniciar() {
       if (!configurado()) return { autenticado: false, erro: null };
       if (!cliente) {
-        cliente = await criarCliente({
+        configCliente = {
           authority: config.authority,
           client_id: config.clientId,
           redirect_uri: origem(),
@@ -152,7 +153,8 @@ export function criarAuth({ env = import.meta.env, criarCliente = criarGerenciad
           automaticSilentRenew: true,
           requestTimeoutInSeconds: 10,
           extraQueryParams: parametrosExtras(),
-        }, janela);
+        };
+        cliente = await criarCliente(configCliente, janela);
       }
 
       let erro = null;
@@ -183,17 +185,26 @@ export function criarAuth({ env = import.meta.env, criarCliente = criarGerenciad
       return { autenticado: false, erro };
     },
 
-    /** Vai para a tela de login do provedor. `criarConta: true` abre direto o cadastro. */
+    /**
+     * Vai para a tela de login do provedor. `criarConta: true` abre direto o cadastro: no Auth0 com
+     * screen_hint=signup; no Keycloak pelo endpoint /registrations (o prompt=create cai no login), usando
+     * um cliente só para isso. O retorno (?code=&state=) é concluído pelo cliente principal, que lê o mesmo
+     * estado guardado.
+     */
     async entrar({ criarConta = false } = {}) {
-      const c = exigirCliente();
+      let c = exigirCliente();
       const extras = parametrosExtras();
       const args = {};
-      if (criarConta) {
-        if (ehAuth0()) extras.screen_hint = 'signup';
-        else args.prompt = 'create';
-      }
-      if (Object.keys(extras).length) args.extraQueryParams = extras;
       try {
+        if (criarConta && ehAuth0()) {
+          extras.screen_hint = 'signup';
+        } else if (criarConta) {
+          c = await criarCliente({
+            ...configCliente,
+            metadataSeed: { authorization_endpoint: `${config.authority.replace(/\/+$/, '')}/protocol/openid-connect/registrations` },
+          }, janela);
+        }
+        if (Object.keys(extras).length) args.extraQueryParams = extras;
         await c.signinRedirect(args);
       } catch (e) {
         throw traduzir(e, { descoberta: true });

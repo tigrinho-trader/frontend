@@ -320,28 +320,43 @@ describe("iniciar", () => {
 });
 
 describe("entrar", () => {
-  it("Keycloak: entrar vai para o login; criar conta usa prompt=create", async () => {
-    const { auth, g } = await iniciado();
+  it("Keycloak: entrar vai para o login; criar conta vai para o endpoint /registrations", async () => {
+    const { auth, g, criarCliente } = await iniciado();
     await auth.entrar();
     expect(g.signinRedirect).toHaveBeenLastCalledWith({});
+    expect(criarCliente).toHaveBeenCalledTimes(1);
+
     await auth.entrar({ criarConta: true });
-    expect(g.signinRedirect).toHaveBeenLastCalledWith({ prompt: "create" });
+    expect(criarCliente).toHaveBeenCalledTimes(2);
+    const [config] = criarCliente.mock.calls[1];
+    expect(config.metadataSeed).toEqual({ authorization_endpoint: "http://localhost:8180/realms/tigrinho/protocol/openid-connect/registrations" });
+    expect(config.client_id).toBe("flecha-certeira");
+    expect(config.redirect_uri).toBe(criarCliente.mock.calls[0][0].redirect_uri);
+    expect(g.signinRedirect).toHaveBeenLastCalledWith({});
+  });
+
+  it("Keycloak com barra no fim da authority não duplica a barra no /registrations", async () => {
+    const { auth, criarCliente } = await iniciado({ env: { VITE_OIDC_AUTHORITY: "http://localhost:8180/realms/tigrinho/" } });
+    await auth.entrar({ criarConta: true });
+    expect(criarCliente.mock.calls[1][0].metadataSeed.authorization_endpoint).toBe("http://localhost:8180/realms/tigrinho/protocol/openid-connect/registrations");
   });
 
   it("Auth0: criar conta usa screen_hint=signup e sempre manda a audience", async () => {
-    const { auth, g } = await iniciado({ env: AUTH0 });
+    const { auth, g, criarCliente } = await iniciado({ env: AUTH0 });
     await auth.entrar();
     expect(g.signinRedirect).toHaveBeenLastCalledWith({ extraQueryParams: { audience: "https://api.tigrinho-trader" } });
     await auth.entrar({ criarConta: true });
     expect(g.signinRedirect).toHaveBeenLastCalledWith({
       extraQueryParams: { audience: "https://api.tigrinho-trader", screen_hint: "signup" },
     });
+    expect(criarCliente).toHaveBeenCalledTimes(1);
   });
 
   it("Keycloak com audience configurada também manda a audience", async () => {
-    const { auth, g } = await iniciado({ env: { VITE_OIDC_AUDIENCE: "tigrinho-api" } });
+    const { auth, g, criarCliente } = await iniciado({ env: { VITE_OIDC_AUDIENCE: "tigrinho-api" } });
     await auth.entrar({ criarConta: true });
-    expect(g.signinRedirect).toHaveBeenLastCalledWith({ prompt: "create", extraQueryParams: { audience: "tigrinho-api" } });
+    expect(criarCliente.mock.calls[1][0].metadataSeed.authorization_endpoint).toMatch(/\/registrations$/);
+    expect(g.signinRedirect).toHaveBeenLastCalledWith({ extraQueryParams: { audience: "tigrinho-api" } });
   });
 
   it("servidor de login fora do ar vira aviso claro", async () => {
