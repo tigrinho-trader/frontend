@@ -259,7 +259,7 @@ function renderRanges() {
       <h3>${r.name}</h3>
       <p>${r.desc}</p>
       <p>Entrada <b><span class="coin"></span>${r.fee}</b> · flechas de <b><span class="coin"></span>${r.arrowPrice}</b> a <b><span class="coin"></span>${arrowCost(top, r)}</b></p>
-      <p>Pássaros valem <span class="mult">×${r.mult}</span>:
+      <p>Pássaros <span class="mult">×${r.mult}</span>:
          vermelho <b>${birdValue(BIRD_TYPES.red, r)}</b>, dourado <b>${birdValue(BIRD_TYPES.gold, r)}</b> moedas</p>
       <button class="btn" data-range="${i}" ${ok ? '' : 'disabled'}>
         ${ok ? 'Escolher' : `Precisa de ${minCost(r)}`}

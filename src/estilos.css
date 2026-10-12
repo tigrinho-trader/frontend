@@ -778,3 +778,16 @@ h3.secao {
 #menu .btn { margin: calc(var(--s) * 4px); padding: calc(var(--s) * 9px) calc(var(--s) * 24px); font-size: calc(var(--s) * 25px); }
 #menu .btn.small { padding: calc(var(--s) * 6px) calc(var(--s) * 16px); font-size: calc(var(--s) * 18px); }
 #menu .note { margin-top: calc(var(--s) * 6px); }
+
+/* Escolha do campo compacta: os 4 campos e os botões precisam caber na janela, sem rolagem */
+#ranges .card { width: calc(var(--s) * 1060px); padding: calc(var(--s) * 14px) calc(var(--s) * 26px); }
+#ranges h2 { font-size: calc(var(--s) * 38px); margin-bottom: 0; }
+#ranges .sub { font-size: calc(var(--s) * 18px); margin: 0 0 calc(var(--s) * 8px); }
+#ranges .range-grid { gap: calc(var(--s) * 12px); margin-bottom: calc(var(--s) * 8px); }
+#ranges .range { padding: calc(var(--s) * 10px) calc(var(--s) * 16px); border-width: calc(var(--s) * 3px); }
+#ranges .range h3 { font-size: calc(var(--s) * 24px); }
+#ranges .range .tier { top: calc(var(--s) * 10px); font-size: calc(var(--s) * 15px); }
+#ranges .range p { font-size: calc(var(--s) * 14.5px); line-height: 1.25; margin: calc(var(--s) * 2px) 0; }
+#ranges .range p:last-of-type { margin-bottom: calc(var(--s) * 8px); }
+#ranges .range .btn { font-size: calc(var(--s) * 20px); padding: calc(var(--s) * 5px); }
+#ranges .card > .btn { margin: calc(var(--s) * 2px) calc(var(--s) * 6px); padding: calc(var(--s) * 6px) calc(var(--s) * 22px); font-size: calc(var(--s) * 20px); min-width: 0; }
