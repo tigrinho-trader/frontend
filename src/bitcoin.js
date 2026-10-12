@@ -1,19 +1,37 @@
-// Pássaro bitcoin: a altura do voo acompanha a cotação do BTC em tempo real, recebida direto da Binance
-// (WebSocket público de dados de mercado, sem chave). Quando o preço sobe, o pássaro sobe; quando cai, desce.
-// Reserva: sem mensagens da Binance, consulta a cotação do market-data-service (GET /api/cotacoes/BTCUSDT);
-// sem nenhuma das duas, o preço vira um passeio aleatório marcado como "simulado", para o jogo não parar.
+// Pássaros de mercado (bitcoin, ethereum, ouro): a altura do voo acompanha a cotação em tempo real, recebida
+// direto da Binance (WebSocket público de dados de mercado, grátis e sem chave). Quando o preço sobe, o pássaro
+// sobe; quando cai, desce. Reserva: sem mensagens da Binance, consulta a cotação do market-data-service
+// (GET /api/cotacoes/{simbolo}); sem nenhuma das duas, o preço vira um passeio aleatório marcado como
+// "simulado", para o jogo não parar.
 import { clamp } from './regras.js';
 
-export const BTC_SIMBOLO = 'BTCUSDT';
-// aggTrade: cada negociação (o preço ao vivo); miniTicker: a cada segundo, com a abertura de 24 h
-export const BINANCE_WS = 'wss://data-stream.binance.vision/stream?streams=btcusdt@aggTrade/btcusdt@miniTicker';
-export const BTC_NASCE_A_CADA = 3;        // segundos entre um pássaro bitcoin e o próximo
+/**
+ * Ativos com pássaro e flecha próprios. `casas`: casas decimais do preço na tela. `nasceACada`: segundos entre um
+ * pássaro avulso e o próximo. Só o bitcoin pode operar com dinheiro real (o resto do estudo é simulado).
+ */
+export const ATIVOS = {
+  btc: { id: 'btc', simbolo: 'BTCUSDT', nome: 'Bitcoin', marca: '₿', cor: '#f7931a', casas: 0, nasceACada: 3, precoSimulado: 100000 },
+  eth: { id: 'eth', simbolo: 'ETHUSDT', nome: 'Ethereum', marca: 'Ξ', cor: '#627eea', casas: 2, nasceACada: 6, precoSimulado: 3000 },
+  ouro: { id: 'ouro', simbolo: 'PAXGUSDT', nome: 'Ouro', marca: 'Au', cor: '#c9a227', casas: 2, nasceACada: 6, precoSimulado: 2600 },
+};
+export const LISTA_ATIVOS = Object.values(ATIVOS);
+export const ATIVO_POR_SIMBOLO = Object.fromEntries(LISTA_ATIVOS.map(a => [a.simbolo, a]));
+
+/** Stream combinado da Binance para um par. aggTrade: cada negociação; miniTicker: a cada segundo, com 24 h. */
+export function urlBinance(simbolo) {
+  const s = simbolo.toLowerCase();
+  return `wss://data-stream.binance.vision/stream?streams=${s}@aggTrade/${s}@miniTicker`;
+}
+
+export const BTC_SIMBOLO = ATIVOS.btc.simbolo;
+export const BINANCE_WS = urlBinance(BTC_SIMBOLO);
+export const BTC_NASCE_A_CADA = ATIVOS.btc.nasceACada;   // segundos entre um pássaro bitcoin e o próximo
 export const BTC_MAX_VOANDO = 5;          // teto de pássaros bitcoin na tela ao mesmo tempo
 export const BTC_JANELA = 60;             // segundos de histórico usados para medir a oscilação recente
 export const BTC_AMPLITUDE = 200;         // px de altura que a oscilação recente ocupa na tela
 export const BTC_FAIXA_MINIMA = 0.0002;   // 0,02% do preço: oscilação mínima (não amplia ruído de centavos)
 export const BTC_ALTURA = { min: 70, max: 440 };
-export const BTC_PRECO_SIMULADO = 100000; // ponto de partida quando nunca houve cotação real
+export const BTC_PRECO_SIMULADO = ATIVOS.btc.precoSimulado; // ponto de partida quando nunca houve cotação real
 const SILENCIO_BINANCE = 3;               // s sem mensagem da Binance para usar a reserva do servidor
 const CONSULTA_RESERVA = 1;               // s entre consultas ao servidor enquanto a Binance está calada
 const RECONECTAR_EM = 3;                  // s até tentar a Binance de novo depois de cair
@@ -94,13 +112,17 @@ export function alvoBinario(yMirado, faixa = BTC_ALTURA) {
 
 /** Modo binário: acerta o pássaro da flecha se ele chegou do lado escolhido (o preço andou para lá). */
 export function acertaBinario(direcao, passaro) {
-  if (!passaro?.btc) return false;
+  if (!passaro?.mercado) return false;
   return direcao === 'ALTA' ? passaro.y < FLECHA_BTC.nivel : passaro.y > FLECHA_BTC.nivel;
 }
 
-/** A flecha bitcoin, ao chegar no alvo, acerta este pássaro? */
+/**
+ * Modo previsão: a flecha de mercado, ao chegar no alvo, acerta este pássaro? Só pássaros do mesmo ativo da
+ * flecha (`alvo.ativo`; sem ele, qualquer pássaro de mercado).
+ */
 export function acertaNoAlvo(alvo, passaro) {
-  return !!passaro.btc && Math.hypot(passaro.x - alvo.x, passaro.y - alvo.y) <= passaro.type.r + FLECHA_BTC.raio;
+  if (!passaro.mercado || (alvo.ativo && passaro.mercado.ativo !== alvo.ativo)) return false;
+  return Math.hypot(passaro.x - alvo.x, passaro.y - alvo.y) <= passaro.type.r + FLECHA_BTC.raio;
 }
 
 /** Lê uma mensagem do stream combinado da Binance. Devolve `{ preco, variacao24h? }` ou null. */
@@ -124,16 +146,22 @@ export function lerMensagemBinance(texto) {
 }
 
 /**
- * Cotação do BTC para o jogo. Sem timers: o jogo chama `atualizar(dt)` a cada quadro, que (re)conecta a
+ * Cotação de um par para o jogo. Sem timers: o jogo chama `atualizar(dt)` a cada quadro, que (re)conecta a
  * Binance, usa a reserva quando ela se cala e desliza o preço mostrado até o último preço, sem saltos.
  * `geracao` muda quando o preço salta (simulado ⇄ real): quem guardou um preço de referência deve renová-lo.
  *
  * @param {object} deps
+ * @param {string} [deps.simbolo] par na Binance (padrão BTCUSDT)
+ * @param {number} [deps.precoSimulado] ponto de partida do preço simulado quando nunca houve cotação
  * @param {() => Promise<{preco, variacaoPercentual24h}>} deps.buscarReserva cotação do market-data-service
  * @param {(url: string) => WebSocket} [deps.abrirSocket] abre o WebSocket (troca nos testes)
  * @param {() => number} [deps.aleatorio]
  */
-export function criarFeedBtc({ buscarReserva, abrirSocket = url => new WebSocket(url), aleatorio = Math.random }) {
+export function criarFeedPreco({
+  simbolo = BTC_SIMBOLO, precoSimulado = BTC_PRECO_SIMULADO, buscarReserva,
+  abrirSocket = url => new WebSocket(url), aleatorio = Math.random,
+}) {
+  const url = urlBinance(simbolo);
   const f = {
     alvo: null, exibido: null, variacao24h: null, simulado: false, geracao: 0, fonte: null,
     historico: [], t: 0, ultimaBinance: -Infinity, proximaConsulta: 0, buscando: false, falhas: 0,
@@ -171,7 +199,7 @@ export function criarFeedBtc({ buscarReserva, abrirSocket = url => new WebSocket
   function conectar() {
     let socket;
     try {
-      socket = abrirSocket(BINANCE_WS);
+      socket = abrirSocket(url);
     } catch {
       f.proximaConexao = f.t + RECONECTAR_EM;
       return;
@@ -204,7 +232,7 @@ export function criarFeedBtc({ buscarReserva, abrirSocket = url => new WebSocket
         f.simulado = true;
         f.fonte = null;
         f.variacao24h = null;
-        if (f.alvo === null) saltar(BTC_PRECO_SIMULADO);
+        if (f.alvo === null) saltar(precoSimulado);
       }
     } finally {
       f.buscando = false;
@@ -257,13 +285,13 @@ export function criarFeedBtc({ buscarReserva, abrirSocket = url => new WebSocket
 // ---------------------------------------------------------------------------
 // Estudo da sabedoria das massas: cada flecha bitcoin vira uma operação na direção prevista (trading-service).
 // ---------------------------------------------------------------------------
-const NEUTRO_DOLARES = 0.5;   // mirou na linha de agora: sem direção, sem operação
+const NEUTRO_RELATIVO = 0.000006;   // mirou na linha de agora (~US$ 0,50 no bitcoin): sem direção, sem operação
 
 /** 'ALTA', 'QUEDA' ou null (previsão em cima da linha de agora). */
 export function direcaoDaPrevisao(previsao) {
   if (!previsao || !Number.isFinite(previsao.previsto) || !Number.isFinite(previsao.agora)) return null;
   const delta = previsao.previsto - previsao.agora;
-  if (Math.abs(delta) < NEUTRO_DOLARES) return null;
+  if (Math.abs(delta) < Math.abs(previsao.agora) * NEUTRO_RELATIVO) return null;
   return delta > 0 ? 'ALTA' : 'QUEDA';
 }
 
@@ -280,13 +308,15 @@ const reais = v => {
 export function textoResultadoEstudo(op) {
   if (!op) return null;
   const tipo = op.modo === 'REAL' ? 'Operação real' : 'Simulação';
+  const nome = ATIVO_POR_SIMBOLO[op.simbolo]?.nome;
+  const ativo = nome ? `${nome} · ` : '';
   if (op.status === 'FECHADA' && op.tipo === 'BINARIA') {
     // o jogador vê o placar da aposta binária; a operação na margem fica no detalhe
     const binario = Number(op.resultadoBinarioBrl) || 0;
     const liquido = Number(op.resultadoLiquidoBrl) || 0;
     return {
       texto: `Aposta binária: ${reais(binario)}`,
-      detalhe: `${binario > 0 ? 'acertou' : binario < 0 ? 'errou' : 'empatou'} · ${tipo.toLowerCase()} ${reais(liquido)}`,
+      detalhe: `${ativo}${binario > 0 ? 'acertou' : binario < 0 ? 'errou' : 'empatou'} · ${tipo.toLowerCase()} ${reais(liquido)}`,
       cor: binario > 0 ? 'ganho' : binario < 0 ? 'perda' : 'neutro',
     };
   }
@@ -294,7 +324,7 @@ export function textoResultadoEstudo(op) {
     const liquido = Number(op.resultadoLiquidoBrl) || 0;
     return {
       texto: `${tipo}: ${reais(liquido)}`,
-      detalhe: `previsão ${op.acertouDirecao ? 'certa' : 'errada'} · ${op.direcao === 'ALTA' ? 'alta' : 'queda'}`,
+      detalhe: `${ativo}previsão ${op.acertouDirecao ? 'certa' : 'errada'} · ${op.direcao === 'ALTA' ? 'alta' : 'queda'}`,
       cor: liquido > 0 ? 'ganho' : liquido < 0 ? 'perda' : 'neutro',
     };
   }
@@ -302,3 +332,6 @@ export function textoResultadoEstudo(op) {
   if (op.status === 'FALHOU') return { texto: `${tipo} não concluída`, detalhe: op.motivo || '', cor: 'neutro' };
   return null;
 }
+
+/** Nome antigo: o feed do bitcoin. */
+export const criarFeedBtc = deps => criarFeedPreco({ ...deps, simbolo: BTC_SIMBOLO });

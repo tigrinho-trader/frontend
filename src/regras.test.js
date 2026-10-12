@@ -70,7 +70,8 @@ describe("flechas", () => {
   });
 
   it("flechas melhores rendem mais moedas por moeda gasta", () => {
-    const rendimento = ARROW_TYPES.map((t) => t.coins / t.price);
+    // as flechas de mercado ficam de fora: só acertam o pássaro do ativo delas
+    const rendimento = ARROW_TYPES.filter((t) => !t.mercado).map((t) => t.coins / t.price);
     for (let i = 1; i < rendimento.length; i++) expect(rendimento[i]).toBeGreaterThan(rendimento[i - 1]);
   });
 

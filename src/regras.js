@@ -25,8 +25,10 @@ export const BIRD_TYPES = {
   yellow: { name: 'Amarelo',  r: 21, color: '#fbc02d', belly: '#fff3c4', speed: 290, coins: 4 },
   blue:   { name: 'Azul',     r: 16, color: '#42a5f5', belly: '#d6ecff', speed: 220, coins: 5 },
   gold:   { name: 'Dourado',  r: 19, color: '#ffca28', belly: '#fff8d0', speed: 360, coins: 15, shiny: true },
-  // Não entra no sorteio dos campos: nasce sozinho a cada 2 s e voa conforme a cotação do BTC (bitcoin.js)
-  btc:    { name: 'Bitcoin',  r: 23, color: '#f7931a', belly: '#ffe0b2', speed: 190, coins: 3, btc: true },
+  // Pássaros de mercado: não entram no sorteio dos campos; nascem sozinhos e voam conforme a cotação (bitcoin.js)
+  btc:    { name: 'Bitcoin',  r: 23, color: '#f7931a', belly: '#ffe0b2', speed: 190, coins: 3, btc: true, mercado: 'btc' },
+  eth:    { name: 'Ethereum', r: 23, color: '#627eea', belly: '#e3e8ff', speed: 190, coins: 3, mercado: 'eth' },
+  ouro:   { name: 'Ouro PAXG', r: 23, color: '#c9a227', belly: '#fff1c1', speed: 190, coins: 3, mercado: 'ouro', shiny: true },
 };
 
 for (const t of Object.values(BIRD_TYPES)) {
@@ -93,11 +95,23 @@ export const ARROW_TYPES = [
     fletch: ['#e1bee7', '#8e24aa'], trail: '150,240,255', headSize: 1.35, glow: 'rgba(120,230,255,0.95)', sparkle: '#b2ebf2',
   },
   {
-    // Especial: previsão do BTC em 5 s, alvo fixo na direita, só acerta o pássaro bitcoin (bitcoin.js)
-    id: 'btc', name: 'Bitcoin', price: 1, coins: 2, especial: 'btc',
+    // Flechas de mercado: previsão do ativo em 5 s, alvo fixo na direita, só acertam o pássaro do ativo
+    id: 'btc', name: 'Bitcoin', price: 1, coins: 2, especial: 'btc', mercado: 'btc',
     desc: 'Previsão: mire a altura do BTC daqui a 5 s no alvo da direita. Só acerta o pássaro bitcoin e dobra as moedas dele.',
     shaft: ['#5d3a1a', '#f7931a'], head: ['#fff3e0', '#f7931a', '#8a4b00'], headStroke: '#5d3000',
     fletch: ['#ffffff', '#f7931a'], trail: '247,147,26', headSize: 1.25, glow: 'rgba(247,147,26,0.9)',
+  },
+  {
+    id: 'eth', name: 'Ethereum', price: 1, coins: 2, especial: 'eth', mercado: 'eth',
+    desc: 'Previsão: mire o Ethereum daqui a 5 s no alvo da direita. Só acerta o pássaro ethereum e dobra as moedas dele.',
+    shaft: ['#2b2f4a', '#627eea'], head: ['#eef1ff', '#8c9eff', '#303f9f'], headStroke: '#1a237e',
+    fletch: ['#ffffff', '#627eea'], trail: '98,126,234', headSize: 1.25, glow: 'rgba(98,126,234,0.9)',
+  },
+  {
+    id: 'ouro', name: 'Ouro PAXG', price: 1, coins: 2, especial: 'ouro', mercado: 'ouro',
+    desc: 'Previsão: mire o ouro (PAXG) daqui a 5 s no alvo da direita. Só acerta o pássaro do ouro e dobra as moedas dele.',
+    shaft: ['#4a3410', '#c9a227'], head: ['#fffbe6', '#e6c35c', '#8a6d10'], headStroke: '#5c4708',
+    fletch: ['#ffffff', '#c9a227'], trail: '201,162,39', headSize: 1.25, glow: 'rgba(230,195,92,0.9)',
   },
 ];
 export const ARROW_BY_ID = Object.fromEntries(ARROW_TYPES.map(t => [t.id, t]));

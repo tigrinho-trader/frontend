@@ -14,10 +14,9 @@ import { criarControladorSessao } from './sessao.js';
 import { formatarMoedas, mensagemErro } from './telas.js';
 import { modoDaFlechaBitcoin } from './preferencias.js';
 import {
-  BTC_MAX_VOANDO, BTC_NASCE_A_CADA, BTC_SIMBOLO, BTC_ALTURA, FLECHA_BTC, acertaBinario, acertaNoAlvo, alturaBtc,
-  alvoBinario, alvoFlechaBtc,
-  criarFeedBtc, direcaoDaPrevisao, precoPrevisto, textoResultadoEstudo, toleranciaEmDolares, velocidadeFlechaBtc,
-  velocidadePassaroDaFlecha,
+  ATIVOS, BTC_MAX_VOANDO, BTC_ALTURA, FLECHA_BTC, LISTA_ATIVOS, acertaBinario, acertaNoAlvo, alturaBtc,
+  alvoBinario, alvoFlechaBtc, criarFeedPreco, direcaoDaPrevisao, precoPrevisto, textoResultadoEstudo,
+  toleranciaEmDolares, velocidadeFlechaBtc, velocidadePassaroDaFlecha,
 } from './bitcoin.js';
 
 // ---------------------------------------------------------------------------
@@ -125,7 +124,7 @@ const game = {
   particles: [],
   texts: [],
   spawnTimer: 0,
-  btcTimer: 0,              // próximo pássaro bitcoin
+  mercadoTimers: {},        // por ativo: segundos até o próximo pássaro de mercado avulso
   estudo: null,             // último resultado do estudo mostrado no HUD: { texto, detalhe, cor }
   pending: null,            // 'win' | 'lose' enquanto espera a animação terminar
   endTimer: 0,
@@ -348,7 +347,7 @@ function renderBuy() {
         <img src="${arrowIcon(t)}" alt="">
         <div class="arrow-info">
           <b class="arrow-name">${t.name}</b>
-          <span>moedas <b class="mult">×${formatMult(t.coins)}</b> · <span class="coin"></span>${cost} cada${t.especial === 'btc' ? ' · preveja o BTC daqui a 5 s' : ''}</span>
+          <span>moedas <b class="mult">×${formatMult(t.coins)}</b> · <span class="coin"></span>${cost} cada${t.mercado ? ` · preveja o ${ATIVOS[t.mercado].nome} daqui a 5 s` : ''}</span>
         </div>
         <div class="arrow-qty">
           <button class="chip" data-type="${t.id}" data-d="-5" ${n ? '' : 'disabled'}>−5</button>
@@ -376,7 +375,7 @@ function updateOrder(typeId, delta) {
 
 function selectArrow(id) {
   if (game.quiver[id] > 0) game.selected = id;
-  if (game.selected === 'btc') avisarEstudo();
+  if (ARROW_BY_ID[game.selected]?.mercado) avisarEstudo();
 }
 
 /** Na primeira vez que o jogador pega a flecha bitcoin, explica o estudo (uma vez por navegador). */
@@ -385,8 +384,9 @@ function avisarEstudo() {
     if (localStorage.getItem('flecha-estudo-aviso')) return;
     localStorage.setItem('flecha-estudo-aviso', '1');
   } catch { /* sem armazenamento: avisa toda vez */ }
-  avisar('Estudo: cada flecha bitcoin vira uma operação no mercado na direção que você previu (alta ou queda), '
-    + 'com o dinheiro do criador do jogo, não o seu. Quando a flecha chega, você vê se ela ganhou ou perdeu.',
+  avisar('Estudo: cada flecha de mercado (bitcoin, ethereum, ouro) vira uma operação na direção que você previu '
+    + '(alta ou queda), com o dinheiro do criador do jogo, não o seu. Quando a flecha chega, você vê se ela ganhou '
+    + 'ou perdeu.',
   'info', 12000);
 }
 
@@ -435,7 +435,8 @@ async function enterRange() {
   game.particles = [];
   game.texts = [];
   game.spawnTimer = 0.2;
-  game.btcTimer = 1;
+  // bitcoin logo; ethereum e ouro escalonados para não nascerem juntos
+  game.mercadoTimers = { btc: 1, eth: 2.5, ouro: 4 };
   game.estudo = null;
   game.pending = null;
   game.endTimer = 0;
@@ -612,21 +613,24 @@ function spawnBird() {
   });
 }
 
-// Cotação do BTC em tempo real (Binance; reserva: market-data-service) que guia os pássaros bitcoin.
-// Só fica conectada durante a rodada.
-const feedBtc = criarFeedBtc({ buscarReserva: () => api.cotacao(BTC_SIMBOLO) });
+// Cotação de cada ativo em tempo real (Binance; reserva: market-data-service) que guia os pássaros de mercado.
+// Só ficam conectadas durante a rodada.
+const feeds = Object.fromEntries(LISTA_ATIVOS.map(a => [a.id, criarFeedPreco({
+  simbolo: a.simbolo, precoSimulado: a.precoSimulado, buscarReserva: () => api.cotacao(a.simbolo),
+})]));
 
 /**
- * Pássaro bitcoin. O "da flecha" nasce junto com a flecha bitcoin: sai da esquerda na altura do preço de agora e
- * chega no alvo da direita no mesmo instante que ela. A escala (px por dólar) fica fixa durante o voo, para a
- * altura dele depender só do preço.
+ * Pássaro de mercado (bitcoin, ethereum, ouro). O "da flecha" nasce junto com a flecha do ativo: sai da esquerda
+ * na altura do preço de agora e chega no alvo da direita no mesmo instante que ela. A escala (px por dólar) fica
+ * fixa durante o voo, para a altura dele depender só do preço.
  */
-function spawnBtcBird({ daFlecha = false } = {}) {
-  const type = BIRD_TYPES.btc;
+function spawnPassaroMercado(ativo, { daFlecha = false } = {}) {
+  const type = BIRD_TYPES[ativo];
+  const feed = feeds[ativo];
   const dir = daFlecha || Math.random() < 0.5 ? 1 : -1;
   const baseY = daFlecha ? FLECHA_BTC.nivel : rand(170, 340);
   const bird = {
-    type, typeId: 'btc', dir,
+    type, typeId: ativo, dir,
     x: daFlecha ? FLECHA_BTC.xNascimento : dir > 0 ? -60 : W + 60,
     y: baseY, baseY, amp: 0, phase: 0, freq: 0,
     vx: daFlecha ? velocidadePassaroDaFlecha() : dir * type.speed * game.range.speedMul * rand(0.9, 1.1),
@@ -635,8 +639,8 @@ function spawnBtcBird({ daFlecha = false } = {}) {
     blink: rand(1, 4),
     state: 'flying',
     rot: 0, spin: 0, tilt: 0,
-    btc: {
-      precoInicial: feedBtc.preco(), escala: feedBtc.escala(), geracao: feedBtc.geracao(), daFlecha,
+    mercado: {
+      ativo, precoInicial: feed.preco(), escala: feed.escala(), geracao: feed.geracao(), daFlecha,
       rastro: [], proximoPonto: 0, subindo: true,
     },
   };
@@ -644,35 +648,39 @@ function spawnBtcBird({ daFlecha = false } = {}) {
   return bird;
 }
 
-/** Um pássaro bitcoin a cada BTC_NASCE_A_CADA segundos (assim que houver cotação). */
-function updateBtcSpawner(dt) {
-  game.btcTimer -= dt;
-  if (game.btcTimer > 0 || feedBtc.preco() === null) return;
-  game.btcTimer = BTC_NASCE_A_CADA;
-  const voando = game.birds.filter(b => b.btc && b.state === 'flying').length;
-  if (voando < BTC_MAX_VOANDO) spawnBtcBird();
+/** Cada ativo solta um pássaro a cada `nasceACada` segundos (assim que houver cotação dele). */
+function updateMercadoSpawner(dt) {
+  for (const a of LISTA_ATIVOS) {
+    game.mercadoTimers[a.id] = (game.mercadoTimers[a.id] ?? a.nasceACada) - dt;
+    if (game.mercadoTimers[a.id] > 0 || feeds[a.id].preco() === null) continue;
+    game.mercadoTimers[a.id] = a.nasceACada;
+    const voando = game.birds.filter(b => b.mercado?.ativo === a.id && !b.mercado.daFlecha && b.state === 'flying');
+    if (voando.length < BTC_MAX_VOANDO) spawnPassaroMercado(a.id);
+  }
 }
 
-/** Altura do pássaro bitcoin pela variação do preço desde que ele nasceu, com rastro e inclinação. */
-function voarBtc(b, dt) {
-  const preco = feedBtc.preco();
-  if (b.btc.geracao !== feedBtc.geracao()) {
+/** Altura do pássaro de mercado pela variação do preço desde que ele nasceu, com rastro e inclinação. */
+function voarMercado(b, dt) {
+  const m = b.mercado;
+  const feed = feeds[m.ativo];
+  const preco = feed.preco();
+  if (m.geracao !== feed.geracao()) {
     // o preço saltou (cotação real ⇄ simulada): continua de onde está
-    b.btc.geracao = feedBtc.geracao();
-    b.btc.precoInicial = preco;
-    b.btc.escala = feedBtc.escala();
+    m.geracao = feed.geracao();
+    m.precoInicial = preco;
+    m.escala = feed.escala();
     b.baseY = b.y;
   }
   const antes = b.y;
-  b.y = alturaBtc(b.baseY, b.btc.precoInicial, preco, b.btc.escala);
+  b.y = alturaBtc(b.baseY, m.precoInicial, preco, m.escala);
   const subida = dt > 0 ? (antes - b.y) / dt : 0;
   b.tilt += (clamp(-b.dir * subida * 0.004, -0.5, 0.5) - b.tilt) * Math.min(1, dt * 8);
-  b.btc.subindo = preco >= b.btc.precoInicial;
-  b.btc.proximoPonto -= dt;
-  if (b.btc.proximoPonto <= 0) {
-    b.btc.proximoPonto = 0.05;
-    b.btc.rastro.push({ x: b.x, y: b.y });
-    if (b.btc.rastro.length > 36) b.btc.rastro.shift();
+  m.subindo = preco >= m.precoInicial;
+  m.proximoPonto -= dt;
+  if (m.proximoPonto <= 0) {
+    m.proximoPonto = 0.05;
+    m.rastro.push({ x: b.x, y: b.y });
+    if (m.rastro.length > 36) m.rastro.shift();
   }
 }
 
@@ -693,7 +701,7 @@ function updateBirds(dt) {
       b.blink -= dt;
       if (b.blink < -0.12) b.blink = rand(1.5, 4);
       b.x += b.vx * dt;
-      if (b.btc) voarBtc(b, dt);
+      if (b.mercado) voarMercado(b, dt);
       else b.y = b.baseY + b.amp * Math.sin(b.phase + b.t * b.freq);
       if (b.type.shiny && Math.random() < dt * 30) spark(b.x - b.dir * b.type.r, b.y + rand(-8, 8));
       if ((b.dir > 0 && b.x > W + 80) || (b.dir < 0 && b.x < -80)) b.dead = true;
@@ -753,25 +761,29 @@ function launchVelocity() {
   return { vx: Math.cos(game.aim.angle) * speed, vy: Math.sin(game.aim.angle) * speed };
 }
 
-/** Como a flecha na mão vai voar: velocidade, gravidade e, na flecha bitcoin, o ponto onde ela chega em 5 s. */
+/** Como a flecha na mão vai voar: velocidade, gravidade e, na flecha de mercado, o ponto onde ela chega em 5 s. */
 function planoDoTiro() {
-  if (ARROW_BY_ID[game.selected]?.especial === 'btc') {
+  const ativo = ARROW_BY_ID[game.selected]?.mercado;
+  if (ativo) {
     const mirado = alvoFlechaBtc(LAUNCH, game.aim.angle, BTC_ALTURA);
     // modo binário (padrão): a mira só escolhe o lado da linha de agora
-    const alvo = modoDaFlechaBitcoin() === 'BINARIO' ? alvoBinario(mirado.y) : mirado;
+    const alvo = { ...(modoDaFlechaBitcoin() === 'BINARIO' ? alvoBinario(mirado.y) : mirado), ativo };
     return { ...velocidadeFlechaBtc(LAUNCH, alvo), g: FLECHA_BTC.g, alvo };
   }
   return { ...launchVelocity(), g: G, alvo: null };
 }
 
-/** Previsão de uma mira da flecha bitcoin: preço de agora, preço previsto e a folga em dólares. */
-function previsaoBtc(alvo) {
-  const agora = feedBtc.preco(), escala = feedBtc.escala();
-  if (alvo.binaria) return { agora, binaria: true, direcao: alvo.binaria };
+/** Previsão de uma mira da flecha de mercado: preço de agora, preço previsto e a folga em dólares. */
+function previsaoMercado(alvo) {
+  const feed = feeds[alvo.ativo];
+  const agora = feed.preco(), escala = feed.escala();
+  const { casas } = ATIVOS[alvo.ativo];
+  if (alvo.binaria) return { agora, casas, binaria: true, direcao: alvo.binaria };
   return {
     agora,
+    casas,
     previsto: precoPrevisto(agora, escala, alvo.y),
-    folga: toleranciaEmDolares(escala, BIRD_TYPES.btc.r),
+    folga: toleranciaEmDolares(escala, BIRD_TYPES[alvo.ativo].r),
   };
 }
 
@@ -779,8 +791,8 @@ function shoot() {
   ensureSelection();
   if (game.quiver[game.selected] <= 0) return;
   const v = planoDoTiro();
-  if (v.alvo && feedBtc.preco() === null) {
-    addText(LAUNCH.x + 120, LAUNCH.y - 120, 'esperando a cotação do BTC...', '#ffe0b2', 24);
+  if (v.alvo && feeds[v.alvo.ativo].preco() === null) {
+    addText(LAUNCH.x + 160, LAUNCH.y - 120, `esperando a cotação do ${ATIVOS[v.alvo.ativo].nome}...`, '#ffe0b2', 24);
     return;
   }
   game.arrows.push({
@@ -799,8 +811,8 @@ function shoot() {
   if (v.alvo) {
     // no instante do disparo nasce o pássaro que chega no alvo junto com a flecha
     const ar = game.arrows[game.arrows.length - 1];
-    ar.previsao = previsaoBtc(v.alvo);
-    ar.passaro = spawnBtcBird({ daFlecha: true });
+    ar.previsao = previsaoMercado(v.alvo);
+    ar.passaro = spawnPassaroMercado(v.alvo.ativo, { daFlecha: true });
     registrarNoEstudo(ar);
   }
   game.quiver[game.selected]--;
@@ -871,8 +883,8 @@ function chegarNoAlvo(ar) {
     }
   }
   game.particles.push({
-    kind: 'ring', x: ar.x, y: ar.y, size: BIRD_TYPES.btc.r + FLECHA_BTC.raio,
-    vx: 0, vy: 0, rot: 0, vr: 0, g: 0, life: 0, max: 0.4, color: '#f7931a',
+    kind: 'ring', x: ar.x, y: ar.y, size: BIRD_TYPES[ar.alvo.ativo].r + FLECHA_BTC.raio,
+    vx: 0, vy: 0, rot: 0, vr: 0, g: 0, life: 0, max: 0.4, color: ATIVOS[ar.alvo.ativo].cor,
   });
   for (let i = 0; i < 6; i++) spark(ar.x + rand(-12, 12), ar.y + rand(-12, 12), '#ffcc80');
   if (!ar.hits) addText(ar.x, ar.y - 40, 'passou!', '#ffe0b2', 26);
@@ -892,6 +904,7 @@ function registrarNoEstudo(ar) {
   }
   const dados = {
     sessaoId, direcao,
+    simbolo: ATIVOS[ar.alvo.ativo].simbolo,
     tipo: binaria ? 'BINARIA' : 'PREVISAO',
     precoAgora: Math.round(ar.previsao.agora * 100) / 100,
   };
@@ -1057,13 +1070,15 @@ function update(dt) {
   game.time += dt;
   scene().update(dt, game.time);
 
-  // a cotação do BTC só é ouvida durante a rodada
-  if (game.state === 'playing') {
-    if (!feedBtc.ligado()) feedBtc.ligar();
-  } else if (feedBtc.ligado()) {
-    feedBtc.desligar();
+  // as cotações só são ouvidas durante a rodada
+  for (const feed of Object.values(feeds)) {
+    if (game.state === 'playing') {
+      if (!feed.ligado()) feed.ligar();
+    } else if (feed.ligado()) {
+      feed.desligar();
+    }
+    feed.atualizar(dt);
   }
-  feedBtc.atualizar(dt);
 
   if (inLobby()) {
     // Pássaros voando no fundo do menu, só de enfeite
@@ -1078,7 +1093,7 @@ function update(dt) {
   game.shake = Math.max(0, game.shake - dt);
 
   updateSpawner(dt);
-  updateBtcSpawner(dt);
+  updateMercadoSpawner(dt);
   updateBirds(dt);
   updateArrows(dt);
   updateParticles(dt);
@@ -1282,34 +1297,35 @@ function drawBird(b) {
   ctx.scale(b.dir, 1);
   drawBirdBody(b.type, b.type.r, b.flap, b.state === 'falling', b.blink < 0);
   ctx.restore();
-  if (b.btc) drawBtcSymbol(b);
+  if (b.mercado) drawMarcaMercado(b);
 }
 
-/** Símbolo ₿ na barriga do pássaro bitcoin (fora do espelhamento, para não sair invertido). */
-function drawBtcSymbol(b) {
+/** Símbolo do ativo (₿, Ξ, Au) na barriga do pássaro de mercado (fora do espelhamento, para não sair invertido). */
+function drawMarcaMercado(b) {
   const r = b.type.r;
+  const marca = ATIVOS[b.mercado.ativo].marca;
   ctx.save();
   ctx.translate(b.x, b.y);
   ctx.rotate(b.state === 'falling' ? b.rot : b.tilt);
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.font = `900 ${Math.round(r * 0.95)}px Nunito, sans-serif`;
+  ctx.font = `900 ${Math.round(r * (marca.length > 1 ? 0.7 : 0.95))}px Nunito, sans-serif`;
   ctx.lineWidth = 3;
-  ctx.strokeStyle = '#8a4b00';
-  ctx.strokeText('₿', -b.dir * r * 0.18, r * 0.3);
+  ctx.strokeStyle = 'rgba(40,20,5,0.85)';
+  ctx.strokeText(marca, -b.dir * r * 0.18, r * 0.3);
   ctx.fillStyle = '#ffffff';
-  ctx.fillText('₿', -b.dir * r * 0.18, r * 0.3);
+  ctx.fillText(marca, -b.dir * r * 0.18, r * 0.3);
   ctx.restore();
 }
 
-/** Rastro do pássaro bitcoin, como uma linha de gráfico: verde se o preço subiu desde que ele nasceu. */
-function drawBtcTrail(b) {
-  const pts = b.btc.rastro;
+/** Rastro do pássaro de mercado, como uma linha de gráfico: verde se o preço subiu desde que ele nasceu. */
+function drawRastroMercado(b) {
+  const pts = b.mercado.rastro;
   if (pts.length < 2) return;
   ctx.save();
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
-  ctx.strokeStyle = b.btc.subindo ? '#43a047' : '#e53935';
+  ctx.strokeStyle = b.mercado.subindo ? '#43a047' : '#e53935';
   for (let i = 1; i < pts.length; i++) {
     ctx.globalAlpha = (i / pts.length) * 0.8;
     ctx.lineWidth = 2 + (i / pts.length) * 3;
@@ -1321,29 +1337,40 @@ function drawBtcTrail(b) {
   ctx.restore();
 }
 
-const FONTE_BTC = { binance: 'BINANCE AO VIVO', servidor: 'VIA SERVIDOR' };
+const FONTE_COTACAO = { binance: 'BINANCE AO VIVO', servidor: 'VIA SERVIDOR' };
+const dolares = (v, casas = 0) =>
+  `US$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: casas, maximumFractionDigits: casas })}`;
 
-/** Placa com a cotação do BTC que está guiando os pássaros bitcoin. */
-function drawBtcTicker() {
-  const preco = feedBtc.preco();
-  if (preco === null) return;
-  const x = 856, y = 14, w = 280, h = 58;
+/** Placa com as cotações que guiam os pássaros de mercado: uma linha por ativo. */
+function drawTickerMercado() {
+  const linhas = LISTA_ATIVOS.filter(a => feeds[a.id].preco() !== null);
+  if (!linhas.length) return;
+  const x = 856, y = 14, w = 280, h = 22 + linhas.length * 24;
   plaque(x, y, w, h, 14);
-  ctx.textAlign = 'left';
-  outlinedText('₿', x + 14, y + 40, "30px 'Lilita One', sans-serif", '#f7931a', '#4a2a10', 5);
-  outlinedText(`US$ ${Math.round(preco).toLocaleString('pt-BR')}`, x + 44, y + 38, "24px 'Lilita One', sans-serif",
-    '#ffffff', '#4a2a10', 5);
+  const algumSimulado = linhas.some(a => feeds[a.id].simulado());
   ctx.textAlign = 'right';
-  ctx.font = '900 13px Nunito, sans-serif';
-  const v = feedBtc.variacao24h();
-  if (v !== null && !feedBtc.simulado()) {
-    ctx.fillStyle = v >= 0 ? '#b9f6ca' : '#ff8a80';
-    ctx.fillText(`${v >= 0 ? '▲' : '▼'} ${Math.abs(v).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}% 24h`,
-      x + w - 14, y + 24);
-  }
-  ctx.font = '800 11px Nunito, sans-serif';
+  ctx.font = '800 10px Nunito, sans-serif';
   ctx.fillStyle = 'rgba(255,240,215,0.85)';
-  ctx.fillText(feedBtc.simulado() ? 'SIMULADO (SEM COTAÇÃO)' : FONTE_BTC[feedBtc.fonte()] || '', x + w - 14, y + 44);
+  ctx.fillText(algumSimulado ? 'SIMULADO ONDE NÃO HÁ COTAÇÃO' : FONTE_COTACAO[feeds[linhas[0].id].fonte()] || '',
+    x + w - 12, y + 15);
+  linhas.forEach((a, i) => {
+    const feed = feeds[a.id];
+    const ly = y + 38 + i * 24;
+    ctx.textAlign = 'left';
+    outlinedText(a.marca, x + 12, ly, "18px 'Lilita One', sans-serif", a.cor, '#4a2a10', 4);
+    outlinedText(dolares(feed.preco(), a.casas), x + 46, ly, "18px 'Lilita One', sans-serif", '#ffffff', '#4a2a10', 4);
+    ctx.textAlign = 'right';
+    ctx.font = '900 12px Nunito, sans-serif';
+    const v = feed.variacao24h();
+    if (feed.simulado()) {
+      ctx.fillStyle = 'rgba(255,240,215,0.85)';
+      ctx.fillText('simulado', x + w - 12, ly - 2);
+    } else if (v !== null) {
+      ctx.fillStyle = v >= 0 ? '#b9f6ca' : '#ff8a80';
+      ctx.fillText(`${v >= 0 ? '▲' : '▼'} ${Math.abs(v).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}% 24h`,
+        x + w - 12, ly - 2);
+    }
+  });
 
   // último resultado do estudo (a operação feita com a previsão do jogador)
   if (game.estudo) {
@@ -1410,13 +1437,12 @@ function drawArrowShape(type = ARROW_TYPES[0], c = ctx) {
   c.fillRect(-ARROW_LEN - 2, -1.5, 3, 3);
 }
 
-const dolares = v => `US$ ${Math.round(v).toLocaleString('pt-BR')}`;
-
 /**
  * Régua da previsão na coluna do alvo: a faixa onde o pássaro pode chegar e a linha do preço no disparo
  * (o pássaro da flecha sai dessa altura; acima dela é preço maior, abaixo é menor).
  */
-function drawReguaBtc(precoReferencia) {
+function drawRegua(previsao) {
+  const precoReferencia = previsao ? previsao.agora : null;
   const x = FLECHA_BTC.xAlvo;
   ctx.save();
   ctx.strokeStyle = 'rgba(255,255,255,0.45)';
@@ -1434,23 +1460,23 @@ function drawReguaBtc(precoReferencia) {
   ctx.fillStyle = '#ff8a80';
   ctx.fillText('▼ cai', x - 50, BTC_ALTURA.max);
   if (precoReferencia !== null) {
-    outlinedText(`agora ${dolares(precoReferencia)}`, x - 50, FLECHA_BTC.nivel + 5, "800 13px Nunito, sans-serif",
+    outlinedText(`agora ${dolares(precoReferencia, previsao.casas)}`, x - 50, FLECHA_BTC.nivel + 5, "800 13px Nunito, sans-serif",
       '#ffffff', 'rgba(40,20,5,0.8)', 3);
   }
   ctx.restore();
 }
 
-/** Alvo da flecha bitcoin: o círculo onde ela acerta, o preço previsto e, em voo, a contagem até chegar. */
-function drawAlvoBtc(alvo, resto, contagem, previsao) {
+/** Alvo da flecha de mercado: o círculo onde ela acerta, o preço previsto e, em voo, a contagem até chegar. */
+function drawAlvoMercado(alvo, resto, contagem, previsao) {
   if (alvo.binaria) {
     drawAlvoBinario(alvo, contagem, previsao);
     return;
   }
-  const raio = BIRD_TYPES.btc.r + FLECHA_BTC.raio;
-  drawReguaBtc(previsao ? previsao.agora : null);
+  const raio = BIRD_TYPES[alvo.ativo].r + FLECHA_BTC.raio;
+  drawRegua(previsao);
   ctx.save();
-  ctx.strokeStyle = 'rgba(247,147,26,0.95)';
-  ctx.fillStyle = 'rgba(247,147,26,0.14)';
+  ctx.strokeStyle = 'rgba(255,224,178,0.95)';
+  ctx.fillStyle = 'rgba(255,224,178,0.14)';
   ctx.lineWidth = 3;
   ctx.setLineDash([8, 6]);
   ctx.beginPath(); ctx.arc(alvo.x, alvo.y, raio, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
@@ -1473,11 +1499,14 @@ function drawAlvoBtc(alvo, resto, contagem, previsao) {
   if (previsao) {
     // o preço que o jogador está prevendo para daqui a 5 s (à esquerda do alvo: à direita não cabe)
     const delta = previsao.previsto - previsao.agora;
-    const sinal = Math.abs(delta) < 0.5 ? '=' : delta > 0 ? '▲' : '▼';
+    const sinal = direcaoDaPrevisao(previsao) === null ? '=' : delta > 0 ? '▲' : '▼';
+    const numero = v => v.toLocaleString('pt-BR', { minimumFractionDigits: previsao.casas,
+      maximumFractionDigits: previsao.casas });
+    const minimo = 10 ** -previsao.casas;
     ctx.textAlign = 'right';
-    outlinedText(dolares(previsao.previsto), alvo.x - raio - 14, alvo.y - 2, "20px 'Lilita One', sans-serif",
-      '#ffffff', '#5d3000', 4);
-    outlinedText(`${sinal} ${delta >= 0 ? '+' : '−'}${Math.abs(Math.round(delta))}  ±${Math.max(1, Math.round(previsao.folga))}`,
+    outlinedText(dolares(previsao.previsto, previsao.casas), alvo.x - raio - 14, alvo.y - 2,
+      "20px 'Lilita One', sans-serif", '#ffffff', '#5d3000', 4);
+    outlinedText(`${sinal} ${delta >= 0 ? '+' : '−'}${numero(Math.abs(delta))}  ±${numero(Math.max(minimo, previsao.folga))}`,
       alvo.x - raio - 14, alvo.y + 17, "800 13px Nunito, sans-serif",
       sinal === '▲' ? '#b9f6ca' : sinal === '▼' ? '#ff8a80' : '#ffffff', 'rgba(40,20,5,0.85)', 3);
   }
@@ -1486,7 +1515,7 @@ function drawAlvoBtc(alvo, resto, contagem, previsao) {
 
 /** Modo sobe ou desce: a faixa escolhida na coluna do alvo (acima ou abaixo da linha de agora). */
 function drawAlvoBinario(alvo, contagem, previsao) {
-  drawReguaBtc(previsao ? previsao.agora : null);
+  drawRegua(previsao);
   const sobe = alvo.binaria === 'ALTA';
   const y0 = sobe ? BTC_ALTURA.min : FLECHA_BTC.nivel;
   const y1 = sobe ? FLECHA_BTC.nivel : BTC_ALTURA.max;
@@ -1511,7 +1540,7 @@ function drawArrows() {
   for (const ar of game.arrows) {
     if (ar.alvo && ar.state === 'flying') {
       const falta = FLECHA_BTC.tempo - ar.t;
-      drawAlvoBtc(ar.alvo, falta / FLECHA_BTC.tempo, Math.max(1, Math.ceil(falta)), ar.previsao);
+      drawAlvoMercado(ar.alvo, falta / FLECHA_BTC.tempo, Math.max(1, Math.ceil(falta)), ar.previsao);
     }
     // Rastro
     if (ar.trail.length > 1) {
@@ -1777,7 +1806,7 @@ function drawTrajectory() {
     }
   }
 
-  if (v.alvo) drawAlvoBtc(v.alvo, 1, null, feedBtc.preco() === null ? null : previsaoBtc(v.alvo));
+  if (v.alvo) drawAlvoMercado(v.alvo, 1, null, feeds[v.alvo.ativo].preco() === null ? null : previsaoMercado(v.alvo));
 
   // Força e ângulo
   const deg = Math.round(-a.angle * 180 / Math.PI);
@@ -1963,13 +1992,13 @@ function drawCoin(x, y, r) {
 }
 
 // Espaços da aljava no HUD (clicáveis para trocar de flecha)
-const HUD_SLOTS = ARROW_TYPES.map((t, i) => ({ id: t.id, x: 28 + i * 62, y: 58, w: 58, h: 52 }));
+const HUD_SLOTS = ARROW_TYPES.map((t, i) => ({ id: t.id, x: 24 + i * 47, y: 58, w: 44, h: 52 }));
 
 function drawHUD() {
   const r = game.range;
 
   // Placa esquerda: campo e aljava com os tipos de flecha
-  plaque(16, 14, 334, 106, 16);
+  plaque(16, 14, 340, 106, 16);
   ctx.textAlign = 'left';
   outlinedText(r.name, 32, 46, "24px 'Lilita One', sans-serif", '#ffffff', '#4a2a10', 5);
 
@@ -1986,17 +2015,17 @@ function drawHUD() {
       ctx.stroke();
     }
     ctx.save();
-    ctx.translate(s.x + 32, s.y + 12);
+    ctx.translate(s.x + 26, s.y + 13);
     ctx.rotate(-0.8);
-    ctx.scale(0.5, 0.5);
+    ctx.scale(0.42, 0.42);
     drawArrowShape(type);
     ctx.restore();
     ctx.textAlign = 'right';
-    outlinedText(`${n}`, s.x + s.w - 6, s.y + s.h - 7, "22px 'Lilita One', sans-serif", n > 0 && n <= 2 ? '#ff8a80' : '#ffffff', '#4a2a10', 4);
+    outlinedText(`${n}`, s.x + s.w - 4, s.y + s.h - 6, "19px 'Lilita One', sans-serif", n > 0 && n <= 2 ? '#ff8a80' : '#ffffff', '#4a2a10', 4);
     ctx.textAlign = 'left';
     ctx.font = '900 11px Nunito, sans-serif';
     ctx.fillStyle = 'rgba(255,240,215,0.85)';
-    ctx.fillText(String(i + 1), s.x + 6, s.y + 14);
+    ctx.fillText(String(i + 1), s.x + 5, s.y + 13);
     ctx.restore();
   });
 
@@ -2124,7 +2153,7 @@ function render() {
   sc.drawBack(ctx, game.time);
 
   for (const b of game.birds) drawBirdShadow(b);
-  for (const b of game.birds) if (b.btc && b.state === 'flying') drawBtcTrail(b);
+  for (const b of game.birds) if (b.mercado && b.state === 'flying') drawRastroMercado(b);
   for (const b of game.birds) drawBird(b);
 
   if (!inLobby()) {
@@ -2139,7 +2168,7 @@ function render() {
   sc.drawVignette(ctx);
   if (!inLobby()) {
     drawHUD();
-    drawBtcTicker();
+    drawTickerMercado();
   }
 }
 

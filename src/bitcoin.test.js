@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  BINANCE_WS, BTC_ALTURA, BTC_AMPLITUDE, BTC_NASCE_A_CADA, BTC_PRECO_SIMULADO, FLECHA_BTC, acertaBinario, acertaNoAlvo,
+  ATIVOS, ATIVO_POR_SIMBOLO, BINANCE_WS, BTC_ALTURA, BTC_AMPLITUDE, LISTA_ATIVOS, criarFeedPreco, urlBinance, BTC_NASCE_A_CADA, BTC_PRECO_SIMULADO, FLECHA_BTC, acertaBinario, acertaNoAlvo,
   alturaBtc, alvoBinario,
   alvoFlechaBtc, criarFeedBtc, direcaoDaPrevisao, escalaBtc, lerMensagemBinance, precoPrevisto, textoResultadoEstudo,
   toleranciaEmDolares, velocidadeFlechaBtc,
@@ -264,7 +264,7 @@ describe("flecha bitcoin: previsão do preço em 5 s", () => {
     expect(folga).toBeCloseTo((BIRD_TYPES.btc.r + FLECHA_BTC.raio) / escala);
     for (const precoEm5s of [83000, 83010, 82985]) {
       const passaro = {
-        btc: {}, type: BIRD_TYPES.btc, x: FLECHA_BTC.xAlvo,
+        mercado: { ativo: "btc" }, type: BIRD_TYPES.btc, x: FLECHA_BTC.xAlvo,
         y: alturaBtc(FLECHA_BTC.nivel, agora, precoEm5s, escala),
       };
       // mirou na altura do preço que de fato veio
@@ -288,7 +288,11 @@ describe("flecha bitcoin: previsão do preço em 5 s", () => {
   it("só acerta pássaro bitcoin", () => {
     const alvo = { x: 500, y: 300 };
     expect(acertaNoAlvo(alvo, { type: BIRD_TYPES.red, x: 500, y: 300 })).toBe(false);
-    expect(acertaNoAlvo(alvo, { btc: {}, type: BIRD_TYPES.btc, x: 500, y: 300 })).toBe(true);
+    expect(acertaNoAlvo(alvo, { mercado: { ativo: "btc" }, type: BIRD_TYPES.btc, x: 500, y: 300 })).toBe(true);
+    // a flecha de um ativo só acerta o pássaro do mesmo ativo
+    const eth = { mercado: { ativo: "eth" }, type: BIRD_TYPES.eth, x: 500, y: 300 };
+    expect(acertaNoAlvo({ ...alvo, ativo: "btc" }, eth)).toBe(false);
+    expect(acertaNoAlvo({ ...alvo, ativo: "eth" }, eth)).toBe(true);
   });
 
   it("dobra as moedas do pássaro bitcoin e custa o mesmo que a de madeira", () => {
@@ -352,7 +356,7 @@ describe("modo sobe ou desce (binário)", () => {
   });
 
   it("acerta o pássaro da flecha se ele chegou do lado escolhido", () => {
-    const passaro = (y) => ({ btc: {}, y });
+    const passaro = (y) => ({ mercado: { ativo: "btc" }, y });
     expect(acertaBinario("ALTA", passaro(FLECHA_BTC.nivel - 1))).toBe(true);
     expect(acertaBinario("ALTA", passaro(FLECHA_BTC.nivel + 1))).toBe(false);
     expect(acertaBinario("QUEDA", passaro(FLECHA_BTC.nivel + 40))).toBe(true);
@@ -378,5 +382,59 @@ describe("modo sobe ou desce (binário)", () => {
       resultadoBinarioBrl: 0, resultadoLiquidoBrl: 0 });
     expect(empate.detalhe.startsWith("empatou")).toBe(true);
     expect(empate.cor).toBe("neutro");
+  });
+});
+
+describe("ativos de mercado: bitcoin, ethereum e ouro", () => {
+  const sem = (t) => t.replace(/\s/g, " ");
+
+  it("cada ativo tem par na Binance, pássaro e flecha próprios", () => {
+    expect(LISTA_ATIVOS.map((a) => a.simbolo)).toEqual(["BTCUSDT", "ETHUSDT", "PAXGUSDT"]);
+    for (const a of LISTA_ATIVOS) {
+      expect(ATIVO_POR_SIMBOLO[a.simbolo]).toBe(a);
+      expect(BIRD_TYPES[a.id]).toMatchObject({ coins: 3, mercado: a.id });
+      expect(ARROW_BY_ID[a.id]).toMatchObject({ price: 1, coins: 2, mercado: a.id });
+      for (const r of RANGES) expect(r.pool[a.id]).toBeUndefined();   // fora do sorteio dos campos
+    }
+    expect(ARROW_BY_ID.ouro.name).toBe("Ouro PAXG");                    // não confunde com a flecha de ouro
+    expect(ATIVOS.btc.casas).toBe(0);
+    expect(ATIVOS.eth.casas).toBe(2);
+  });
+
+  it("stream público da Binance de cada par", () => {
+    expect(urlBinance("ETHUSDT"))
+      .toBe("wss://data-stream.binance.vision/stream?streams=ethusdt@aggTrade/ethusdt@miniTicker");
+    expect(BINANCE_WS).toBe(urlBinance("BTCUSDT"));
+  });
+
+  it("o feed do ethereum conecta no par dele e simula a partir do preço do ativo", async () => {
+    const abertos = [];
+    const feed = criarFeedPreco({
+      simbolo: "ETHUSDT", precoSimulado: 3000, aleatorio: () => 0.5,
+      buscarReserva: async () => { throw new Error("fora do ar"); },
+      abrirSocket: (url) => { const s = { url, close() {} }; abertos.push(s); return s; },
+    });
+    feed.ligar();
+    feed.atualizar(0.016);
+    await new Promise((r) => setTimeout(r, 0));
+    feed.atualizar(0.016);
+    expect(abertos[0].url).toContain("ethusdt@aggTrade");
+    expect(feed.simulado()).toBe(true);
+    expect(feed.preco()).toBeCloseTo(3000, 0);
+  });
+
+  it("linha de agora é relativa ao preço: centavos contam no ethereum e no ouro", () => {
+    expect(direcaoDaPrevisao({ agora: 3000, previsto: 3000.01 })).toBeNull();
+    expect(direcaoDaPrevisao({ agora: 3000, previsto: 3000.05 })).toBe("ALTA");
+    expect(direcaoDaPrevisao({ agora: 2600, previsto: 2599.9 })).toBe("QUEDA");
+  });
+
+  it("o resultado diz de qual ativo era a operação", () => {
+    const op = { status: "FECHADA", tipo: "BINARIA", modo: "SIMULADO", simbolo: "PAXGUSDT",
+      resultadoBinarioBrl: 10, resultadoLiquidoBrl: -0.06 };
+    expect(sem(textoResultadoEstudo(op).detalhe)).toBe("Ouro · acertou · simulação −R$ 0,06");
+    const prev = { status: "FECHADA", modo: "SIMULADO", simbolo: "ETHUSDT", direcao: "ALTA",
+      resultadoLiquidoBrl: 0.02, acertouDirecao: true };
+    expect(textoResultadoEstudo(prev).detalhe).toBe("Ethereum · previsão certa · alta");
   });
 });
