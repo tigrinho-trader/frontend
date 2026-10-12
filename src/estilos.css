@@ -189,6 +189,9 @@ h2 { font-size: calc(var(--s) * 44px); margin-bottom: calc(var(--s) * 10px); }
   border-radius: calc(var(--s) * 18px);
   background: linear-gradient(#fffaf0, #f6e6c8);
   text-align: left;
+  /* coluna: o botao vai para o fim do card, alinhado com o dos vizinhos */
+  display: flex;
+  flex-direction: column;
 }
 .range h3 {
   font-family: 'Lilita One', 'Nunito', sans-serif;
@@ -210,6 +213,7 @@ h2 { font-size: calc(var(--s) * 44px); margin-bottom: calc(var(--s) * 10px); }
   line-height: 1.3;
   margin: calc(var(--s) * 4px) 0;
 }
+.range p:last-of-type { margin-bottom: calc(var(--s) * 12px); }
 .range .mult {
   font-weight: 900;
   color: #2e7d32;
@@ -217,7 +221,7 @@ h2 { font-size: calc(var(--s) * 44px); margin-bottom: calc(var(--s) * 10px); }
 .range .btn {
   width: 100%;
   min-width: 0;
-  margin: calc(var(--s) * 8px) 0 0;
+  margin: auto 0 0;
   font-size: calc(var(--s) * 24px);
   padding: calc(var(--s) * 8px);
 }
