@@ -237,3 +237,42 @@ export function criarFeedBtc({ buscarReserva, abrirSocket = url => new WebSocket
     ligado: () => f.ligado,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Estudo da sabedoria das massas: cada flecha bitcoin vira uma operação na direção prevista (trading-service).
+// ---------------------------------------------------------------------------
+const NEUTRO_DOLARES = 0.5;   // mirou na linha de agora: sem direção, sem operação
+
+/** 'ALTA', 'QUEDA' ou null (previsão em cima da linha de agora). */
+export function direcaoDaPrevisao(previsao) {
+  if (!previsao || !Number.isFinite(previsao.previsto) || !Number.isFinite(previsao.agora)) return null;
+  const delta = previsao.previsto - previsao.agora;
+  if (Math.abs(delta) < NEUTRO_DOLARES) return null;
+  return delta > 0 ? 'ALTA' : 'QUEDA';
+}
+
+const reais = v => {
+  const casas = Math.abs(v) > 0 && Math.abs(v) < 0.01 ? 4 : 2;
+  return `${v > 0 ? '+' : v < 0 ? '−' : ''}R$ ${Math.abs(v).toLocaleString('pt-BR',
+    { minimumFractionDigits: casas, maximumFractionDigits: casas })}`;
+};
+
+/**
+ * Texto curto para o jogador sobre a operação feita com a previsão dele, ou null enquanto ela não termina.
+ * `cor`: 'ganho' | 'perda' | 'neutro'.
+ */
+export function textoResultadoEstudo(op) {
+  if (!op) return null;
+  const tipo = op.modo === 'REAL' ? 'Operação real' : 'Simulação';
+  if (op.status === 'FECHADA') {
+    const liquido = Number(op.resultadoLiquidoBrl) || 0;
+    return {
+      texto: `${tipo}: ${reais(liquido)}`,
+      detalhe: `previsão ${op.acertouDirecao ? 'certa' : 'errada'} · ${op.direcao === 'ALTA' ? 'alta' : 'queda'}`,
+      cor: liquido > 0 ? 'ganho' : liquido < 0 ? 'perda' : 'neutro',
+    };
+  }
+  if (op.status === 'RECUSADA') return { texto: 'Sem operação', detalhe: op.motivo || '', cor: 'neutro' };
+  if (op.status === 'FALHOU') return { texto: `${tipo} não concluída`, detalhe: op.motivo || '', cor: 'neutro' };
+  return null;
+}

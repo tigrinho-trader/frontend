@@ -14,7 +14,8 @@ import { criarControladorSessao } from './sessao.js';
 import { formatarMoedas, mensagemErro } from './telas.js';
 import {
   BTC_MAX_VOANDO, BTC_NASCE_A_CADA, BTC_SIMBOLO, BTC_ALTURA, FLECHA_BTC, acertaNoAlvo, alturaBtc, alvoFlechaBtc,
-  criarFeedBtc, precoPrevisto, toleranciaEmDolares, velocidadeFlechaBtc, velocidadePassaroDaFlecha,
+  criarFeedBtc, direcaoDaPrevisao, precoPrevisto, textoResultadoEstudo, toleranciaEmDolares, velocidadeFlechaBtc,
+  velocidadePassaroDaFlecha,
 } from './bitcoin.js';
 
 // ---------------------------------------------------------------------------
@@ -123,6 +124,7 @@ const game = {
   texts: [],
   spawnTimer: 0,
   btcTimer: 0,              // próximo pássaro bitcoin
+  estudo: null,             // último resultado do estudo mostrado no HUD: { texto, detalhe, cor }
   pending: null,            // 'win' | 'lose' enquanto espera a animação terminar
   endTimer: 0,
   banner: 0,
@@ -372,6 +374,18 @@ function updateOrder(typeId, delta) {
 
 function selectArrow(id) {
   if (game.quiver[id] > 0) game.selected = id;
+  if (game.selected === 'btc') avisarEstudo();
+}
+
+/** Na primeira vez que o jogador pega a flecha bitcoin, explica o estudo (uma vez por navegador). */
+function avisarEstudo() {
+  try {
+    if (localStorage.getItem('flecha-estudo-aviso')) return;
+    localStorage.setItem('flecha-estudo-aviso', '1');
+  } catch { /* sem armazenamento: avisa toda vez */ }
+  avisar('Estudo: cada flecha bitcoin vira uma operação no mercado na direção que você previu (alta ou queda), '
+    + 'com o dinheiro do criador do jogo, não o seu. Quando a flecha chega, você vê se ela ganhou ou perdeu.',
+  'info', 12000);
 }
 
 // Se a flecha escolhida acabou, pega a próxima que ainda tiver
@@ -420,6 +434,7 @@ async function enterRange() {
   game.texts = [];
   game.spawnTimer = 0.2;
   game.btcTimer = 1;
+  game.estudo = null;
   game.pending = null;
   game.endTimer = 0;
   game.banner = 2.6;
@@ -781,6 +796,7 @@ function shoot() {
     const ar = game.arrows[game.arrows.length - 1];
     ar.previsao = previsaoBtc(v.alvo);
     spawnBtcBird({ daFlecha: true });
+    registrarNoEstudo(ar);
   }
   game.quiver[game.selected]--;
   ensureSelection();
@@ -847,6 +863,62 @@ function chegarNoAlvo(ar) {
   if (!ar.hits) addText(ar.x, ar.y - 40, 'passou!', '#ffe0b2', 26);
   ar.dead = true;
   reportarTiro(ar);
+  acompanharEstudo(ar);
+}
+
+/** No disparo: manda a previsão para o estudo (o servidor abre a operação na hora). */
+function registrarNoEstudo(ar) {
+  const direcao = direcaoDaPrevisao(ar.previsao);
+  const sessaoId = sessaoCtl?.sessao()?.id;
+  if (!direcao || !sessaoId) {
+    ar.estudo = { neutra: !direcao };
+    return;
+  }
+  ar.estudo = {
+    pedido: api.registrarOperacaoEstudo({
+      sessaoId, direcao,
+      precoAgora: Math.round(ar.previsao.agora * 100) / 100,
+      precoPrevisto: Math.round(ar.previsao.previsto * 100) / 100,
+    }).catch(erro => ({ erro })),
+  };
+}
+
+const ESPERA_RESULTADO_MS = 1000, TENTATIVAS_RESULTADO = 10;
+
+/** Quando a flecha chega: espera a operação fechar no servidor e mostra quanto ela ganhou ou perdeu. */
+async function acompanharEstudo(ar) {
+  if (!ar.estudo) return;
+  if (ar.estudo.neutra) {
+    mostrarEstudo({ texto: 'Sem operação', detalhe: 'previsão em cima da linha de agora', cor: 'neutro' });
+    return;
+  }
+  const registro = await ar.estudo.pedido;
+  if (registro?.erro) {
+    if (!tratadoPeloApp(registro.erro)) {
+      mostrarEstudo({ texto: 'Sem operação', detalhe: mensagemErro(registro.erro), cor: 'neutro' });
+    }
+    return;
+  }
+  for (let i = 0; i < TENTATIVAS_RESULTADO; i++) {
+    const op = i === 0 && registro.status !== 'ABRINDO' && registro.status !== 'ABERTA'
+      ? registro
+      : await esperar(ESPERA_RESULTADO_MS).then(() => api.operacaoEstudo(registro.id)).catch(() => null);
+    const resultado = textoResultadoEstudo(op);
+    if (resultado) {
+      mostrarEstudo(resultado);
+      return;
+    }
+  }
+}
+
+const esperar = ms => new Promise(resolve => setTimeout(resolve, ms));
+const COR_ESTUDO = { ganho: '#b9f6ca', perda: '#ff8a80', neutro: '#ffe0b2' };
+
+function mostrarEstudo(resultado) {
+  game.estudo = resultado;
+  if (game.state === 'playing') {
+    addText(FLECHA_BTC.xAlvo - 150, FLECHA_BTC.nivel - 120, resultado.texto, COR_ESTUDO[resultado.cor], 26, false, 3.5);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -906,8 +978,8 @@ function spark(x, y, color = '#fff59d') {
   });
 }
 
-function addText(x, y, text, color, size, coin = false) {
-  game.texts.push({ x, y, text, color, size, coin, life: 0, max: 1.2 });
+function addText(x, y, text, color, size, coin = false, max = 1.2) {
+  game.texts.push({ x, y, text, color, size, coin, life: 0, max });
 }
 
 // Moedas que saem do pássaro e voam até a carteira no HUD
@@ -1256,6 +1328,19 @@ function drawBtcTicker() {
   ctx.font = '800 11px Nunito, sans-serif';
   ctx.fillStyle = 'rgba(255,240,215,0.85)';
   ctx.fillText(feedBtc.simulado() ? 'SIMULADO (SEM COTAÇÃO)' : FONTE_BTC[feedBtc.fonte()] || '', x + w - 14, y + 44);
+
+  // último resultado do estudo (a operação feita com a previsão do jogador)
+  if (game.estudo) {
+    const ey = y + h + 8, eh = 44;
+    plaque(x, ey, w, eh, 12);
+    ctx.textAlign = 'left';
+    outlinedText(game.estudo.texto, x + 14, ey + 21, "17px 'Lilita One', sans-serif",
+      COR_ESTUDO[game.estudo.cor], '#4a2a10', 4);
+    ctx.font = '800 11px Nunito, sans-serif';
+    ctx.fillStyle = 'rgba(255,240,215,0.9)';
+    const detalhe = game.estudo.detalhe.length > 46 ? `${game.estudo.detalhe.slice(0, 45)}…` : game.estudo.detalhe;
+    ctx.fillText(detalhe, x + 14, ey + 37);
+  }
 }
 
 // Flecha com a ponta em (0,0) apontando para +x, nas cores do seu tipo

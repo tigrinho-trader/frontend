@@ -66,6 +66,17 @@ describe("cabeçalhos e corpo", () => {
 });
 
 describe("rotas", () => {
+  it("estudo da flecha bitcoin: registra a previsão e consulta a operação", async () => {
+    const dados = { sessaoId: "s-1", direcao: "ALTA", precoAgora: 83000, precoPrevisto: 83010 };
+    await api.registrarOperacaoEstudo(dados);
+    expect(ultimaChamada().method).toBe("POST");
+    expect(ultimaChamada().url).toBe("/api/jogos/flecha/estudo/operacoes");
+    expect(ultimaChamada().corpo).toEqual(dados);
+    await api.operacaoEstudo("op 1");
+    expect(ultimaChamada().method).toBe("GET");
+    expect(ultimaChamada().url).toBe("/api/jogos/flecha/estudo/operacoes/op%201");
+  });
+
   it("codifica ids com | nos caminhos", async () => {
     await api.alterarStatus("auth0|abc 1", "BLOQUEADO", "trapaça");
     expect(ultimaChamada().url).toBe("/api/usuarios/auth0%7Cabc%201/status");

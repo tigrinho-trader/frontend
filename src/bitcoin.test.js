@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   BINANCE_WS, BTC_ALTURA, BTC_AMPLITUDE, BTC_NASCE_A_CADA, BTC_PRECO_SIMULADO, FLECHA_BTC, acertaNoAlvo, alturaBtc,
-  alvoFlechaBtc, criarFeedBtc, escalaBtc, lerMensagemBinance, precoPrevisto, toleranciaEmDolares, velocidadeFlechaBtc,
+  alvoFlechaBtc, criarFeedBtc, direcaoDaPrevisao, escalaBtc, lerMensagemBinance, precoPrevisto, textoResultadoEstudo,
+  toleranciaEmDolares, velocidadeFlechaBtc,
   velocidadePassaroDaFlecha,
 } from "./bitcoin.js";
 import { ARROW_BY_ID, BIRD_TYPES, RANGES, arrowPosition, coinsForHit, pickBirdType } from "./regras.js";
@@ -295,5 +296,44 @@ describe("flecha bitcoin: previsão do preço em 5 s", () => {
     const vilarejo = RANGES[0];
     expect(coinsForHit(BIRD_TYPES.btc, vilarejo, flecha)).toBe(2 * coinsForHit(BIRD_TYPES.btc, vilarejo, ARROW_BY_ID.wood));
     expect(coinsForHit(BIRD_TYPES.btc, vilarejo, flecha)).toBe(12);
+  });
+});
+
+describe("estudo da sabedoria das massas", () => {
+  const sem = (t) => t.replace(/\s/g, " ");
+
+  it("a direção da operação é a da previsão; em cima da linha de agora não opera", () => {
+    expect(direcaoDaPrevisao({ agora: 83000, previsto: 83012 })).toBe("ALTA");
+    expect(direcaoDaPrevisao({ agora: 83000, previsto: 82990 })).toBe("QUEDA");
+    expect(direcaoDaPrevisao({ agora: 83000, previsto: 83000.3 })).toBeNull();
+    expect(direcaoDaPrevisao(null)).toBeNull();
+    expect(direcaoDaPrevisao({ agora: NaN, previsto: 1 })).toBeNull();
+  });
+
+  it("mostra quanto a operação ganhou ou perdeu e se a previsão acertou", () => {
+    const ganhou = textoResultadoEstudo({ status: "FECHADA", modo: "REAL", direcao: "ALTA",
+      resultadoLiquidoBrl: 0.12, acertouDirecao: true });
+    expect(sem(ganhou.texto)).toBe("Operação real: +R$ 0,12");
+    expect(ganhou.detalhe).toBe("previsão certa · alta");
+    expect(ganhou.cor).toBe("ganho");
+
+    const perdeu = textoResultadoEstudo({ status: "FECHADA", modo: "SIMULADO", direcao: "QUEDA",
+      resultadoLiquidoBrl: -0.0042, acertouDirecao: false });
+    expect(sem(perdeu.texto)).toBe("Simulação: −R$ 0,0042");     // centavos de centavo aparecem
+    expect(perdeu.detalhe).toBe("previsão errada · queda");
+    expect(perdeu.cor).toBe("perda");
+
+    expect(textoResultadoEstudo({ status: "FECHADA", modo: "REAL", resultadoLiquidoBrl: 0 }).cor).toBe("neutro");
+  });
+
+  it("recusada ou com falha explica o motivo; em andamento ainda não tem texto", () => {
+    expect(textoResultadoEstudo({ status: "RECUSADA", motivo: "Perda maxima do dia atingida" }))
+      .toEqual({ texto: "Sem operação", detalhe: "Perda maxima do dia atingida", cor: "neutro" });
+    expect(textoResultadoEstudo({ status: "FALHOU", modo: "REAL", motivo: "Nao abriu: timeout" }).texto)
+      .toBe("Operação real não concluída");
+    expect(textoResultadoEstudo({ status: "FALHOU", modo: "SIMULADO" }).detalhe).toBe("");
+    expect(textoResultadoEstudo({ status: "RECUSADA" }).detalhe).toBe("");
+    expect(textoResultadoEstudo({ status: "ABERTA" })).toBeNull();
+    expect(textoResultadoEstudo(null)).toBeNull();
   });
 });
