@@ -35,6 +35,53 @@ export function precoEmReais(moedas, centavosPorMoeda) {
   return (centavos / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
+/** Limites quando a carteira não informa: Pix de R$ 1 a R$ 1.000; pagamento de teste até 5.000 moedas. */
+export const LIMITES_PADRAO = {
+  pix: { minimoMoedas: 10, maximoMoedas: 10000 },
+  sandbox: { minimoMoedas: 1, maximoMoedas: 5000 },
+};
+
+const reais = valor => valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 0 });
+
+/** Faixa de valores em reais inteiros que cabe nos limites em moedas. */
+export function faixaEmReais({ centavosPorMoeda, minimoMoedas, maximoMoedas }) {
+  return {
+    min: Math.max(1, Math.ceil((minimoMoedas * centavosPorMoeda) / 100)),
+    max: Math.floor((maximoMoedas * centavosPorMoeda) / 100),
+  };
+}
+
+/** Texto da faixa, ex.: "de R$ 1 a R$ 1.000". */
+export function textoFaixa(cfg) {
+  const { min, max } = faixaEmReais(cfg);
+  return `de ${reais(min)} a ${reais(max)}`;
+}
+
+/**
+ * Converte o valor digitado (reais inteiros) em moedas. Campo vazio devolve `{ moedas: null }` sem erro;
+ * valor inválido devolve `{ moedas: null, erro }`.
+ */
+export function moedasDoValor(texto, cfg) {
+  const limpo = String(texto ?? '').trim().replace(/^R\$\s*/i, '').replace(/\.(?=\d{3}(\D|$))/g, '');
+  if (!limpo) return { moedas: null };
+  const fora = `Escolha um valor ${textoFaixa(cfg)}.`;
+  if (!/^\d+([.,]\d+)?$/.test(limpo)) return { moedas: null, erro: fora };
+  const valor = Number(limpo.replace(',', '.'));
+  if (!Number.isInteger(valor)) return { moedas: null, erro: 'Use um valor inteiro em reais, sem centavos.' };
+  const moedas = Math.floor((valor * 100) / cfg.centavosPorMoeda);
+  const { min, max } = faixaEmReais(cfg);
+  if (valor < min || valor > max || moedas < cfg.minimoMoedas || moedas > cfg.maximoMoedas) {
+    return { moedas: null, erro: fora };
+  }
+  return { moedas };
+}
+
+/** Valor em reais inteiros de uma quantidade de moedas, ou '' se não fechar em reais inteiros. */
+export function valorDasMoedas(moedas, centavosPorMoeda) {
+  const centavos = Number(moedas) * Number(centavosPorMoeda);
+  return Number.isFinite(centavos) && centavos > 0 && centavos % 100 === 0 ? String(centavos / 100) : '';
+}
+
 /** Cartões dos pacotes; o selecionado fica marcado. Com `centavosPorMoeda` mostra o preço. */
 export function htmlPacotes(pacotes = PACOTES, selecionadoId = null, centavosPorMoeda = null) {
   return pacotes.map(p => `

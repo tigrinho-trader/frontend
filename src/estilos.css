@@ -791,3 +791,32 @@ h3.secao {
 #ranges .range p:last-of-type { margin-bottom: calc(var(--s) * 8px); }
 #ranges .range .btn { font-size: calc(var(--s) * 20px); padding: calc(var(--s) * 5px); }
 #ranges .card > .btn { margin: calc(var(--s) * 2px) calc(var(--s) * 6px); padding: calc(var(--s) * 6px) calc(var(--s) * 22px); font-size: calc(var(--s) * 20px); min-width: 0; }
+
+/* Comprar moedas: valor livre, digitado em reais */
+.valor-livre {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: calc(var(--s) * 6px) calc(var(--s) * 12px);
+  margin: 0 0 calc(var(--s) * 12px);
+}
+.valor-livre[hidden] { display: none; }
+.valor-livre label { font-weight: 900; font-size: calc(var(--s) * 18px); }
+.campo-reais {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--s) * 6px);
+  font-family: 'Lilita One', 'Nunito', sans-serif;
+  font-size: calc(var(--s) * 24px);
+  color: #2e7d32;
+}
+.card .campo-reais input[type="text"] {
+  flex: none;
+  width: calc(var(--s) * 120px);
+  font-size: calc(var(--s) * 22px);
+  text-align: right;
+}
+.valor-moedas { font-weight: 800; font-size: calc(var(--s) * 15px); color: #8a6d4b; }
+.valor-dica { flex-basis: 100%; margin: 0; font-size: calc(var(--s) * 15px); color: #8a6d4b; }
+.valor-dica.erro { color: #c62828; font-weight: 900; }

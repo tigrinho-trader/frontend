@@ -401,6 +401,28 @@ describe("comprar moedas", () => {
     expect($("menu-wallet").textContent).toBe("2.000");
   });
 
+  it("no pagamento de teste também dá para digitar o valor", async () => {
+    rotas["POST /carteira/depositos"] = [200, { usuarioId: EU.id, saldo: 1120, atualizadaEm: null }];
+    await iniciarApp();
+    $("btn-comprar").click();
+    await estabilizar();
+    const campo = $("creditos-valor");
+    campo.value = "12";
+    campo.dispatchEvent(new Event("input"));
+    expect($("creditos-qtd").textContent).toBe("120");
+    expect($("creditos-preco").textContent).toBe(" na sua carteira");
+    campo.value = "501";
+    campo.dispatchEvent(new Event("input"));
+    expect($("creditos-valor-dica").textContent.replace(/\s/g, " ")).toBe("Escolha um valor de R$ 1 a R$ 500.");
+    campo.value = "12";
+    campo.dispatchEvent(new Event("input"));
+    $("btn-creditos-pagar").click();
+    await estabilizar();
+    expect(chamadas.find((c) => c.chave === "POST /carteira/depositos").corpo).toEqual({ valor: 120 });
+    expect($("creditos-msg").textContent).toContain("120 moedas entraram");
+    expect($("creditos-valor").value).toBe("");
+  });
+
   it("compra desligada na carteira mostra o aviso e não muda o saldo", async () => {
     rotas["POST /carteira/depositos"] = [422, { detail: "Pagamentos desabilitados" }];
     await iniciarApp();
@@ -505,6 +527,48 @@ describe("comprar moedas por Pix", () => {
     expect($("creditos-saldo").textContent).toBe("2.000");
     $("btn-creditos-voltar").click();
     expect($("menu-wallet").textContent).toBe("2.000");
+  });
+
+  it("o jogador digita quanto quer colocar e o Pix sai com essa quantidade", async () => {
+    rotas["GET /carteira/compras/config"] = [200, {
+      pixHabilitado: true, sandboxHabilitado: true, pacotes: [100, 500, 1000, 5000], centavosPorMoeda: 10,
+      minimoMoedas: 10, maximoMoedas: 10000,
+    }];
+    await iniciarApp();
+    $("btn-comprar").click();
+    await estabilizar();
+    const campo = $("creditos-valor");
+    const digitar = (texto) => { campo.value = texto; campo.dispatchEvent(new Event("input")); };
+    expect($("creditos-valor-livre").hidden).toBe(false);
+    expect($("creditos-valor-moedas").textContent).toBe("R$ 1 = 10 moedas");
+    expect($("creditos-valor-dica").textContent.replace(/\s/g, " ")).toBe("Valores de R$ 1 a R$ 1.000.");
+
+    digitar("2,50");
+    expect($("creditos-valor-dica").className).toContain("erro");
+    expect($("creditos-confirmar").hidden).toBe(true);
+
+    digitar("50");
+    expect($("creditos-pacotes").querySelector(".selecionado").dataset.pacote).toBe("p500");
+    digitar("37");
+    expect($("creditos-pacotes").querySelector(".selecionado")).toBeNull();
+    expect($("creditos-valor-dica").className).not.toContain("erro");
+    expect($("creditos-confirmar").hidden).toBe(false);
+    expect($("creditos-qtd").textContent).toBe("370");
+    expect($("creditos-preco").textContent.replace(/\s/g, " ")).toBe(" por R$ 37,00");
+
+    campo.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
+    await estabilizar();
+    expect(chamadas.find((c) => c.chave === "POST /carteira/compras").corpo).toEqual({ moedas: 370 });
+    expect($("creditos-valor-livre").hidden).toBe(true);
+  });
+
+  it("clicar num pacote preenche o valor em reais", async () => {
+    await iniciarApp();
+    $("btn-comprar").click();
+    await estabilizar();
+    $("creditos-pacotes").querySelector('[data-pacote="p5000"]').click();
+    expect($("creditos-valor").value).toBe("500");
+    expect($("creditos-qtd").textContent).toBe("5.000");
   });
 
   it("'Já paguei' com o Pix ainda pendente avisa e continua esperando", async () => {

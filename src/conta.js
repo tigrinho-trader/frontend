@@ -5,8 +5,8 @@ import * as api from './api.js';
 import { ErroApi, configurarApi } from './api.js';
 import { setState, atualizarCarteira, estadoAtual, saldoAtual, voltarDaCompra } from './jogo.js';
 import {
-  PACOTES, TEXTO_STATUS_FINAL, htmlPacotes, mensagemErroCompra, pacotesDoServidor, precoEmReais, qrCodeSeguro,
-  tempoRestante,
+  LIMITES_PADRAO, PACOTES, TEXTO_STATUS_FINAL, htmlPacotes, mensagemErroCompra, moedasDoValor, pacotesDoServidor,
+  precoEmReais, qrCodeSeguro, tempoRestante, textoFaixa, valorDasMoedas,
 } from './creditos.js';
 import { RANGE_BY_SLUG } from './regras.js';
 import {
@@ -281,12 +281,26 @@ export const INTERVALO_CONSULTA_PIX = 3000;
 const creditos = {
   selecionado: null, voltarPara: 'menu', comprando: false,
   modo: 'sandbox',            // 'pix' | 'sandbox' | 'indisponivel'
-  centavosPorMoeda: null, pacotes: PACOTES,
+  centavosPorMoeda: 10, pacotes: PACOTES, ...LIMITES_PADRAO.sandbox,
+  livre: null,                // valor digitado: { moedas } ou { moedas: null, erro }
   compra: null,               // compra Pix pendente sendo acompanhada
   consulta: null, relogio: null,
 };
 
 const pacoteSelecionado = () => creditos.pacotes.find(p => p.id === creditos.selecionado);
+const limitesCreditos = () => ({
+  centavosPorMoeda: creditos.centavosPorMoeda,
+  minimoMoedas: creditos.minimoMoedas,
+  maximoMoedas: creditos.maximoMoedas,
+});
+/** Quantas moedas o jogador escolheu: o valor digitado ou o pacote marcado. */
+const moedasEscolhidas = () => (creditos.livre ? creditos.livre.moedas : pacoteSelecionado()?.moedas) || null;
+
+function limparEscolha() {
+  creditos.selecionado = null;
+  creditos.livre = null;
+  $('creditos-valor').value = '';
+}
 
 function pararAcompanhamento() {
   clearTimeout(creditos.consulta);
@@ -304,12 +318,19 @@ function desenharCreditos() {
   $('creditos-pacotes').innerHTML = htmlPacotes(creditos.pacotes, creditos.selecionado,
     creditos.modo === 'pix' ? creditos.centavosPorMoeda : null);
 
-  const pacote = pacoteSelecionado();
-  $('creditos-confirmar').hidden = !pacote || !!pix || indisponivel;
-  if (pacote) {
-    $('creditos-qtd').textContent = formatarMoedas(pacote.moedas);
+  $('creditos-valor-livre').hidden = !!pix || indisponivel;
+  $('creditos-valor').disabled = creditos.comprando;
+  const erroValor = creditos.livre?.erro;
+  $('creditos-valor-dica').textContent = erroValor || `Valores ${textoFaixa(limitesCreditos())}.`;
+  $('creditos-valor-dica').classList.toggle('erro', !!erroValor);
+  $('creditos-valor-moedas').textContent = `R$ 1 = ${formatarMoedas(100 / creditos.centavosPorMoeda)} moedas`;
+
+  const moedas = moedasEscolhidas();
+  $('creditos-confirmar').hidden = !moedas || !!pix || indisponivel;
+  if (moedas) {
+    $('creditos-qtd').textContent = formatarMoedas(moedas);
     $('creditos-preco').textContent = creditos.modo === 'pix'
-      ? ` por ${precoEmReais(pacote.moedas, creditos.centavosPorMoeda)}` : ' na sua carteira';
+      ? ` por ${precoEmReais(moedas, creditos.centavosPorMoeda)}` : ' na sua carteira';
   }
   $('creditos-aviso-sandbox').hidden = creditos.modo !== 'sandbox';
   $('btn-creditos-pagar').textContent = creditos.modo === 'pix' ? 'Gerar Pix' : 'Confirmar compra';
@@ -341,10 +362,14 @@ async function carregarConfigCompras() {
       creditos.modo = cfg?.sandboxHabilitado === false ? 'indisponivel' : 'sandbox';
       creditos.pacotes = PACOTES;
     }
+    const padrao = LIMITES_PADRAO[creditos.modo === 'pix' ? 'pix' : 'sandbox'];
+    creditos.minimoMoedas = Number(cfg?.minimoMoedas) || padrao.minimoMoedas;
+    creditos.maximoMoedas = Number(cfg?.maximoMoedas) || padrao.maximoMoedas;
   } catch (erro) {
     // carteira antiga (sem /compras): segue no pagamento de teste
     creditos.modo = 'sandbox';
     creditos.pacotes = PACOTES;
+    Object.assign(creditos, LIMITES_PADRAO.sandbox);
     if (erro.status !== 404 && erro.status !== 401 && erro.status !== 403) {
       msg('creditos-msg', mensagemErroCompra(erro), 'erro');
     }
@@ -355,7 +380,7 @@ async function carregarConfigCompras() {
 async function abrirCreditos(voltarPara = 'menu') {
   pararAcompanhamento();
   creditos.voltarPara = voltarPara;
-  creditos.selecionado = null;
+  limparEscolha();
   creditos.compra = null;
   msg('creditos-msg', '');
   desenharCreditos();
@@ -378,7 +403,7 @@ async function atualizarCompraPix(compra) {
   }
   pararAcompanhamento();
   creditos.compra = null;
-  creditos.selecionado = null;
+  limparEscolha();
   if (compra?.status === 'PAGA') {
     await atualizarCarteira().catch(() => {});
     msg('creditos-msg', `Pagamento confirmado! ${formatarMoedas(compra.moedas)} moedas entraram na sua carteira.`, 'ok');
@@ -434,22 +459,22 @@ function atualizarRelogioPix() {
 }
 
 async function comprarPacote() {
-  const pacote = pacoteSelecionado();
-  if (!pacote || creditos.comprando) return;
+  const moedas = moedasEscolhidas();
+  if (!moedas || creditos.comprando || creditos.compra) return;
   creditos.comprando = true;
   desenharCreditos();
   msg('creditos-msg', creditos.modo === 'pix' ? 'Gerando o Pix…' : 'Processando…');
   try {
     if (creditos.modo === 'pix') {
-      creditos.compra = await api.iniciarCompraPix(pacote.moedas);
+      creditos.compra = await api.iniciarCompraPix(moedas);
       msg('creditos-msg', 'Pague com o app do seu banco: leia o QR Code ou use o copia e cola.');
       clearInterval(creditos.relogio);
       creditos.relogio = setInterval(atualizarRelogioPix, 1000);
     } else {
-      await api.comprarMoedas(pacote.moedas);
+      await api.comprarMoedas(moedas);
       await atualizarCarteira().catch(() => {});
-      creditos.selecionado = null;
-      msg('creditos-msg', `Pronto! ${formatarMoedas(pacote.moedas)} moedas entraram na sua carteira.`, 'ok');
+      limparEscolha();
+      msg('creditos-msg', `Pronto! ${formatarMoedas(moedas)} moedas entraram na sua carteira.`, 'ok');
     }
   } catch (erro) {
     if (erro.status !== 401 && erro.status !== 403) msg('creditos-msg', mensagemErroCompra(erro), 'erro');
@@ -625,8 +650,23 @@ $('creditos-pacotes').addEventListener('click', e => {
   const btn = e.target.closest('button[data-pacote]');
   if (!btn || creditos.comprando || creditos.compra) return;
   creditos.selecionado = btn.dataset.pacote;
+  creditos.livre = null;
+  // o campo mostra o valor do pacote, para o jogador ajustar a partir dele
+  $('creditos-valor').value = valorDasMoedas(pacoteSelecionado()?.moedas, creditos.centavosPorMoeda);
   msg('creditos-msg', '');
   desenharCreditos();
+});
+$('creditos-valor').addEventListener('input', e => {
+  if (creditos.comprando || creditos.compra) return;
+  const livre = moedasDoValor(e.target.value, limitesCreditos());
+  creditos.livre = livre.moedas || livre.erro ? livre : null;
+  // valor igual ao de um pacote deixa o pacote marcado
+  creditos.selecionado = creditos.pacotes.find(p => p.moedas === livre.moedas)?.id || null;
+  msg('creditos-msg', '');
+  desenharCreditos();
+});
+$('creditos-valor').addEventListener('keydown', e => {
+  if (e.key === 'Enter') comprarPacote();
 });
 $('btn-creditos-pagar').addEventListener('click', comprarPacote);
 $('btn-creditos-voltar').addEventListener('click', sairDosCreditos);

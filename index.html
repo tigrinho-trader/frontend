@@ -118,6 +118,15 @@
         <h2>Comprar moedas</h2>
         <p class="sub">Saldo atual: <span class="coin"></span><b id="creditos-saldo">0</b></p>
         <div class="pacotes" id="creditos-pacotes"></div>
+        <div class="valor-livre" id="creditos-valor-livre">
+          <label for="creditos-valor">Ou digite quanto quer colocar:</label>
+          <div class="campo-reais">
+            <span>R$</span>
+            <input type="text" id="creditos-valor" inputmode="numeric" maxlength="7" placeholder="0" autocomplete="off">
+          </div>
+          <span class="valor-moedas" id="creditos-valor-moedas"></span>
+          <p class="valor-dica" id="creditos-valor-dica"></p>
+        </div>
         <p class="aviso-config" id="creditos-indisponivel" hidden>A compra de moedas está desligada no momento.</p>
         <div class="creditos-confirmar" id="creditos-confirmar" hidden>
           <p class="creditos-resumo">Você vai receber <span class="coin"></span><b id="creditos-qtd">0</b> moedas<span id="creditos-preco"></span>.</p>

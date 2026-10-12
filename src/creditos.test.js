@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { ErroApi } from "./api.js";
-import { PACOTES, PACOTE_POR_ID, htmlPacotes, mensagemErroCompra } from "./creditos.js";
+import {
+  LIMITES_PADRAO, PACOTES, PACOTE_POR_ID, faixaEmReais, htmlPacotes, mensagemErroCompra, moedasDoValor, textoFaixa,
+  valorDasMoedas,
+} from "./creditos.js";
 
 describe("pacotes de moedas", () => {
   it("ficam dentro do limite por compra do sandbox (5.000) e em ordem crescente", () => {
@@ -100,5 +103,53 @@ describe("Pix", () => {
     expect(mensagemErroCompra(new ErroApi(503, "AbacatePay indisponivel"))).toBe(
       "O Pix está indisponível agora: AbacatePay indisponivel",
     );
+  });
+});
+
+describe("valor livre em reais", () => {
+  const PIX = { centavosPorMoeda: 10, ...LIMITES_PADRAO.pix };
+  const sem = (t) => t.replace(/\s/g, " ");
+
+  it("faixa do Pix vai de R$ 1 a R$ 1.000 (10 a 10.000 moedas)", () => {
+    expect(faixaEmReais(PIX)).toEqual({ min: 1, max: 1000 });
+    expect(sem(textoFaixa(PIX))).toBe("de R$ 1 a R$ 1.000");
+    expect(faixaEmReais({ centavosPorMoeda: 10, ...LIMITES_PADRAO.sandbox })).toEqual({ min: 1, max: 500 });
+  });
+
+  it("converte reais inteiros em moedas (R$ 1 = 10 moedas)", () => {
+    expect(moedasDoValor("1", PIX)).toEqual({ moedas: 10 });
+    expect(moedasDoValor("25", PIX)).toEqual({ moedas: 250 });
+    expect(moedasDoValor(" R$ 37 ", PIX)).toEqual({ moedas: 370 });
+    expect(moedasDoValor("1.000", PIX)).toEqual({ moedas: 10000 });
+    expect(moedasDoValor("12,00", PIX)).toEqual({ moedas: 120 });
+  });
+
+  it("campo vazio não é erro", () => {
+    expect(moedasDoValor("", PIX)).toEqual({ moedas: null });
+    expect(moedasDoValor("   ", PIX)).toEqual({ moedas: null });
+    expect(moedasDoValor(undefined, PIX)).toEqual({ moedas: null });
+  });
+
+  it("recusa centavos, texto e valores fora da faixa", () => {
+    expect(moedasDoValor("2,50", PIX).erro).toContain("inteiro");
+    expect(moedasDoValor("2.5", PIX).erro).toContain("inteiro");
+    for (const t of ["abc", "0", "-5", "1001", "1e3", "10 reais"]) {
+      const r = moedasDoValor(t, PIX);
+      expect(r.moedas).toBeNull();
+      expect(sem(r.erro)).toBe("Escolha um valor de R$ 1 a R$ 1.000.");
+    }
+  });
+
+  it("respeita o mínimo em moedas mesmo quando o preço não fecha em reais", () => {
+    const caro = { centavosPorMoeda: 30, minimoMoedas: 10, maximoMoedas: 100 };
+    expect(faixaEmReais(caro)).toEqual({ min: 3, max: 30 });
+    expect(moedasDoValor("3", caro)).toEqual({ moedas: 10 });
+    expect(moedasDoValor("4", caro)).toEqual({ moedas: 13 });
+  });
+
+  it("valor de um pacote em reais inteiros, ou vazio se não fechar", () => {
+    expect(valorDasMoedas(1000, 10)).toBe("100");
+    expect(valorDasMoedas(15, 10)).toBe("");
+    expect(valorDasMoedas(undefined, 10)).toBe("");
   });
 });
