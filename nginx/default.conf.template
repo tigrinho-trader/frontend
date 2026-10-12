@@ -3,11 +3,17 @@ server {
     listen 80;
     root /usr/share/nginx/html;
 
+    # Em localhost o navegador manda os cookies de TODOS os sites em localhost (cookie nao separa por
+    # porta). Com outros projetos locais isso passa facil de 8 KB: aceita cabecalhos maiores.
+    large_client_header_buffers 4 32k;
+
     location /api/ {
         proxy_pass ${GATEWAY_URL};
         # O navegador fala com este nginx na mesma origem. Repassar o Origin faria o CORS do gateway
         # (que só libera FRONTEND_ORIGINS) recusar os POSTs com 403.
         proxy_set_header Origin "";
+        # A API usa o token Bearer, nao cookies: nao repassa os cookies (evita 431 no gateway).
+        proxy_set_header Cookie "";
     }
 
     location / {

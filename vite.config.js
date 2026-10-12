@@ -8,7 +8,14 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      "/api": process.env.GATEWAY_URL || "http://localhost:8080",
+      "/api": {
+        target: process.env.GATEWAY_URL || "http://localhost:8080",
+        // A API usa o token Bearer, não cookies. Em localhost o navegador manda os cookies de todos os
+        // sites locais (cookie não separa por porta) e o gateway recusaria com 431.
+        configure: (proxy) => {
+          proxy.on("proxyReq", (pedido) => pedido.removeHeader("cookie"));
+        },
+      },
     },
   },
   test: {
