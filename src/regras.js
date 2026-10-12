@@ -93,9 +93,9 @@ export const ARROW_TYPES = [
     fletch: ['#e1bee7', '#8e24aa'], trail: '150,240,255', headSize: 1.35, glow: 'rgba(120,230,255,0.95)', sparkle: '#b2ebf2',
   },
   {
-    // Especial: voa 5 s até o ponto mirado e só acerta o pássaro bitcoin (física em bitcoin.js)
+    // Especial: previsão do BTC em 5 s, alvo fixo na direita, só acerta o pássaro bitcoin (bitcoin.js)
     id: 'btc', name: 'Bitcoin', price: 1, coins: 2, especial: 'btc',
-    desc: 'Leva 5 s até o ponto mirado e só acerta o pássaro bitcoin. Dobra as moedas dele.',
+    desc: 'Previsão: mire a altura do BTC daqui a 5 s no alvo da direita. Só acerta o pássaro bitcoin e dobra as moedas dele.',
     shaft: ['#5d3a1a', '#f7931a'], head: ['#fff3e0', '#f7931a', '#8a4b00'], headStroke: '#5d3000',
     fletch: ['#ffffff', '#f7931a'], trail: '247,147,26', headSize: 1.25, glow: 'rgba(247,147,26,0.9)',
   },

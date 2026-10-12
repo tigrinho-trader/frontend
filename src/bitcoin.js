@@ -10,7 +10,7 @@ export const BINANCE_WS = 'wss://data-stream.binance.vision/stream?streams=btcus
 export const BTC_NASCE_A_CADA = 3;        // segundos entre um pássaro bitcoin e o próximo
 export const BTC_MAX_VOANDO = 5;          // teto de pássaros bitcoin na tela ao mesmo tempo
 export const BTC_JANELA = 60;             // segundos de histórico usados para medir a oscilação recente
-export const BTC_AMPLITUDE = 120;         // px de altura que a oscilação recente ocupa na tela
+export const BTC_AMPLITUDE = 200;         // px de altura que a oscilação recente ocupa na tela
 export const BTC_FAIXA_MINIMA = 0.0002;   // 0,02% do preço: oscilação mínima (não amplia ruído de centavos)
 export const BTC_ALTURA = { min: 70, max: 440 };
 export const BTC_PRECO_SIMULADO = 100000; // ponto de partida quando nunca houve cotação real
@@ -37,24 +37,43 @@ export function alturaBtc(baseY, precoInicial, preco, escala) {
 }
 
 // ---------------------------------------------------------------------------
-// Flecha bitcoin: voa devagar até o ponto mirado e chega lá em exatamente FLECHA_BTC.tempo segundos.
-// Só vale no fim do voo e só acerta pássaro bitcoin: é prever onde o BTC vai estar daqui a 5 s.
+// Flecha bitcoin: é uma previsão do preço do BTC daqui a FLECHA_BTC.tempo segundos.
+// O alvo fica sempre no extremo direito da tela (xAlvo); o jogador escolhe só a altura. No instante em que a
+// flecha sai do arco nasce um pássaro bitcoin "da flecha": ele parte da altura do preço de agora (nivel) e
+// chega em xAlvo junto com a flecha. Lá, a altura dele é a variação do BTC nesses 5 s: quem mirou na altura
+// certa acerta.
 // ---------------------------------------------------------------------------
 export const FLECHA_BTC = {
   tempo: 5,          // s até o alvo
   g: 40,             // gravidade leve: um arco suave em vez da queda das flechas normais
-  alcanceMin: 150,   // px do arco até o alvo com força 0
-  alcanceMax: 1150,  // px com força máxima
-  raio: 24,          // folga do acerto, somada ao raio do pássaro
+  xAlvo: 1190,       // coluna do alvo, no extremo direito (tela lógica de 1280 px)
+  xNascimento: -60,  // de onde sai o pássaro da flecha (fora da tela, à esquerda)
+  nivel: 255,        // altura que representa o preço no instante do disparo
+  raio: 10,          // folga do acerto, somada ao raio do pássaro
 };
 
-/** Ponto mirado: na direção do arraste, mais longe quanto maior a força, sempre dentro da área de voo. */
-export function alvoFlechaBtc(origem, angulo, forca, limites) {
-  const dist = FLECHA_BTC.alcanceMin + (FLECHA_BTC.alcanceMax - FLECHA_BTC.alcanceMin) * clamp(forca, 0, 1);
-  return {
-    x: clamp(origem.x + Math.cos(angulo) * dist, limites.xMin, limites.xMax),
-    y: clamp(origem.y + Math.sin(angulo) * dist, limites.yMin, limites.yMax),
-  };
+/** Altura mirada: onde a reta do arco cruza a coluna do alvo, dentro da faixa de voo do pássaro. */
+export function alvoFlechaBtc(origem, angulo, faixa = BTC_ALTURA) {
+  const cos = Math.cos(angulo);
+  const y = cos > 0.01
+    ? origem.y + Math.tan(angulo) * (FLECHA_BTC.xAlvo - origem.x)
+    : Math.sin(angulo) < 0 ? faixa.min : faixa.max;     // apontando para cima/baixo (ou para trás)
+  return { x: FLECHA_BTC.xAlvo, y: clamp(y, faixa.min, faixa.max) };
+}
+
+/** Velocidade do pássaro da flecha: sai de xNascimento e chega em xAlvo no mesmo instante que a flecha. */
+export function velocidadePassaroDaFlecha() {
+  return (FLECHA_BTC.xAlvo - FLECHA_BTC.xNascimento) / FLECHA_BTC.tempo;
+}
+
+/** Preço que a altura y representa: é o preço que o jogador prevê para daqui a 5 s. */
+export function precoPrevisto(precoAgora, escala, y) {
+  return escala > 0 ? precoAgora + (FLECHA_BTC.nivel - y) / escala : precoAgora;
+}
+
+/** Quantos dólares de erro na previsão ainda acertam o pássaro (raio do acerto convertido em preço). */
+export function toleranciaEmDolares(escala, raioPassaro) {
+  return escala > 0 ? (raioPassaro + FLECHA_BTC.raio) / escala : 0;
 }
 
 /** Velocidade inicial para, com a gravidade da flecha bitcoin, chegar ao alvo em FLECHA_BTC.tempo. */

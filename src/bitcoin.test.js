@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   BINANCE_WS, BTC_ALTURA, BTC_AMPLITUDE, BTC_NASCE_A_CADA, BTC_PRECO_SIMULADO, FLECHA_BTC, acertaNoAlvo, alturaBtc,
-  alvoFlechaBtc, criarFeedBtc, escalaBtc, lerMensagemBinance, velocidadeFlechaBtc,
+  alvoFlechaBtc, criarFeedBtc, escalaBtc, lerMensagemBinance, precoPrevisto, toleranciaEmDolares, velocidadeFlechaBtc,
+  velocidadePassaroDaFlecha,
 } from "./bitcoin.js";
 import { ARROW_BY_ID, BIRD_TYPES, RANGES, arrowPosition, coinsForHit, pickBirdType } from "./regras.js";
 
@@ -207,52 +208,85 @@ describe("cotação do BTC em tempo real", () => {
   });
 });
 
-describe("flecha bitcoin", () => {
+describe("flecha bitcoin: previsão do preço em 5 s", () => {
   const ORIGEM = { x: 180, y: 518 };
-  const LIMITES = { xMin: 40, xMax: 1240, yMin: 70, yMax: 580 };
 
-  it("pássaro bitcoin nasce a cada 3 segundos", () => {
+  it("pássaro bitcoin avulso nasce a cada 3 segundos", () => {
     expect(BTC_NASCE_A_CADA).toBe(3);
   });
 
-  it("chega exatamente no ponto mirado em 5 segundos", () => {
-    for (const alvo of [{ x: 900, y: 300 }, { x: 400, y: 100 }, { x: 1200, y: 560 }, { x: 60, y: 200 }]) {
+  it("o alvo fica sempre no extremo direito; a mira escolhe só a altura", () => {
+    const reto = alvoFlechaBtc(ORIGEM, -0.2);
+    expect(reto.x).toBe(FLECHA_BTC.xAlvo);
+    expect(FLECHA_BTC.xAlvo).toBeGreaterThan(1100);
+    // a reta do arco cruza a coluna do alvo
+    expect(reto.y).toBeCloseTo(ORIGEM.y + Math.tan(-0.2) * (FLECHA_BTC.xAlvo - ORIGEM.x), 6);
+    // mais inclinado para cima = mais alto (preço maior)
+    expect(alvoFlechaBtc(ORIGEM, -0.3).y).toBeLessThan(reto.y);
+  });
+
+  it("a altura mirada fica na faixa onde o pássaro bitcoin pode estar", () => {
+    expect(alvoFlechaBtc(ORIGEM, -1.2).y).toBe(BTC_ALTURA.min);
+    expect(alvoFlechaBtc(ORIGEM, 0.5).y).toBe(BTC_ALTURA.max);
+    expect(alvoFlechaBtc(ORIGEM, -Math.PI / 2).y).toBe(BTC_ALTURA.min);   // para cima
+    expect(alvoFlechaBtc(ORIGEM, Math.PI / 2).y).toBe(BTC_ALTURA.max);    // para baixo
+    expect(alvoFlechaBtc(ORIGEM, Math.PI - 0.1).y).toBe(BTC_ALTURA.max);  // para trás
+  });
+
+  it("a flecha chega no alvo em exatamente 5 s, sem sair pelo topo da tela", () => {
+    for (const y of [BTC_ALTURA.min, FLECHA_BTC.nivel, BTC_ALTURA.max]) {
+      const alvo = { x: FLECHA_BTC.xAlvo, y };
       const v = velocidadeFlechaBtc(ORIGEM, alvo);
       const p = arrowPosition(ORIGEM.x, ORIGEM.y, v.vx, v.vy, FLECHA_BTC.g, FLECHA_BTC.tempo);
       expect(p.x).toBeCloseTo(alvo.x, 6);
       expect(p.y).toBeCloseTo(alvo.y, 6);
+      for (let t = 0; t <= FLECHA_BTC.tempo; t += 0.05) {
+        expect(arrowPosition(ORIGEM.x, ORIGEM.y, v.vx, v.vy, FLECHA_BTC.g, t).y).toBeGreaterThan(0);
+      }
     }
     expect(FLECHA_BTC.tempo).toBe(5);
   });
 
-  it("o arco não sai pelo topo da tela, nem mirando no ponto mais alto", () => {
-    const alvo = { x: 1240, y: LIMITES.yMin };
-    const v = velocidadeFlechaBtc(ORIGEM, alvo);
-    for (let t = 0; t <= FLECHA_BTC.tempo; t += 0.05) {
-      expect(arrowPosition(ORIGEM.x, ORIGEM.y, v.vx, v.vy, FLECHA_BTC.g, t).y).toBeGreaterThan(0);
+  it("o pássaro da flecha sai da esquerda e chega no alvo junto com ela", () => {
+    const vx = velocidadePassaroDaFlecha();
+    expect(FLECHA_BTC.xNascimento + vx * FLECHA_BTC.tempo).toBeCloseTo(FLECHA_BTC.xAlvo, 6);
+    expect(FLECHA_BTC.xNascimento).toBeLessThan(0);
+    // nasce na altura do preço de agora: se o preço não mexer, chega nessa mesma altura
+    expect(alturaBtc(FLECHA_BTC.nivel, 83000, 83000, 5)).toBe(FLECHA_BTC.nivel);
+  });
+
+  it("quem previu o preço certo acerta; quem errou além da folga, não", () => {
+    const escala = 6;                         // px por dólar no disparo
+    const agora = 83000;
+    const folga = toleranciaEmDolares(escala, BIRD_TYPES.btc.r);
+    expect(folga).toBeCloseTo((BIRD_TYPES.btc.r + FLECHA_BTC.raio) / escala);
+    for (const precoEm5s of [83000, 83010, 82985]) {
+      const passaro = {
+        btc: {}, type: BIRD_TYPES.btc, x: FLECHA_BTC.xAlvo,
+        y: alturaBtc(FLECHA_BTC.nivel, agora, precoEm5s, escala),
+      };
+      // mirou na altura do preço que de fato veio
+      const certo = { x: FLECHA_BTC.xAlvo, y: passaro.y };
+      expect(precoPrevisto(agora, escala, certo.y)).toBeCloseTo(precoEm5s, 6);
+      expect(acertaNoAlvo(certo, passaro)).toBe(true);
+      // errou a previsão por mais que a folga
+      const errado = { x: FLECHA_BTC.xAlvo, y: passaro.y + (folga + 1) * escala };
+      expect(acertaNoAlvo(errado, passaro)).toBe(false);
     }
   });
 
-  it("mira na direção do arraste, mais longe com mais força, sempre dentro da área de voo", () => {
-    const perto = alvoFlechaBtc(ORIGEM, 0, 0, LIMITES);
-    expect(perto).toEqual({ x: ORIGEM.x + FLECHA_BTC.alcanceMin, y: ORIGEM.y });
-    const longe = alvoFlechaBtc(ORIGEM, -0.4, 1, LIMITES);
-    expect(longe.x).toBeGreaterThan(perto.x);
-    expect(longe.y).toBeLessThan(ORIGEM.y);
-    const reto = alvoFlechaBtc(ORIGEM, -Math.PI / 2, 1, LIMITES);
-    expect(reto.x).toBeCloseTo(ORIGEM.x, 6);
-    expect(reto.y).toBe(LIMITES.yMin);
-    expect(alvoFlechaBtc(ORIGEM, 0, 5, LIMITES).x).toBe(LIMITES.xMax);
+  it("preço previsto: acima da linha de agora é alta, abaixo é queda", () => {
+    expect(precoPrevisto(83000, 4, FLECHA_BTC.nivel)).toBe(83000);
+    expect(precoPrevisto(83000, 4, FLECHA_BTC.nivel - 40)).toBe(83010);
+    expect(precoPrevisto(83000, 4, FLECHA_BTC.nivel + 20)).toBe(82995);
+    expect(precoPrevisto(83000, 0, 100)).toBe(83000);
+    expect(toleranciaEmDolares(0, 23)).toBe(0);
   });
 
-  it("só acerta pássaro bitcoin dentro do círculo do alvo", () => {
+  it("só acerta pássaro bitcoin", () => {
     const alvo = { x: 500, y: 300 };
-    const btc = { btc: {}, type: BIRD_TYPES.btc, x: 500, y: 300 };
-    const raio = BIRD_TYPES.btc.r + FLECHA_BTC.raio;
-    expect(acertaNoAlvo(alvo, btc)).toBe(true);
-    expect(acertaNoAlvo(alvo, { ...btc, x: 500 + raio })).toBe(true);
-    expect(acertaNoAlvo(alvo, { ...btc, x: 500 + raio + 1 })).toBe(false);
     expect(acertaNoAlvo(alvo, { type: BIRD_TYPES.red, x: 500, y: 300 })).toBe(false);
+    expect(acertaNoAlvo(alvo, { btc: {}, type: BIRD_TYPES.btc, x: 500, y: 300 })).toBe(true);
   });
 
   it("dobra as moedas do pássaro bitcoin e custa o mesmo que a de madeira", () => {
