@@ -3,7 +3,7 @@
 // O dinheiro fica no servidor: saldo na carteira (wallet-service) e cada rodada é uma
 // sessão no trading-service (sessao.js); o navegador só estima entre as respostas.
 import {
-  DEFAULT_ARROWS, MAX_ARROWS, REFILL_QTY, BIRD_TYPES, RANGES, ARROW_TYPES, ARROW_BY_ID,
+  DEFAULT_ARROWS, MAX_ARROWS, REFILL_QTY, BIRD_TYPES, RANGES, ARROW_TYPES, ARROW_BY_ID, ARROWS_BY_PRICE_DESC,
   clamp, formatMult, birdValue, arrowCost, coinsForHit, emptyQuiver, countArrows, orderCost, minCost,
   canEnter as canEnterWith, isBroke as isBrokeWith, fitOrder, changeOrder, pickBirdType,
   segmentHitsCircle, arrowPosition,
@@ -12,7 +12,10 @@ import { Scenery } from './cenarios.js';
 import * as api from './api.js';
 import { criarControladorSessao } from './sessao.js';
 import { formatarMoedas, mensagemErro } from './telas.js';
-import { BTC_MAX_VOANDO, BTC_NASCE_A_CADA, BTC_SIMBOLO, alturaBtc, criarFeedBtc } from './bitcoin.js';
+import {
+  BTC_MAX_VOANDO, BTC_NASCE_A_CADA, BTC_SIMBOLO, FLECHA_BTC, acertaNoAlvo, alturaBtc, alvoFlechaBtc, criarFeedBtc,
+  velocidadeFlechaBtc,
+} from './bitcoin.js';
 
 // ---------------------------------------------------------------------------
 // Configuração geral
@@ -25,6 +28,7 @@ const MAX_DRAG = 230;             // distância de arraste para força máxima
 const ARROW_LEN = 62;
 const LAUNCH = { x: 180, y: 518 }; // ponto de onde a flecha sai (o arco)
 const PREVIEW_STEP = 0.05;        // segundos entre pontos da trajetória
+const LIMITES_ALVO_BTC = { xMin: 40, xMax: W - 40, yMin: 70, yMax: GROUND_Y - 60 };   // onde a flecha bitcoin mira
 
 // ---------------------------------------------------------------------------
 // Utilitários
@@ -255,7 +259,7 @@ function renderRanges() {
     const card = document.createElement('div');
     card.className = 'range' + (ok ? '' : ' locked');
     const pips = '➶'.repeat(r.tier) + `<span class="off">${'➶'.repeat(4 - r.tier)}</span>`;
-    const top = ARROW_TYPES[ARROW_TYPES.length - 1];
+    const top = ARROWS_BY_PRICE_DESC[0];
     card.innerHTML = `
       <span class="tier" title="Dificuldade">${pips}</span>
       <h3>${r.name}</h3>
@@ -341,7 +345,7 @@ function renderBuy() {
         <img src="${arrowIcon(t)}" alt="">
         <div class="arrow-info">
           <b class="arrow-name">${t.name}</b>
-          <span>moedas <b class="mult">×${formatMult(t.coins)}</b> · <span class="coin"></span>${cost} cada</span>
+          <span>moedas <b class="mult">×${formatMult(t.coins)}</b> · <span class="coin"></span>${cost} cada${t.especial === 'btc' ? ' · só no pássaro bitcoin, 5 s até o alvo' : ''}</span>
         </div>
         <div class="arrow-qty">
           <button class="chip" data-type="${t.id}" data-d="-5" ${n ? '' : 'disabled'}>−5</button>
@@ -722,14 +726,23 @@ function launchVelocity() {
   return { vx: Math.cos(game.aim.angle) * speed, vy: Math.sin(game.aim.angle) * speed };
 }
 
+/** Como a flecha na mão vai voar: velocidade, gravidade e, na flecha bitcoin, o ponto onde ela chega em 5 s. */
+function planoDoTiro() {
+  if (ARROW_BY_ID[game.selected]?.especial === 'btc') {
+    const alvo = alvoFlechaBtc(LAUNCH, game.aim.angle, game.aim.power, LIMITES_ALVO_BTC);
+    return { ...velocidadeFlechaBtc(LAUNCH, alvo), g: FLECHA_BTC.g, alvo };
+  }
+  return { ...launchVelocity(), g: G, alvo: null };
+}
+
 function shoot() {
   ensureSelection();
   if (game.quiver[game.selected] <= 0) return;
-  const v = launchVelocity();
+  const v = planoDoTiro();
   game.arrows.push({
-    x0: LAUNCH.x, y0: LAUNCH.y, vx0: v.vx, vy0: v.vy, t: 0,
+    x0: LAUNCH.x, y0: LAUNCH.y, vx0: v.vx, vy0: v.vy, g: v.g, alvo: v.alvo, t: 0,
     x: LAUNCH.x, y: LAUNCH.y, px: LAUNCH.x, py: LAUNCH.y,
-    angle: game.aim.angle,
+    angle: Math.atan2(v.vy, v.vx),
     type: ARROW_BY_ID[game.selected],
     trail: [],
     state: 'flying',
@@ -753,11 +766,17 @@ function updateArrows(dt) {
       ar.py = ar.y;
       ar.t += dt;
       // Posição pela fórmula exata: a flecha segue exatamente a curva mostrada na mira
-      ({ x: ar.x, y: ar.y } = arrowPosition(ar.x0, ar.y0, ar.vx0, ar.vy0, G, ar.t));
-      ar.angle = Math.atan2(ar.vy0 + G * ar.t, ar.vx0);
+      ({ x: ar.x, y: ar.y } = arrowPosition(ar.x0, ar.y0, ar.vx0, ar.vy0, ar.g, ar.t));
+      ar.angle = Math.atan2(ar.vy0 + ar.g * ar.t, ar.vx0);
       ar.trail.push({ x: ar.x, y: ar.y });
       if (ar.type.sparkle && Math.random() < dt * 40) spark(ar.x - Math.cos(ar.angle) * 20, ar.y - Math.sin(ar.angle) * 20, ar.type.sparkle);
       if (ar.trail.length > 12) ar.trail.shift();
+
+      if (ar.alvo) {
+        // flecha bitcoin: não esbarra em nada no caminho, só vale quando chega no alvo
+        if (ar.t >= FLECHA_BTC.tempo) chegarNoAlvo(ar);
+        continue;
+      }
 
       for (const b of game.birds) {
         if (b.state !== 'flying') continue;
@@ -781,6 +800,23 @@ function updateArrows(dt) {
     }
   }
   game.arrows = game.arrows.filter(a => !a.dead);
+}
+
+/** Flecha bitcoin no fim dos 5 s: acerta os pássaros bitcoin que estiverem no círculo do alvo. */
+function chegarNoAlvo(ar) {
+  ar.x = ar.alvo.x;
+  ar.y = ar.alvo.y;
+  for (const b of game.birds) {
+    if (b.state === 'flying' && acertaNoAlvo(ar.alvo, b)) hitBird(ar, b);
+  }
+  game.particles.push({
+    kind: 'ring', x: ar.x, y: ar.y, size: BIRD_TYPES.btc.r + FLECHA_BTC.raio,
+    vx: 0, vy: 0, rot: 0, vr: 0, g: 0, life: 0, max: 0.4, color: '#f7931a',
+  });
+  for (let i = 0; i < 6; i++) spark(ar.x + rand(-12, 12), ar.y + rand(-12, 12), '#ffcc80');
+  if (!ar.hits) addText(ar.x, ar.y - 40, 'passou!', '#ffe0b2', 26);
+  ar.dead = true;
+  reportarTiro(ar);
 }
 
 // ---------------------------------------------------------------------------
@@ -1243,8 +1279,40 @@ function drawArrowShape(type = ARROW_TYPES[0], c = ctx) {
   c.fillRect(-ARROW_LEN - 2, -1.5, 3, 3);
 }
 
+/** Alvo da flecha bitcoin: o círculo onde ela acerta e, em voo, a contagem até chegar. */
+function drawAlvoBtc(alvo, resto, contagem) {
+  const raio = BIRD_TYPES.btc.r + FLECHA_BTC.raio;
+  ctx.save();
+  ctx.strokeStyle = 'rgba(247,147,26,0.95)';
+  ctx.fillStyle = 'rgba(247,147,26,0.14)';
+  ctx.lineWidth = 3;
+  ctx.setLineDash([8, 6]);
+  ctx.beginPath(); ctx.arc(alvo.x, alvo.y, raio, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.moveTo(alvo.x - 10, alvo.y); ctx.lineTo(alvo.x + 10, alvo.y);
+  ctx.moveTo(alvo.x, alvo.y - 10); ctx.lineTo(alvo.x, alvo.y + 10);
+  ctx.stroke();
+  ctx.textAlign = 'center';
+  if (contagem === null) {
+    outlinedText(`${FLECHA_BTC.tempo}s`, alvo.x, alvo.y - raio - 12, "20px 'Lilita One', sans-serif", '#ffe0b2', '#5d3000', 4);
+  } else {
+    // anel que se fecha conforme a flecha se aproxima
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.arc(alvo.x, alvo.y, raio + 8, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * clamp(resto, 0, 1));
+    ctx.stroke();
+    outlinedText(String(contagem), alvo.x, alvo.y - raio - 16, "26px 'Lilita One', sans-serif", '#ffe0b2', '#5d3000', 5);
+  }
+  ctx.restore();
+}
+
 function drawArrows() {
   for (const ar of game.arrows) {
+    if (ar.alvo && ar.state === 'flying') {
+      const falta = FLECHA_BTC.tempo - ar.t;
+      drawAlvoBtc(ar.alvo, falta / FLECHA_BTC.tempo, Math.max(1, Math.ceil(falta)));
+    }
     // Rastro
     if (ar.trail.length > 1) {
       ctx.lineCap = 'round';
@@ -1474,17 +1542,18 @@ function drawTrajectory() {
   ctx.restore();
 
   // Curva da flecha (a mesma fórmula usada no voo real)
-  const v = launchVelocity();
+  const v = planoDoTiro();
+  const passos = v.alvo ? Math.round(FLECHA_BTC.tempo / PREVIEW_STEP) : 160;
   const pulse = (game.time * 2) % 1;   // pontinho que "corre" pela curva
   ctx.textAlign = 'center';
-  for (let i = 1; i <= 160; i++) {
+  for (let i = 1; i <= passos; i++) {
     const t = i * PREVIEW_STEP;
-    const { x, y } = arrowPosition(LAUNCH.x, LAUNCH.y, v.vx, v.vy, G, t);
+    const { x, y } = arrowPosition(LAUNCH.x, LAUNCH.y, v.vx, v.vy, v.g, t);
     if (y > GROUND_Y || x < -20 || x > W + 20) break;
     if (y < -20) continue;
 
     const major = i % 10 === 0;           // a cada 0,5 s
-    const alpha = Math.max(0.3, 1 - t / 4);
+    const alpha = Math.max(0.3, 1 - t / (v.alvo ? 8 : 4));
     const running = Math.abs(((t * 2) % 1) - pulse) < 0.06;
     const r = major ? 6 : running ? 3.8 : 2.6;
 
@@ -1507,6 +1576,8 @@ function drawTrajectory() {
       ctx.fillText(label, x, y - 16);
     }
   }
+
+  if (v.alvo) drawAlvoBtc(v.alvo, 1, null);
 
   // Força e ângulo
   const deg = Math.round(-a.angle * 180 / Math.PI);
@@ -1692,13 +1763,13 @@ function drawCoin(x, y, r) {
 }
 
 // Espaços da aljava no HUD (clicáveis para trocar de flecha)
-const HUD_SLOTS = ARROW_TYPES.map((t, i) => ({ id: t.id, x: 28 + i * 76, y: 58, w: 72, h: 52 }));
+const HUD_SLOTS = ARROW_TYPES.map((t, i) => ({ id: t.id, x: 28 + i * 62, y: 58, w: 58, h: 52 }));
 
 function drawHUD() {
   const r = game.range;
 
   // Placa esquerda: campo e aljava com os tipos de flecha
-  plaque(16, 14, 330, 106, 16);
+  plaque(16, 14, 334, 106, 16);
   ctx.textAlign = 'left';
   outlinedText(r.name, 32, 46, "24px 'Lilita One', sans-serif", '#ffffff', '#4a2a10', 5);
 
@@ -1715,7 +1786,7 @@ function drawHUD() {
       ctx.stroke();
     }
     ctx.save();
-    ctx.translate(s.x + 38, s.y + 12);
+    ctx.translate(s.x + 32, s.y + 12);
     ctx.rotate(-0.8);
     ctx.scale(0.5, 0.5);
     drawArrowShape(type);

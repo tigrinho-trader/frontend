@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
-  BINANCE_WS, BTC_ALTURA, BTC_AMPLITUDE, BTC_PRECO_SIMULADO, alturaBtc, criarFeedBtc, escalaBtc, lerMensagemBinance,
+  BINANCE_WS, BTC_ALTURA, BTC_AMPLITUDE, BTC_NASCE_A_CADA, BTC_PRECO_SIMULADO, FLECHA_BTC, acertaNoAlvo, alturaBtc,
+  alvoFlechaBtc, criarFeedBtc, escalaBtc, lerMensagemBinance, velocidadeFlechaBtc,
 } from "./bitcoin.js";
-import { BIRD_TYPES, RANGES, pickBirdType } from "./regras.js";
+import { ARROW_BY_ID, BIRD_TYPES, RANGES, arrowPosition, coinsForHit, pickBirdType } from "./regras.js";
 
 const esperar = () => new Promise((r) => setTimeout(r, 0));
 
@@ -203,5 +204,62 @@ describe("cotação do BTC em tempo real", () => {
     antiga.onmessage(trade(50000));
     feed.atualizar(0.016);
     expect(feed.preco()).toBeNull();
+  });
+});
+
+describe("flecha bitcoin", () => {
+  const ORIGEM = { x: 180, y: 518 };
+  const LIMITES = { xMin: 40, xMax: 1240, yMin: 70, yMax: 580 };
+
+  it("pássaro bitcoin nasce a cada 3 segundos", () => {
+    expect(BTC_NASCE_A_CADA).toBe(3);
+  });
+
+  it("chega exatamente no ponto mirado em 5 segundos", () => {
+    for (const alvo of [{ x: 900, y: 300 }, { x: 400, y: 100 }, { x: 1200, y: 560 }, { x: 60, y: 200 }]) {
+      const v = velocidadeFlechaBtc(ORIGEM, alvo);
+      const p = arrowPosition(ORIGEM.x, ORIGEM.y, v.vx, v.vy, FLECHA_BTC.g, FLECHA_BTC.tempo);
+      expect(p.x).toBeCloseTo(alvo.x, 6);
+      expect(p.y).toBeCloseTo(alvo.y, 6);
+    }
+    expect(FLECHA_BTC.tempo).toBe(5);
+  });
+
+  it("o arco não sai pelo topo da tela, nem mirando no ponto mais alto", () => {
+    const alvo = { x: 1240, y: LIMITES.yMin };
+    const v = velocidadeFlechaBtc(ORIGEM, alvo);
+    for (let t = 0; t <= FLECHA_BTC.tempo; t += 0.05) {
+      expect(arrowPosition(ORIGEM.x, ORIGEM.y, v.vx, v.vy, FLECHA_BTC.g, t).y).toBeGreaterThan(0);
+    }
+  });
+
+  it("mira na direção do arraste, mais longe com mais força, sempre dentro da área de voo", () => {
+    const perto = alvoFlechaBtc(ORIGEM, 0, 0, LIMITES);
+    expect(perto).toEqual({ x: ORIGEM.x + FLECHA_BTC.alcanceMin, y: ORIGEM.y });
+    const longe = alvoFlechaBtc(ORIGEM, -0.4, 1, LIMITES);
+    expect(longe.x).toBeGreaterThan(perto.x);
+    expect(longe.y).toBeLessThan(ORIGEM.y);
+    const reto = alvoFlechaBtc(ORIGEM, -Math.PI / 2, 1, LIMITES);
+    expect(reto.x).toBeCloseTo(ORIGEM.x, 6);
+    expect(reto.y).toBe(LIMITES.yMin);
+    expect(alvoFlechaBtc(ORIGEM, 0, 5, LIMITES).x).toBe(LIMITES.xMax);
+  });
+
+  it("só acerta pássaro bitcoin dentro do círculo do alvo", () => {
+    const alvo = { x: 500, y: 300 };
+    const btc = { btc: {}, type: BIRD_TYPES.btc, x: 500, y: 300 };
+    const raio = BIRD_TYPES.btc.r + FLECHA_BTC.raio;
+    expect(acertaNoAlvo(alvo, btc)).toBe(true);
+    expect(acertaNoAlvo(alvo, { ...btc, x: 500 + raio })).toBe(true);
+    expect(acertaNoAlvo(alvo, { ...btc, x: 500 + raio + 1 })).toBe(false);
+    expect(acertaNoAlvo(alvo, { type: BIRD_TYPES.red, x: 500, y: 300 })).toBe(false);
+  });
+
+  it("dobra as moedas do pássaro bitcoin e custa o mesmo que a de madeira", () => {
+    const flecha = ARROW_BY_ID.btc;
+    expect(flecha).toMatchObject({ price: 1, coins: 2, especial: "btc" });
+    const vilarejo = RANGES[0];
+    expect(coinsForHit(BIRD_TYPES.btc, vilarejo, flecha)).toBe(2 * coinsForHit(BIRD_TYPES.btc, vilarejo, ARROW_BY_ID.wood));
+    expect(coinsForHit(BIRD_TYPES.btc, vilarejo, flecha)).toBe(12);
   });
 });

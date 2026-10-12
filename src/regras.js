@@ -92,8 +92,17 @@ export const ARROW_TYPES = [
     shaft: ['#90a4ae', '#eceff1'], head: ['#ffffff', '#4dd0e1', '#00838f'], headStroke: '#006064',
     fletch: ['#e1bee7', '#8e24aa'], trail: '150,240,255', headSize: 1.35, glow: 'rgba(120,230,255,0.95)', sparkle: '#b2ebf2',
   },
+  {
+    // Especial: voa 5 s até o ponto mirado e só acerta o pássaro bitcoin (física em bitcoin.js)
+    id: 'btc', name: 'Bitcoin', price: 1, coins: 2, especial: 'btc',
+    desc: 'Leva 5 s até o ponto mirado e só acerta o pássaro bitcoin. Dobra as moedas dele.',
+    shaft: ['#5d3a1a', '#f7931a'], head: ['#fff3e0', '#f7931a', '#8a4b00'], headStroke: '#5d3000',
+    fletch: ['#ffffff', '#f7931a'], trail: '247,147,26', headSize: 1.25, glow: 'rgba(247,147,26,0.9)',
+  },
 ];
 export const ARROW_BY_ID = Object.fromEntries(ARROW_TYPES.map(t => [t.id, t]));
+/** Da flecha mais cara para a mais barata (a ordem da lista não é a de preço: a bitcoin vem por último). */
+export const ARROWS_BY_PRICE_DESC = [...ARROW_TYPES].sort((a, b) => b.price - a.price);
 
 export const formatMult = m => String(m).replace('.', ',');
 
@@ -129,8 +138,7 @@ export const isBroke = wallet => !RANGES.some(r => canEnter(wallet, r));
 export function fitOrder(order, range, wallet) {
   const fitted = { ...emptyQuiver(), ...order };
   const tooExpensive = () => range.fee + orderCost(fitted, range) > wallet;
-  for (let i = ARROW_TYPES.length - 1; i >= 0 && tooExpensive(); i--) {
-    const id = ARROW_TYPES[i].id;
+  for (const { id } of ARROWS_BY_PRICE_DESC) {
     while (fitted[id] > 0 && tooExpensive()) fitted[id]--;
   }
   if (countArrows(fitted) === 0) fitted.wood = 1;

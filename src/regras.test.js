@@ -116,6 +116,12 @@ describe("loja", () => {
     expect(ajustado).toEqual(pedido({ wood: 10 }));
   });
 
+  it("corta pelo preço, não pela ordem da lista: a bitcoin (barata, a última) fica", () => {
+    // pico: entrada 40; diamante 64, bitcoin 8. Com 120 cabe 1 diamante? 40 + 64 + 2×8 = 120 sim; com 119 não.
+    expect(fitOrder(pedido({ diamond: 1, btc: 2 }), pico, 119)).toEqual(pedido({ btc: 2 }));
+    expect(fitOrder(pedido({ diamond: 1, btc: 2 }), pico, 120)).toEqual(pedido({ diamond: 1, btc: 2 }));
+  });
+
   it("garante ao menos 1 flecha ao ajustar", () => {
     expect(fitOrder(pedido({ diamond: 3 }), vilarejo, 6)).toEqual(pedido({ wood: 1 }));
   });

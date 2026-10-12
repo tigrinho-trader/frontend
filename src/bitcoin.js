@@ -7,7 +7,7 @@ import { clamp } from './regras.js';
 export const BTC_SIMBOLO = 'BTCUSDT';
 // aggTrade: cada negociação (o preço ao vivo); miniTicker: a cada segundo, com a abertura de 24 h
 export const BINANCE_WS = 'wss://data-stream.binance.vision/stream?streams=btcusdt@aggTrade/btcusdt@miniTicker';
-export const BTC_NASCE_A_CADA = 2;        // segundos entre um pássaro bitcoin e o próximo
+export const BTC_NASCE_A_CADA = 3;        // segundos entre um pássaro bitcoin e o próximo
 export const BTC_MAX_VOANDO = 5;          // teto de pássaros bitcoin na tela ao mesmo tempo
 export const BTC_JANELA = 60;             // segundos de histórico usados para medir a oscilação recente
 export const BTC_AMPLITUDE = 120;         // px de altura que a oscilação recente ocupa na tela
@@ -34,6 +34,38 @@ export function escalaBtc(historico, preco) {
 /** Altura do pássaro: sobe (y menor) quando o preço sobe em relação ao preço de quando ele nasceu. */
 export function alturaBtc(baseY, precoInicial, preco, escala) {
   return clamp(baseY - (preco - precoInicial) * escala, BTC_ALTURA.min, BTC_ALTURA.max);
+}
+
+// ---------------------------------------------------------------------------
+// Flecha bitcoin: voa devagar até o ponto mirado e chega lá em exatamente FLECHA_BTC.tempo segundos.
+// Só vale no fim do voo e só acerta pássaro bitcoin: é prever onde o BTC vai estar daqui a 5 s.
+// ---------------------------------------------------------------------------
+export const FLECHA_BTC = {
+  tempo: 5,          // s até o alvo
+  g: 40,             // gravidade leve: um arco suave em vez da queda das flechas normais
+  alcanceMin: 150,   // px do arco até o alvo com força 0
+  alcanceMax: 1150,  // px com força máxima
+  raio: 24,          // folga do acerto, somada ao raio do pássaro
+};
+
+/** Ponto mirado: na direção do arraste, mais longe quanto maior a força, sempre dentro da área de voo. */
+export function alvoFlechaBtc(origem, angulo, forca, limites) {
+  const dist = FLECHA_BTC.alcanceMin + (FLECHA_BTC.alcanceMax - FLECHA_BTC.alcanceMin) * clamp(forca, 0, 1);
+  return {
+    x: clamp(origem.x + Math.cos(angulo) * dist, limites.xMin, limites.xMax),
+    y: clamp(origem.y + Math.sin(angulo) * dist, limites.yMin, limites.yMax),
+  };
+}
+
+/** Velocidade inicial para, com a gravidade da flecha bitcoin, chegar ao alvo em FLECHA_BTC.tempo. */
+export function velocidadeFlechaBtc(origem, alvo) {
+  const { tempo: t, g } = FLECHA_BTC;
+  return { vx: (alvo.x - origem.x) / t, vy: (alvo.y - origem.y - 0.5 * g * t * t) / t };
+}
+
+/** A flecha bitcoin, ao chegar no alvo, acerta este pássaro? */
+export function acertaNoAlvo(alvo, passaro) {
+  return !!passaro.btc && Math.hypot(passaro.x - alvo.x, passaro.y - alvo.y) <= passaro.type.r + FLECHA_BTC.raio;
 }
 
 /** Lê uma mensagem do stream combinado da Binance. Devolve `{ preco, variacao24h? }` ou null. */
