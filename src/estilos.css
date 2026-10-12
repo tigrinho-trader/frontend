@@ -763,3 +763,14 @@ h3.secao {
 .pix-acoes { display: flex; gap: calc(var(--s) * 8px); margin: calc(var(--s) * 10px) 0 calc(var(--s) * 6px); flex-wrap: wrap; }
 .pix-acoes .btn { margin: 0; }
 .pix .aviso-teste { margin: 0; max-width: none; }
+
+/* Menu compacto: precisa caber inteiro na janela, sem rolagem */
+#menu .card { padding-top: calc(var(--s) * 20px); padding-bottom: calc(var(--s) * 18px); }
+#menu h1 { font-size: calc(var(--s) * 52px); }
+#menu .sub { font-size: calc(var(--s) * 17px); margin: calc(var(--s) * 2px) 0 calc(var(--s) * 10px); }
+#menu .howto { font-size: calc(var(--s) * 15.5px); line-height: 1.3; margin-bottom: calc(var(--s) * 12px); }
+#menu .howto li { margin-bottom: calc(var(--s) * 5px); padding-left: calc(var(--s) * 26px); }
+#menu .jogador { margin-bottom: calc(var(--s) * 4px); }
+#menu .btn { margin: calc(var(--s) * 4px); padding: calc(var(--s) * 9px) calc(var(--s) * 24px); font-size: calc(var(--s) * 25px); }
+#menu .btn.small { padding: calc(var(--s) * 6px) calc(var(--s) * 16px); font-size: calc(var(--s) * 18px); }
+#menu .note { margin-top: calc(var(--s) * 6px); }
