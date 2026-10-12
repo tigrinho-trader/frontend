@@ -241,6 +241,36 @@ describe("perfil", () => {
     expect($("perfil-apelido-msg").textContent).toBe("Esse apelido já está em uso. Escolha outro.");
   });
 
+  it("flecha bitcoin: sobe ou desce por padrão e o jogador troca para previsão de preço", async () => {
+    let salvo = null;
+    rotas["PUT /usuarios/me/preferencias"] = (init) => {
+      salvo = JSON.parse(init.body);
+      return [200, { ...EU, modoFlechaBitcoin: salvo.modoFlechaBitcoin }];
+    };
+    await iniciarApp();
+    const prefs = await import("./preferencias.js");
+    expect(prefs.modoDaFlechaBitcoin()).toBe("BINARIO");     // perfil sem a preferência: padrão
+    $("btn-perfil").click();
+    await estabilizar();
+    expect($("modo-flecha-binario").checked).toBe(true);
+
+    $("modo-flecha-previsao").checked = true;
+    $("modo-flecha-previsao").dispatchEvent(new Event("change", { bubbles: true }));
+    await estabilizar();
+    expect(salvo).toEqual({ modoFlechaBitcoin: "PREVISAO" });
+    expect($("pref-flecha-msg").textContent).toContain("previsão de preço");
+    expect(prefs.modoDaFlechaBitcoin()).toBe("PREVISAO");
+
+    // falha ao salvar: volta a marcação anterior e explica
+    rotas["PUT /usuarios/me/preferencias"] = [503, { detail: "user-service fora", status: 503 }];
+    $("modo-flecha-binario").checked = true;
+    $("modo-flecha-binario").dispatchEvent(new Event("change", { bubbles: true }));
+    await estabilizar();
+    expect($("modo-flecha-previsao").checked).toBe(true);
+    expect($("pref-flecha-msg").className).toContain("erro");
+    expect(prefs.modoDaFlechaBitcoin()).toBe("PREVISAO");
+  });
+
   it("excluir conta só com EXCLUIR digitado", async () => {
     rotas["DELETE /usuarios/me"] = [204];
     await iniciarApp();

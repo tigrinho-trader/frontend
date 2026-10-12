@@ -82,6 +82,22 @@ export function velocidadeFlechaBtc(origem, alvo) {
   return { vx: (alvo.x - origem.x) / t, vy: (alvo.y - origem.y - 0.5 * g * t * t) / t };
 }
 
+/**
+ * Modo binário: a mira escolhe só o lado (acima da linha de agora = sobe, abaixo = desce). A flecha vai para o
+ * meio da faixa escolhida.
+ */
+export function alvoBinario(yMirado, faixa = BTC_ALTURA) {
+  const direcao = yMirado < FLECHA_BTC.nivel ? 'ALTA' : 'QUEDA';
+  const y = direcao === 'ALTA' ? (faixa.min + FLECHA_BTC.nivel) / 2 : (FLECHA_BTC.nivel + faixa.max) / 2;
+  return { x: FLECHA_BTC.xAlvo, y, binaria: direcao };
+}
+
+/** Modo binário: acerta o pássaro da flecha se ele chegou do lado escolhido (o preço andou para lá). */
+export function acertaBinario(direcao, passaro) {
+  if (!passaro?.btc) return false;
+  return direcao === 'ALTA' ? passaro.y < FLECHA_BTC.nivel : passaro.y > FLECHA_BTC.nivel;
+}
+
 /** A flecha bitcoin, ao chegar no alvo, acerta este pássaro? */
 export function acertaNoAlvo(alvo, passaro) {
   return !!passaro.btc && Math.hypot(passaro.x - alvo.x, passaro.y - alvo.y) <= passaro.type.r + FLECHA_BTC.raio;
@@ -264,6 +280,16 @@ const reais = v => {
 export function textoResultadoEstudo(op) {
   if (!op) return null;
   const tipo = op.modo === 'REAL' ? 'Operação real' : 'Simulação';
+  if (op.status === 'FECHADA' && op.tipo === 'BINARIA') {
+    // o jogador vê o placar da aposta binária; a operação na margem fica no detalhe
+    const binario = Number(op.resultadoBinarioBrl) || 0;
+    const liquido = Number(op.resultadoLiquidoBrl) || 0;
+    return {
+      texto: `Aposta binária: ${reais(binario)}`,
+      detalhe: `${binario > 0 ? 'acertou' : binario < 0 ? 'errou' : 'empatou'} · ${tipo.toLowerCase()} ${reais(liquido)}`,
+      cor: binario > 0 ? 'ganho' : binario < 0 ? 'perda' : 'neutro',
+    };
+  }
   if (op.status === 'FECHADA') {
     const liquido = Number(op.resultadoLiquidoBrl) || 0;
     return {

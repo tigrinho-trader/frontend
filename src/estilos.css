@@ -822,3 +822,29 @@ h3.secao {
 .valor-moedas { font-weight: 800; font-size: calc(var(--s) * 15px); color: #8a6d4b; }
 .valor-dica { flex-basis: 100%; margin: 0; font-size: calc(var(--s) * 15px); color: #8a6d4b; }
 .valor-dica.erro { color: #c62828; font-weight: 900; }
+
+/* Perfil: como usar a flecha bitcoin */
+.pref-flecha {
+  display: grid;
+  gap: calc(var(--s) * 6px);
+  margin: calc(var(--s) * 10px) 0 0;
+  padding: 0;
+  border: 0;
+  text-align: left;
+}
+.pref-flecha legend { font-weight: 900; font-size: calc(var(--s) * 18px); margin-bottom: calc(var(--s) * 4px); }
+.pref-flecha .opcao {
+  display: flex;
+  gap: calc(var(--s) * 10px);
+  align-items: flex-start;
+  padding: calc(var(--s) * 8px) calc(var(--s) * 12px);
+  border: calc(var(--s) * 3px) solid #e2cfae;
+  border-radius: calc(var(--s) * 12px);
+  background: #fffaf0;
+  cursor: pointer;
+  font-size: calc(var(--s) * 15px);
+  line-height: 1.3;
+}
+.pref-flecha .opcao:has(input:checked) { border-color: #f7931a; background: #fff3e0; }
+.pref-flecha .opcao b { display: block; font-size: calc(var(--s) * 16px); }
+.pref-flecha input { margin-top: calc(var(--s) * 3px); accent-color: #f7931a; }

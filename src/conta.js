@@ -9,6 +9,7 @@ import {
   precoEmReais, qrCodeSeguro, tempoRestante, textoFaixa, valorDasMoedas,
 } from './creditos.js';
 import { RANGE_BY_SLUG } from './regras.js';
+import { definirPreferencias } from './preferencias.js';
 import {
   ROTULO_PAPEL, escaparHtml, formatarComSinal, formatarData, formatarMoedas, htmlExtrato, htmlLinhasUsuarios, iniciais,
   mensagemErro, nomeExibicao, paginacao, urlSegura, validarApelido,
@@ -56,6 +57,7 @@ function mensagemLogin(erro, prefixo = '') {
 }
 
 function mostrarPerfilNoMenu() {
+  definirPreferencias(perfil);                // o jogo consulta o modo da flecha bitcoin
   pintarAvatar($('menu-avatar'), perfil);
   $('menu-apelido').textContent = nomeExibicao(perfil);
   $('btn-admin').hidden = perfil?.papel !== 'ADMIN';
@@ -204,6 +206,24 @@ function preencherPerfil() {
   $('perfil-papel').textContent = ROTULO_PAPEL[perfil?.papel] || perfil?.papel || '—';
   $('perfil-desde').textContent = formatarData(perfil?.criadoEm);
   $('perfil-apelido').value = perfil?.apelido || '';
+  const modo = perfil?.modoFlechaBitcoin === 'PREVISAO' ? 'previsao' : 'binario';
+  $(`modo-flecha-${modo}`).checked = true;
+}
+
+async function salvarModoFlecha(e) {
+  const escolhido = e.target.value;
+  const anterior = perfil?.modoFlechaBitcoin || 'BINARIO';
+  msg('pref-flecha-msg', 'Salvando…');
+  try {
+    perfil = await api.alterarPreferencias({ modoFlechaBitcoin: escolhido });
+    mostrarPerfilNoMenu();
+    msg('pref-flecha-msg', escolhido === 'BINARIO'
+      ? 'Pronto: a flecha bitcoin agora é de sobe ou desce.'
+      : 'Pronto: a flecha bitcoin agora é de previsão de preço.', 'ok');
+  } catch (erro) {
+    $(`modo-flecha-${anterior === 'PREVISAO' ? 'previsao' : 'binario'}`).checked = true;
+    if (erro.status !== 401 && erro.status !== 403) msg('pref-flecha-msg', mensagemErro(erro), 'erro');
+  }
 }
 
 function fecharExclusao() {
@@ -217,6 +237,7 @@ function fecharExclusao() {
 async function abrirPerfil() {
   preencherPerfil();
   msg('perfil-apelido-msg', '');
+  msg('pref-flecha-msg', '');
   fecharExclusao();
   $('perfil-extrato').innerHTML = '<tr><td colspan="4" class="vazio">Carregando…</td></tr>';
   setState('perfil');
@@ -630,6 +651,7 @@ $('btn-tentar').addEventListener('click', carregarConta);
 $('btn-perfil').addEventListener('click', abrirPerfil);
 $('btn-perfil-voltar').addEventListener('click', () => setState('menu'));
 $('form-apelido').addEventListener('submit', salvarApelido);
+$('pref-flecha').addEventListener('change', salvarModoFlecha);
 $('perfil-apelido').addEventListener('input', () => msg('perfil-apelido-msg', ''));
 $('btn-excluir').addEventListener('click', () => {
   $('btn-excluir').hidden = true;

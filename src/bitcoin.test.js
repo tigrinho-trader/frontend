@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  BINANCE_WS, BTC_ALTURA, BTC_AMPLITUDE, BTC_NASCE_A_CADA, BTC_PRECO_SIMULADO, FLECHA_BTC, acertaNoAlvo, alturaBtc,
+  BINANCE_WS, BTC_ALTURA, BTC_AMPLITUDE, BTC_NASCE_A_CADA, BTC_PRECO_SIMULADO, FLECHA_BTC, acertaBinario, acertaNoAlvo,
+  alturaBtc, alvoBinario,
   alvoFlechaBtc, criarFeedBtc, direcaoDaPrevisao, escalaBtc, lerMensagemBinance, precoPrevisto, textoResultadoEstudo,
   toleranciaEmDolares, velocidadeFlechaBtc,
   velocidadePassaroDaFlecha,
@@ -335,5 +336,47 @@ describe("estudo da sabedoria das massas", () => {
     expect(textoResultadoEstudo({ status: "RECUSADA" }).detalhe).toBe("");
     expect(textoResultadoEstudo({ status: "ABERTA" })).toBeNull();
     expect(textoResultadoEstudo(null)).toBeNull();
+  });
+});
+
+describe("modo sobe ou desce (binário)", () => {
+  const sem = (t) => t.replace(/\s/g, " ");
+
+  it("acima da linha de agora é sobe, abaixo é desce; a flecha vai para o meio da faixa", () => {
+    const sobe = alvoBinario(FLECHA_BTC.nivel - 1);
+    expect(sobe).toEqual({ x: FLECHA_BTC.xAlvo, y: (BTC_ALTURA.min + FLECHA_BTC.nivel) / 2, binaria: "ALTA" });
+    const desce = alvoBinario(FLECHA_BTC.nivel + 80);
+    expect(desce.binaria).toBe("QUEDA");
+    expect(desce.y).toBe((FLECHA_BTC.nivel + BTC_ALTURA.max) / 2);
+    expect(alvoBinario(FLECHA_BTC.nivel).binaria).toBe("QUEDA");
+  });
+
+  it("acerta o pássaro da flecha se ele chegou do lado escolhido", () => {
+    const passaro = (y) => ({ btc: {}, y });
+    expect(acertaBinario("ALTA", passaro(FLECHA_BTC.nivel - 1))).toBe(true);
+    expect(acertaBinario("ALTA", passaro(FLECHA_BTC.nivel + 1))).toBe(false);
+    expect(acertaBinario("QUEDA", passaro(FLECHA_BTC.nivel + 40))).toBe(true);
+    expect(acertaBinario("QUEDA", passaro(FLECHA_BTC.nivel))).toBe(false);   // preço parado: ninguém acerta
+    expect(acertaBinario("ALTA", passaro(FLECHA_BTC.nivel))).toBe(false);
+    expect(acertaBinario("ALTA", { y: 0 })).toBe(false);                     // só pássaro bitcoin
+  });
+
+  it("o jogador vê o placar da aposta binária e a operação no detalhe", () => {
+    const ganhou = textoResultadoEstudo({ status: "FECHADA", tipo: "BINARIA", modo: "SIMULADO",
+      resultadoBinarioBrl: 10, resultadoLiquidoBrl: -0.06 });
+    expect(sem(ganhou.texto)).toBe("Aposta binária: +R$ 10,00");
+    expect(sem(ganhou.detalhe)).toBe("acertou · simulação −R$ 0,06");
+    expect(ganhou.cor).toBe("ganho");
+
+    const perdeu = textoResultadoEstudo({ status: "FECHADA", tipo: "BINARIA", modo: "REAL",
+      resultadoBinarioBrl: -10, resultadoLiquidoBrl: -0.07 });
+    expect(sem(perdeu.texto)).toBe("Aposta binária: −R$ 10,00");
+    expect(sem(perdeu.detalhe)).toBe("errou · operação real −R$ 0,07");
+    expect(perdeu.cor).toBe("perda");
+
+    const empate = textoResultadoEstudo({ status: "FECHADA", tipo: "BINARIA", modo: "REAL",
+      resultadoBinarioBrl: 0, resultadoLiquidoBrl: 0 });
+    expect(empate.detalhe.startsWith("empatou")).toBe(true);
+    expect(empate.cor).toBe("neutro");
   });
 });
