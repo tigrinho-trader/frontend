@@ -456,14 +456,14 @@ describe("comprar moedas por Pix", () => {
   const QR = "data:image/png;base64,iVBORw0KGgo=";
   function compra(extra = {}) {
     return {
-      id: "c-1", moedas: 1000, centavos: 1000, status: "PENDENTE", brCode: "00020126pix-copia-e-cola",
+      id: "c-1", moedas: 1000, centavos: 10000, status: "PENDENTE", brCode: "00020126pix-copia-e-cola",
       brCodeBase64: QR, expiraEm: new Date(Date.now() + 30 * 60_000).toISOString(), devMode: true,
       criadaEm: null, pagaEm: null, saldo: null, ...extra,
     };
   }
 
   beforeEach(() => {
-    rotas["GET /carteira/compras/config"] = [200, { pixHabilitado: true, sandboxHabilitado: true, pacotes: [100, 500, 1000, 5000], centavosPorMoeda: 1 }];
+    rotas["GET /carteira/compras/config"] = [200, { pixHabilitado: true, sandboxHabilitado: true, pacotes: [100, 500, 1000, 5000], centavosPorMoeda: 10 }];
     rotas["POST /carteira/compras"] = [201, compra()];
   });
 
@@ -474,7 +474,7 @@ describe("comprar moedas por Pix", () => {
     expect($("creditos-pacotes").textContent.replace(/\s/g, " ")).toContain("R$ 10,00");
     $("creditos-pacotes").querySelector('[data-pacote="p1000"]').click();
     expect($("btn-creditos-pagar").textContent).toBe("Gerar Pix");
-    expect($("creditos-preco").textContent.replace(/\s/g, " ")).toBe(" por R$ 10,00");
+    expect($("creditos-preco").textContent.replace(/\s/g, " ")).toBe(" por R$ 100,00");
     expect($("creditos-aviso-sandbox").hidden).toBe(true);
     $("btn-creditos-pagar").click();
     await estabilizar();

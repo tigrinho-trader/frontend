@@ -333,7 +333,7 @@ function desenharCreditos() {
 async function carregarConfigCompras() {
   try {
     const cfg = await api.configCompras();
-    creditos.centavosPorMoeda = Number(cfg?.centavosPorMoeda) || 1;
+    creditos.centavosPorMoeda = Number(cfg?.centavosPorMoeda) || 10;
     if (cfg?.pixHabilitado) {
       creditos.modo = 'pix';
       creditos.pacotes = pacotesDoServidor(cfg.pacotes);
