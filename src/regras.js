@@ -25,6 +25,8 @@ export const BIRD_TYPES = {
   yellow: { name: 'Amarelo',  r: 21, color: '#fbc02d', belly: '#fff3c4', speed: 290, coins: 4 },
   blue:   { name: 'Azul',     r: 16, color: '#42a5f5', belly: '#d6ecff', speed: 220, coins: 5 },
   gold:   { name: 'Dourado',  r: 19, color: '#ffca28', belly: '#fff8d0', speed: 360, coins: 15, shiny: true },
+  // Não entra no sorteio dos campos: nasce sozinho a cada 2 s e voa conforme a cotação do BTC (bitcoin.js)
+  btc:    { name: 'Bitcoin',  r: 23, color: '#f7931a', belly: '#ffe0b2', speed: 190, coins: 3, btc: true },
 };
 
 for (const t of Object.values(BIRD_TYPES)) {

@@ -154,6 +154,7 @@ export const simularPagamentoPix = compraId => requisitar('POST', `/carteira/com
 // ---------------------------------------------------------------------------
 // trading-service: sessões do Flecha Certeira
 // ---------------------------------------------------------------------------
+export const cotacao = simbolo => requisitar('GET', `/cotacoes/${encodeURIComponent(simbolo)}`, { publico: true });
 export const regrasFlecha = () => requisitar('GET', '/jogos/flecha/regras', { publico: true });
 /** Sessão ABERTA do usuário, ou null (204). */
 export const sessaoAtual = () => requisitar('GET', '/jogos/flecha/sessoes/atual');

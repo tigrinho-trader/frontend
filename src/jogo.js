@@ -12,6 +12,7 @@ import { Scenery } from './cenarios.js';
 import * as api from './api.js';
 import { criarControladorSessao } from './sessao.js';
 import { formatarMoedas, mensagemErro } from './telas.js';
+import { BTC_MAX_VOANDO, BTC_NASCE_A_CADA, BTC_SIMBOLO, alturaBtc, criarFeedBtc } from './bitcoin.js';
 
 // ---------------------------------------------------------------------------
 // Configuração geral
@@ -118,6 +119,7 @@ const game = {
   particles: [],
   texts: [],
   spawnTimer: 0,
+  btcTimer: 0,              // próximo pássaro bitcoin
   pending: null,            // 'win' | 'lose' enquanto espera a animação terminar
   endTimer: 0,
   banner: 0,
@@ -414,6 +416,7 @@ async function enterRange() {
   game.particles = [];
   game.texts = [];
   game.spawnTimer = 0.2;
+  game.btcTimer = 1;
   game.pending = null;
   game.endTimer = 0;
   game.banner = 2.6;
@@ -589,6 +592,59 @@ function spawnBird() {
   });
 }
 
+// Cotação do BTC em tempo real (Binance; reserva: market-data-service) que guia os pássaros bitcoin.
+// Só fica conectada durante a rodada.
+const feedBtc = criarFeedBtc({ buscarReserva: () => api.cotacao(BTC_SIMBOLO) });
+
+function spawnBtcBird() {
+  const type = BIRD_TYPES.btc;
+  const dir = Math.random() < 0.5 ? 1 : -1;
+  const baseY = rand(170, 340);
+  game.birds.push({
+    type, typeId: 'btc', dir,
+    x: dir > 0 ? -60 : W + 60,
+    y: baseY, baseY, amp: 0, phase: 0, freq: 0,
+    vx: dir * type.speed * game.range.speedMul * rand(0.9, 1.1),
+    vy: 0, t: 0,
+    flap: rand(0, 6),
+    blink: rand(1, 4),
+    state: 'flying',
+    rot: 0, spin: 0, tilt: 0,
+    btc: { precoInicial: feedBtc.preco(), geracao: feedBtc.geracao(), rastro: [], proximoPonto: 0, subindo: true },
+  });
+}
+
+/** Um pássaro bitcoin a cada BTC_NASCE_A_CADA segundos (assim que houver cotação). */
+function updateBtcSpawner(dt) {
+  game.btcTimer -= dt;
+  if (game.btcTimer > 0 || feedBtc.preco() === null) return;
+  game.btcTimer = BTC_NASCE_A_CADA;
+  const voando = game.birds.filter(b => b.btc && b.state === 'flying').length;
+  if (voando < BTC_MAX_VOANDO) spawnBtcBird();
+}
+
+/** Altura do pássaro bitcoin pela variação do preço desde que ele nasceu, com rastro e inclinação. */
+function voarBtc(b, dt) {
+  const preco = feedBtc.preco();
+  if (b.btc.geracao !== feedBtc.geracao()) {
+    // o preço saltou (cotação real ⇄ simulada): continua de onde está
+    b.btc.geracao = feedBtc.geracao();
+    b.btc.precoInicial = preco;
+    b.baseY = b.y;
+  }
+  const antes = b.y;
+  b.y = alturaBtc(b.baseY, b.btc.precoInicial, preco, feedBtc.escala());
+  const subida = dt > 0 ? (antes - b.y) / dt : 0;
+  b.tilt += (clamp(-b.dir * subida * 0.004, -0.5, 0.5) - b.tilt) * Math.min(1, dt * 8);
+  b.btc.subindo = preco >= b.btc.precoInicial;
+  b.btc.proximoPonto -= dt;
+  if (b.btc.proximoPonto <= 0) {
+    b.btc.proximoPonto = 0.05;
+    b.btc.rastro.push({ x: b.x, y: b.y });
+    if (b.btc.rastro.length > 36) b.btc.rastro.shift();
+  }
+}
+
 function updateSpawner(dt) {
   game.spawnTimer -= dt;
   const flying = game.birds.filter(b => b.state === 'flying').length;
@@ -606,7 +662,8 @@ function updateBirds(dt) {
       b.blink -= dt;
       if (b.blink < -0.12) b.blink = rand(1.5, 4);
       b.x += b.vx * dt;
-      b.y = b.baseY + b.amp * Math.sin(b.phase + b.t * b.freq);
+      if (b.btc) voarBtc(b, dt);
+      else b.y = b.baseY + b.amp * Math.sin(b.phase + b.t * b.freq);
       if (b.type.shiny && Math.random() < dt * 30) spark(b.x - b.dir * b.type.r, b.y + rand(-8, 8));
       if ((b.dir > 0 && b.x > W + 80) || (b.dir < 0 && b.x < -80)) b.dead = true;
     } else {
@@ -846,6 +903,14 @@ function update(dt) {
   game.time += dt;
   scene().update(dt, game.time);
 
+  // a cotação do BTC só é ouvida durante a rodada
+  if (game.state === 'playing') {
+    if (!feedBtc.ligado()) feedBtc.ligar();
+  } else if (feedBtc.ligado()) {
+    feedBtc.desligar();
+  }
+  feedBtc.atualizar(dt);
+
   if (inLobby()) {
     // Pássaros voando no fundo do menu, só de enfeite
     updateSpawner(dt);
@@ -859,6 +924,7 @@ function update(dt) {
   game.shake = Math.max(0, game.shake - dt);
 
   updateSpawner(dt);
+  updateBtcSpawner(dt);
   updateBirds(dt);
   updateArrows(dt);
   updateParticles(dt);
@@ -1058,9 +1124,72 @@ function drawBird(b) {
   ctx.save();
   ctx.translate(b.x, b.y);
   if (b.state === 'falling') ctx.rotate(b.rot);
+  else if (b.tilt) ctx.rotate(b.tilt);
   ctx.scale(b.dir, 1);
   drawBirdBody(b.type, b.type.r, b.flap, b.state === 'falling', b.blink < 0);
   ctx.restore();
+  if (b.btc) drawBtcSymbol(b);
+}
+
+/** Símbolo ₿ na barriga do pássaro bitcoin (fora do espelhamento, para não sair invertido). */
+function drawBtcSymbol(b) {
+  const r = b.type.r;
+  ctx.save();
+  ctx.translate(b.x, b.y);
+  ctx.rotate(b.state === 'falling' ? b.rot : b.tilt);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = `900 ${Math.round(r * 0.95)}px Nunito, sans-serif`;
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = '#8a4b00';
+  ctx.strokeText('₿', -b.dir * r * 0.18, r * 0.3);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText('₿', -b.dir * r * 0.18, r * 0.3);
+  ctx.restore();
+}
+
+/** Rastro do pássaro bitcoin, como uma linha de gráfico: verde se o preço subiu desde que ele nasceu. */
+function drawBtcTrail(b) {
+  const pts = b.btc.rastro;
+  if (pts.length < 2) return;
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = b.btc.subindo ? '#43a047' : '#e53935';
+  for (let i = 1; i < pts.length; i++) {
+    ctx.globalAlpha = (i / pts.length) * 0.8;
+    ctx.lineWidth = 2 + (i / pts.length) * 3;
+    ctx.beginPath();
+    ctx.moveTo(pts[i - 1].x, pts[i - 1].y);
+    ctx.lineTo(pts[i].x, pts[i].y);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+const FONTE_BTC = { binance: 'BINANCE AO VIVO', servidor: 'VIA SERVIDOR' };
+
+/** Placa com a cotação do BTC que está guiando os pássaros bitcoin. */
+function drawBtcTicker() {
+  const preco = feedBtc.preco();
+  if (preco === null) return;
+  const x = 856, y = 14, w = 280, h = 58;
+  plaque(x, y, w, h, 14);
+  ctx.textAlign = 'left';
+  outlinedText('₿', x + 14, y + 40, "30px 'Lilita One', sans-serif", '#f7931a', '#4a2a10', 5);
+  outlinedText(`US$ ${Math.round(preco).toLocaleString('pt-BR')}`, x + 44, y + 38, "24px 'Lilita One', sans-serif",
+    '#ffffff', '#4a2a10', 5);
+  ctx.textAlign = 'right';
+  ctx.font = '900 13px Nunito, sans-serif';
+  const v = feedBtc.variacao24h();
+  if (v !== null && !feedBtc.simulado()) {
+    ctx.fillStyle = v >= 0 ? '#b9f6ca' : '#ff8a80';
+    ctx.fillText(`${v >= 0 ? '▲' : '▼'} ${Math.abs(v).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}% 24h`,
+      x + w - 14, y + 24);
+  }
+  ctx.font = '800 11px Nunito, sans-serif';
+  ctx.fillStyle = 'rgba(255,240,215,0.85)';
+  ctx.fillText(feedBtc.simulado() ? 'SIMULADO (SEM COTAÇÃO)' : FONTE_BTC[feedBtc.fonte()] || '', x + w - 14, y + 44);
 }
 
 // Flecha com a ponta em (0,0) apontando para +x, nas cores do seu tipo
@@ -1724,6 +1853,7 @@ function render() {
   sc.drawBack(ctx, game.time);
 
   for (const b of game.birds) drawBirdShadow(b);
+  for (const b of game.birds) if (b.btc && b.state === 'flying') drawBtcTrail(b);
   for (const b of game.birds) drawBird(b);
 
   if (!inLobby()) {
@@ -1736,7 +1866,10 @@ function render() {
   ctx.restore();
 
   sc.drawVignette(ctx);
-  if (!inLobby()) drawHUD();
+  if (!inLobby()) {
+    drawHUD();
+    drawBtcTicker();
+  }
 }
 
 // ---------------------------------------------------------------------------
