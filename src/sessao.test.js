@@ -279,3 +279,23 @@ describe("flechas de mercado", () => {
     expect(ctl.estado().ganhosServidor).toBe(0);
   });
 });
+
+describe("conflito com o pagamento de uma aposta", () => {
+  it("409 de alteração simultânea repete o tiro; outro 409 chega como erro", async () => {
+    const api = apiFalsa();
+    const original = api.registrarTiro.getMockImplementation();
+    api.registrarTiro
+      .mockImplementationOnce(async () => { throw new ErroApi(409, "Alterado por outro pedido ao mesmo tempo, tente de novo"); })
+      .mockImplementation(original);
+    const erros = [];
+    const ctl = criarControladorSessao({ api, esperar: async () => {}, aoErro: (e) => erros.push(e) });
+    await ctl.abrir("vilarejo", { wood: 10 });
+    const r = await ctl.registrarTiro("wood", ["red"], 4);
+    expect(r.ganhosTiro).toBe(4);
+    expect(erros).toEqual([]);
+
+    api.registrarTiro.mockImplementationOnce(async () => { throw new ErroApi(409, "Sessao ja encerrada"); });
+    expect(await ctl.registrarTiro("wood", [], 0)).toBeNull();
+    expect(erros[0].status).toBe(409);
+  });
+});

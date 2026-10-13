@@ -61,8 +61,10 @@ export function criarControladorSessao({
       try {
         return await api.registrarTiro(exigirSessao().id, flecha, acertos);
       } catch (erro) {
-        // 429: chegou cedo demais (relógio do servidor); espera e tenta de novo
-        if (erro?.status === 429 && tentativa < TENTATIVAS_429) continue;
+        // 429: chegou cedo demais (relógio do servidor); 409 "ao mesmo tempo": o servidor pagou uma aposta de
+        // mercado nesta sessão no mesmo instante. Nos dois casos, espera e tenta de novo
+        const repetir = erro?.status === 429 || (erro?.status === 409 && /ao mesmo tempo/i.test(erro?.mensagem || ''));
+        if (repetir && tentativa < TENTATIVAS_429) continue;
         throw erro;
       }
     }
