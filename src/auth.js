@@ -36,6 +36,9 @@ export function lerConfiguracao(env = {}) {
   };
 }
 
+/** Quantas vezes a descoberta do servidor de login é tentada antes de avisar que ele está fora. */
+export const TENTATIVAS_DESCOBERTA = 3;
+
 /** Falha de rede (servidor de login fora do ar, porta errada, tempo esgotado). */
 export function ehFalhaDeRede(erro) {
   if (!erro) return false;
@@ -177,10 +180,14 @@ export function criarAuth({ env = import.meta.env, criarCliente = criarGerenciad
       if (usuario) return { autenticado: true, erro };
 
       // Sem sessão: confere já se o servidor de login responde, para avisar antes do clique em "Entrar".
-      try {
-        await cliente.metadataService?.getMetadata();
-      } catch (e) {
-        throw traduzir(e, { descoberta: true });
+      // Falha de rede ganha mais tentativas: o Keycloak parado há horas pode passar do prazo na primeira.
+      for (let tentativa = 1; ; tentativa++) {
+        try {
+          await cliente.metadataService?.getMetadata();
+          break;
+        } catch (e) {
+          if (!ehFalhaDeRede(e) || tentativa >= TENTATIVAS_DESCOBERTA) throw traduzir(e, { descoberta: true });
+        }
       }
       return { autenticado: false, erro };
     },

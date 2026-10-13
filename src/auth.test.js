@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import * as modulo from "./auth.js";
-import { ErroLogin, PADRAO, criarAuth, criarGerenciadorOidc, ehFalhaDeRede, lerConfiguracao } from "./auth.js";
+import { ErroLogin, PADRAO, TENTATIVAS_DESCOBERTA, criarAuth, criarGerenciadorOidc, ehFalhaDeRede, lerConfiguracao } from "./auth.js";
 
 const KEYCLOAK = {};   // sem variáveis = Keycloak local
 const AUTH0 = {
@@ -278,12 +278,23 @@ describe("iniciar", () => {
     expect(erro.servidorFora).toBe(true);
     expect(erro.message).toContain("Não foi possível falar com o servidor de login (http://localhost:8180)");
     expect(erro.causa).toBeInstanceOf(TypeError);
+    expect(gerenciador.metadataService.getMetadata).toHaveBeenCalledTimes(TENTATIVAS_DESCOBERTA);
+  });
+
+  it("descoberta lenta na primeira vez (Keycloak acordando): tenta de novo e não avisa", async () => {
+    const gerenciador = gerenciadorFalso({ guardado: null });
+    gerenciador.metadataService.getMetadata = vi.fn()
+      .mockRejectedValueOnce(Object.assign(new Error("timeout"), { name: "ErrorTimeout" }))
+      .mockResolvedValueOnce({});
+    expect(await montar({ gerenciador }).auth.iniciar()).toEqual({ autenticado: false, erro: null });
+    expect(gerenciador.metadataService.getMetadata).toHaveBeenCalledTimes(2);
   });
 
   it("descoberta com resposta de erro (ex.: reino errado) pede para conferir VITE_OIDC_AUTHORITY", async () => {
     const gerenciador = gerenciadorFalso({ guardado: null, falhaMetadados: new Error("Not Found (404)") });
     const erro = await montar({ gerenciador }).auth.iniciar().catch(e => e);
     expect(erro).toBeInstanceOf(ErroLogin);
+    expect(gerenciador.metadataService.getMetadata).toHaveBeenCalledTimes(1);   // erro de resposta não repete
     expect(erro.servidorFora).toBe(false);
     expect(erro.message).toBe(
       "O servidor de login (http://localhost:8180) respondeu com erro: Not Found (404). Confira VITE_OIDC_AUTHORITY.",
