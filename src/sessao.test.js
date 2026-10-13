@@ -12,9 +12,9 @@ function sessaoBase(extra = {}) {
     custo: 15,
     ganhos: 0,
     resultado: -15,
-    flechas: { wood: 10, iron: 0, gold: 0, diamond: 0 },
-    compradas: { wood: 10, iron: 0, gold: 0, diamond: 0 },
-    disparadas: { wood: 0, iron: 0, gold: 0, diamond: 0 },
+    flechas: { wood: 10 },
+    compradas: { wood: 10 },
+    disparadas: { wood: 0 },
     acertos: 0,
     ...extra,
   };
@@ -67,13 +67,13 @@ describe("controlador de sessão", () => {
     const aoAtualizar = vi.fn();
     const aoErro = vi.fn();
     const ctl = criarControladorSessao({ api, aoAtualizar, aoErro, ...opcoes });
-    await ctl.abrir("vilarejo", { wood: 10, iron: 0, gold: 0, diamond: 0 });
+    await ctl.abrir("vilarejo", { wood: 10 });
     return { api, ctl, aoAtualizar, aoErro };
   }
 
   it("abre a sessão e expõe o estado do servidor", async () => {
     const { api, ctl, aoAtualizar } = await aberto();
-    expect(api.abrirSessao).toHaveBeenCalledWith("vilarejo", { wood: 10, iron: 0, gold: 0, diamond: 0 });
+    expect(api.abrirSessao).toHaveBeenCalledWith("vilarejo", { wood: 10 });
     expect(ctl.aberta()).toBe(true);
     expect(ctl.sessao().id).toBe(ID);
     expect(aoAtualizar).toHaveBeenCalledTimes(1);
@@ -169,19 +169,19 @@ describe("controlador de sessão", () => {
     const ordem = [];
     api.registrarTiro.mockImplementation(async (id, flecha, acertos) => {
       ordem.push("tiro");
-      return { ganhosTiro: 0, sessao: sessaoBase({ flechas: { wood: 0, iron: 0, gold: 0, diamond: 0 } }) };
+      return { ganhosTiro: 0, sessao: sessaoBase({ flechas: { wood: 0 } }) };
     });
     api.comprarFlechas.mockImplementation(async () => {
       ordem.push("compra");
-      return sessaoBase({ custo: 20, flechas: { wood: 0, iron: 5, gold: 0, diamond: 0 } });
+      return sessaoBase({ custo: 20, flechas: { wood: 0, btc: 5 } });
     });
     const tiro = ctl.registrarTiro("wood", []);
-    const compra = ctl.comprar("iron", 5);
+    const compra = ctl.comprar("btc", 5);
     await vi.advanceTimersByTimeAsync(300);
     await Promise.all([tiro, compra]);
     expect(ordem).toEqual(["tiro", "compra"]);
-    expect(api.comprarFlechas).toHaveBeenCalledWith(ID, "iron", 5);
-    expect(ctl.estado()).toMatchObject({ custo: 20, flechas: { iron: 5 } });
+    expect(api.comprarFlechas).toHaveBeenCalledWith(ID, "btc", 5);
+    expect(ctl.estado()).toMatchObject({ custo: 20, flechas: { btc: 5 } });
   });
 
   it("compra recusada rejeita com o ErroApi e não trava a fila", async () => {

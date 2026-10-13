@@ -849,17 +849,6 @@ h3.secao {
 .pref-flecha .opcao b { display: block; font-size: calc(var(--s) * 16px); }
 .pref-flecha input { margin-top: calc(var(--s) * 3px); accent-color: #f7931a; }
 
-/* Menu: as quatro ações principais em grade */
-.menu-principal {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: calc(var(--s) * 8px);
-  max-width: calc(var(--s) * 470px);
-  margin: 0 auto calc(var(--s) * 4px);
-}
-#menu .menu-principal .btn { margin: 0; min-width: 0; font-size: calc(var(--s) * 21px); white-space: nowrap; }
-#menu .menu-principal .btn small { display: block; font-family: 'Nunito', sans-serif; font-size: calc(var(--s) * 12px); font-weight: 800; }
-#btn-sacar:disabled { opacity: 0.6; cursor: not-allowed; }
 
 /* Tela de saldo */
 .saldo-grande {
@@ -891,3 +880,144 @@ h3.secao {
 /* Perfil: acerto por criptomoeda */
 .tabela.acertos td:not(:first-child), .tabela.acertos th:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
 .tabela.acertos tr.total td { font-weight: 900; border-top: 2px solid #e2cfae; }
+
+/* ---------------------------------------------------------------------------
+   Tela inicial do jogador logado: barra de madeira no topo, título, "como jogar" no canto esquerdo e o botão
+   de jogar no canto direito, sobre o cenário (os pássaros continuam voando atrás)
+   --------------------------------------------------------------------------- */
+#menu[data-conta="logado"] {
+  background: linear-gradient(rgba(12, 28, 48, 0.35), rgba(12, 28, 48, 0) 35%, rgba(12, 28, 48, 0) 65%, rgba(12, 28, 48, 0.4));
+}
+#menu[data-conta="logado"] > .card { display: none; }
+.lobby { position: absolute; inset: 0; }
+
+.lobby-barra {
+  position: absolute;
+  top: calc(var(--s) * 14px);
+  left: calc(var(--s) * 14px);
+  right: calc(var(--s) * 14px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(var(--s) * 12px);
+  padding: calc(var(--s) * 8px) calc(var(--s) * 12px);
+  background: linear-gradient(#9a6634, #6d4520);
+  border: calc(var(--s) * 4px) solid #4e2f12;
+  border-radius: calc(var(--s) * 20px);
+  box-shadow: 0 calc(var(--s) * 6px) 0 #3b220c, 0 calc(var(--s) * 12px) calc(var(--s) * 24px) rgba(0, 0, 0, 0.35);
+}
+.lobby-acoes { display: flex; align-items: center; gap: calc(var(--s) * 10px); }
+
+/* botões da barra: madeira clara, cantos redondos, afundam ao clicar */
+.chip-perfil, .pilula, .botao-redondo {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--s) * 8px);
+  font-family: 'Lilita One', 'Nunito', sans-serif;
+  color: #4a2f17;
+  background: linear-gradient(#fffaf0, #f3e2c4);
+  border: calc(var(--s) * 3px) solid #c9a77c;
+  box-shadow: 0 calc(var(--s) * 4px) 0 #8a6a42;
+  cursor: pointer;
+  transition: transform 0.08s, filter 0.15s;
+}
+.chip-perfil:hover, .pilula:hover:not(:disabled), .botao-redondo:hover { filter: brightness(1.06); transform: translateY(calc(var(--s) * -1px)); }
+.chip-perfil:active, .pilula:active:not(:disabled), .botao-redondo:active { transform: translateY(calc(var(--s) * 3px)); box-shadow: 0 calc(var(--s) * 1px) 0 #8a6a42; }
+.chip-perfil:focus-visible, .pilula:focus-visible, .botao-redondo:focus-visible, .btn-jogar:focus-visible {
+  outline: calc(var(--s) * 3px) solid #ffeb3b;
+  outline-offset: calc(var(--s) * 2px);
+}
+
+.chip-perfil { padding: calc(var(--s) * 4px) calc(var(--s) * 16px) calc(var(--s) * 4px) calc(var(--s) * 4px); border-radius: 999px; }
+.chip-perfil .avatar { width: calc(var(--s) * 48px); height: calc(var(--s) * 48px); font-size: calc(var(--s) * 20px); }
+.chip-textos { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.1; text-align: left; }
+.chip-textos b { font-weight: 400; font-size: calc(var(--s) * 21px); max-width: calc(var(--s) * 260px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip-textos small { font-family: 'Nunito', sans-serif; font-weight: 900; font-size: calc(var(--s) * 12px); color: #8a6d4b; text-transform: uppercase; letter-spacing: 0.06em; }
+
+.pilula { padding: calc(var(--s) * 8px) calc(var(--s) * 16px); border-radius: 999px; font-size: calc(var(--s) * 19px); }
+.pilula small { font-family: 'Nunito', sans-serif; font-weight: 900; font-size: calc(var(--s) * 11px); color: #8a6d4b; text-transform: uppercase; letter-spacing: 0.05em; }
+.pilula-moedas b { font-weight: 400; font-size: calc(var(--s) * 24px); color: #c77c00; }
+.pilula.ouro { background: linear-gradient(#ffe082, #f9a825); border-color: #c77c00; box-shadow: 0 calc(var(--s) * 4px) 0 #8a5200; color: #4a2a10; }
+.pilula:disabled { opacity: 0.55; cursor: not-allowed; }
+.botao-redondo {
+  justify-content: center;
+  width: calc(var(--s) * 46px);
+  height: calc(var(--s) * 46px);
+  padding: 0;
+  border-radius: 50%;
+  font-family: 'Nunito', sans-serif;
+  font-size: calc(var(--s) * 22px);
+}
+
+.lobby-titulo {
+  position: absolute;
+  top: 24%;
+  left: 0;
+  right: 0;
+  text-align: center;
+  pointer-events: none;
+}
+.lobby-titulo h1 {
+  font-size: calc(var(--s) * 92px);
+  color: #ffeb3b;
+  text-shadow:
+    0 calc(var(--s) * 5px) 0 #b71c1c,
+    calc(var(--s) * 4px) 0 0 #b71c1c, calc(var(--s) * -4px) 0 0 #b71c1c,
+    0 calc(var(--s) * -4px) 0 #b71c1c, 0 calc(var(--s) * 12px) calc(var(--s) * 24px) rgba(0, 0, 0, 0.35);
+}
+.lobby-titulo p {
+  margin-top: calc(var(--s) * 10px);
+  font-weight: 900;
+  font-size: calc(var(--s) * 22px);
+  color: #fff;
+  text-shadow: 0 calc(var(--s) * 2px) calc(var(--s) * 6px) rgba(0, 0, 0, 0.6);
+}
+
+.lobby-como {
+  position: absolute;
+  left: calc(var(--s) * 24px);
+  bottom: calc(var(--s) * 24px);
+  width: calc(var(--s) * 400px);
+  padding: calc(var(--s) * 12px) calc(var(--s) * 16px);
+  text-align: left;
+  color: #4a2f17;
+  background: rgba(255, 244, 220, 0.94);
+  border: calc(var(--s) * 4px) solid #8b5a2b;
+  border-radius: calc(var(--s) * 18px);
+  box-shadow: 0 calc(var(--s) * 6px) 0 #5d3a1a;
+}
+.lobby-como h2 { font-size: calc(var(--s) * 22px); margin: 0 0 calc(var(--s) * 6px); }
+.lobby-como ul { margin: 0; padding-left: calc(var(--s) * 18px); font-size: calc(var(--s) * 15px); line-height: 1.35; }
+.lobby-como li + li { margin-top: calc(var(--s) * 4px); }
+
+.btn-jogar {
+  position: absolute;
+  right: calc(var(--s) * 32px);
+  bottom: calc(var(--s) * 34px);
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--s) * 14px);
+  padding: calc(var(--s) * 18px) calc(var(--s) * 48px);
+  font-family: 'Lilita One', 'Nunito', sans-serif;
+  font-size: calc(var(--s) * 58px);
+  color: #fff;
+  text-shadow: 0 calc(var(--s) * 3px) 0 #1f5214;
+  background: linear-gradient(#86df5e, #3e9e2a);
+  border: calc(var(--s) * 5px) solid #2b6e1c;
+  border-radius: calc(var(--s) * 28px);
+  box-shadow: 0 calc(var(--s) * 9px) 0 #1f5214, 0 calc(var(--s) * 18px) calc(var(--s) * 30px) rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+}
+.btn-jogar span { font-size: 0.7em; }
+.btn-jogar:hover { filter: brightness(1.07); }
+.btn-jogar:active { transform: translateY(calc(var(--s) * 6px)); box-shadow: 0 calc(var(--s) * 3px) 0 #1f5214; }
+@media (prefers-reduced-motion: no-preference) {
+  .btn-jogar:not(:active) { animation: pulsar 1.8s ease-in-out infinite; }
+}
+@keyframes pulsar {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.045); }
+}
+
+/* Perfil: legenda das colunas de acerto */
+.nota-acertos { margin: calc(var(--s) * 6px) 0 0; font-size: calc(var(--s) * 13px); color: #8a6d4b; text-align: left; line-height: 1.35; }

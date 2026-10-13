@@ -68,7 +68,7 @@ describe("voo do pássaro bitcoin", () => {
   });
 
   it("não entra no sorteio dos campos: nasce à parte", () => {
-    expect(BIRD_TYPES.btc).toMatchObject({ coins: 3, btc: true });
+    expect(BIRD_TYPES.btc).toMatchObject({ coins: 0, btc: true });
     for (const r of RANGES) {
       expect(r.pool.btc).toBeUndefined();
       for (const sorteio of [0, 0.3, 0.6, 0.999]) expect(pickBirdType(r.pool, () => sorteio)).not.toBe("btc");
@@ -298,12 +298,11 @@ describe("flecha bitcoin: previsão do preço em 5 s", () => {
     expect(acertaNoAlvo({ ...alvo, ativo: "eth" }, eth)).toBe(true);
   });
 
-  it("dobra as moedas do pássaro bitcoin e custa o mesmo que a de madeira", () => {
+  it("custa a aposta e não tira moedas do pássaro: o prêmio vem da aposta", () => {
     const flecha = ARROW_BY_ID.btc;
-    expect(flecha).toMatchObject({ price: 1, coins: 2, especial: "btc" });
-    const vilarejo = RANGES[0];
-    expect(coinsForHit(BIRD_TYPES.btc, vilarejo, flecha)).toBe(2 * coinsForHit(BIRD_TYPES.btc, vilarejo, ARROW_BY_ID.wood));
-    expect(coinsForHit(BIRD_TYPES.btc, vilarejo, flecha)).toBe(12);
+    expect(flecha).toMatchObject({ precoFixo: APOSTA_MERCADO, especial: "btc" });
+    expect(arrowCost(flecha, RANGES[0])).toBe(APOSTA_MERCADO);
+    expect(coinsForHit(BIRD_TYPES.btc, RANGES[0], flecha)).toBe(0);
   });
 });
 
@@ -385,7 +384,7 @@ describe("ativos de mercado: bitcoin, ethereum e ouro", () => {
     expect(LISTA_ATIVOS.map((a) => a.simbolo)).toEqual(["BTCUSDT", "ETHUSDT", "PAXGUSDT"]);
     for (const a of LISTA_ATIVOS) {
       expect(ATIVO_POR_SIMBOLO[a.simbolo]).toBe(a);
-      expect(BIRD_TYPES[a.id]).toMatchObject({ coins: 3, mercado: a.id });
+      expect(BIRD_TYPES[a.id]).toMatchObject({ coins: 0, mercado: a.id });
       expect(ARROW_BY_ID[a.id]).toMatchObject({ precoFixo: 100, mercado: a.id });
       for (const r of RANGES) expect(r.pool[a.id]).toBeUndefined();   // fora do sorteio dos campos
     }

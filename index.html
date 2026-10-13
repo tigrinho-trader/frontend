@@ -21,17 +21,45 @@
 
     <!-- Menu inicial -->
     <div class="overlay" id="menu" data-conta="carregando">
-      <div class="card">
-        <div class="jogador so-logado">
-          <span class="avatar" id="menu-avatar"></span>
-          <span class="jogador-nome" id="menu-apelido">Jogador</span>
-          <span class="jogador-saldo"><span class="coin"></span><b id="menu-wallet">0</b></span>
+      <!-- Jogador logado: barra no topo, título, como jogar e o botão de jogar no canto -->
+      <div class="lobby so-logado">
+        <header class="lobby-barra">
+          <button type="button" class="chip-perfil" id="btn-perfil" title="Meu perfil">
+            <span class="avatar" id="menu-avatar"></span>
+            <span class="chip-textos"><b id="menu-apelido">Jogador</b><small>Meu perfil</small></span>
+          </button>
+          <nav class="lobby-acoes" aria-label="Carteira e conta">
+            <button type="button" class="pilula pilula-moedas" id="btn-saldo" title="Ver saldo e flechas guardadas">
+              <span class="coin"></span><b id="menu-wallet">0</b><small>saldo</small>
+            </button>
+            <button type="button" class="pilula ouro" id="btn-comprar">+ Comprar moedas</button>
+            <button type="button" class="pilula" id="btn-sacar" disabled title="Em breve">Sacar <small>em breve</small></button>
+            <button type="button" class="botao-redondo" id="btn-admin" hidden title="Administração" aria-label="Administração">⚙</button>
+            <button type="button" class="botao-redondo" id="btn-sair" title="Sair" aria-label="Sair">⏻</button>
+          </nav>
+        </header>
+        <div class="lobby-titulo">
+          <h1>Flecha Certeira</h1>
+          <p>Treine a mira com flechas grátis e aposte se o bitcoin, o ethereum e o ouro sobem ou descem.</p>
         </div>
+        <aside class="lobby-como" aria-label="Como jogar">
+          <h2>Como jogar</h2>
+          <ul>
+            <li>A flecha de <b>madeira</b> é grátis: treine a mira à vontade.</li>
+            <li><b>Arraste para trás e solte</b>; mire onde o pássaro <b>vai estar</b>.</li>
+            <li>Flechas de <b>bitcoin, ethereum e ouro</b>: aposta de <b>100 moedas</b> no sobe ou desce em 5 s. Acertou, recebe <b>200</b>.</li>
+            <li>Campos mais caros têm <b>mais criptomoedas</b>.</li>
+          </ul>
+        </aside>
+        <button type="button" class="btn-jogar" id="btn-play">Jogar <span aria-hidden="true">▶</span></button>
+      </div>
+
+      <div class="card">
         <h1>Flecha Certeira</h1>
-        <p class="sub">Pague para atirar, acerte os pássaros e saia com mais moedas!</p>
+        <p class="sub">Treine a mira de graça e aposte se as criptomoedas sobem ou descem!</p>
         <ul class="howto">
-          <li>Pague a <b>entrada</b> de um campo e compre <b>flechas</b>. As que sobrarem ficam <b>guardadas</b> para a próxima rodada.</li>
-          <li><b>Arraste para trás e solte</b> e mire onde o pássaro <b>VAI estar</b>. Flechas melhores (teclas <b>1 a 7</b>) multiplicam as moedas.</li>
+          <li>A flecha de <b>madeira</b> é grátis: treine a mira à vontade. Flechas que sobram ficam <b>guardadas</b>.</li>
+          <li><b>Arraste para trás e solte</b> e mire onde o pássaro <b>VAI estar</b>.</li>
           <li>Flechas de <b>bitcoin, ethereum e ouro</b>: aposte <b>100 moedas</b> que o preço sobe ou desce em 5 s. Acertou, recebe <b>200</b>.</li>
         </ul>
         <p class="aviso-menu" id="menu-aviso" hidden></p>
@@ -52,21 +80,6 @@
           <p class="erro-menu" id="menu-erro">Não foi possível falar com o servidor.</p>
           <button class="btn" id="btn-tentar">Tentar de novo</button>
           <button class="btn secondary" id="btn-sair-erro">Sair</button>
-        </div>
-
-        <!-- Logado -->
-        <div class="so-logado">
-          <div class="menu-principal">
-            <button class="btn" id="btn-play">Jogar</button>
-            <button class="btn secondary" id="btn-saldo">Saldo</button>
-            <button class="btn ouro" id="btn-comprar">Comprar moedas</button>
-            <button class="btn secondary" id="btn-sacar" disabled title="Em breve">Sacar <small>em breve</small></button>
-          </div>
-          <div class="menu-acoes">
-            <button class="btn secondary small" id="btn-perfil">Meu perfil</button>
-            <button class="btn secondary small" id="btn-admin" hidden>Administração</button>
-            <button class="btn secondary small" id="btn-sair">Sair</button>
-          </div>
         </div>
       </div>
     </div>
@@ -93,10 +106,14 @@
         <h3 class="secao">Seu acerto nas flechas de mercado</h3>
         <div class="tabela-rolagem curta">
           <table class="tabela acertos">
-            <thead><tr><th>Ativo</th><th>Apostas</th><th>Acertos</th><th>Erros</th><th>Empates</th><th>Acerto</th><th>Resultado</th></tr></thead>
-            <tbody id="perfil-acertos"><tr><td colspan="7" class="vazio">Carregando…</td></tr></tbody>
+            <thead><tr><th>Ativo</th><th>Apostas</th><th>Acertos</th><th>Erros</th><th>Empates</th><th>Acerto</th>
+              <th title="Placar das apostas: (acertos − erros) × R$ 10">Aposta</th>
+              <th title="O que as operações na margem renderam, já com as taxas">Operações (com taxas)</th></tr></thead>
+            <tbody id="perfil-acertos"><tr><td colspan="8" class="vazio">Carregando…</td></tr></tbody>
           </table>
         </div>
+        <p class="nota-acertos">Aposta: (acertos − erros) × R$ 10. Operações: o resultado das ordens na margem, já com as
+          taxas de ~0,1% para abrir e para fechar, que em 5 s costumam ser maiores que o movimento do preço.</p>
 
         <h3 class="secao">Últimas movimentações</h3>
         <div class="tabela-rolagem curta">

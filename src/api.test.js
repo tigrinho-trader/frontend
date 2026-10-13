@@ -131,17 +131,17 @@ describe("rotas", () => {
 
   it("sessões do Flecha Certeira", async () => {
     const id = "6f1c2a3b-0000-4000-8000-000000000001";
-    await api.abrirSessao("bosque", { wood: 10, iron: 5 });
+    await api.abrirSessao("bosque", { wood: 10, btc: 1 });
     expect(ultimaChamada()).toMatchObject({ url: "/api/jogos/flecha/sessoes", method: "POST" });
-    expect(ultimaChamada().corpo).toEqual({ campo: "bosque", flechas: { wood: 10, iron: 5 } });
+    expect(ultimaChamada().corpo).toEqual({ campo: "bosque", flechas: { wood: 10, btc: 1 } });
 
     await api.registrarTiro(id, "gold", ["red", "big"]);
     expect(ultimaChamada().url).toBe(`/api/jogos/flecha/sessoes/${id}/tiros`);
     expect(ultimaChamada().corpo).toEqual({ flecha: "gold", acertos: ["red", "big"] });
 
-    await api.comprarFlechas(id, "iron", 5);
+    await api.comprarFlechas(id, "btc", 1);
     expect(ultimaChamada().url).toBe(`/api/jogos/flecha/sessoes/${id}/flechas`);
-    expect(ultimaChamada().corpo).toEqual({ flecha: "iron", quantidade: 5 });
+    expect(ultimaChamada().corpo).toEqual({ flecha: "btc", quantidade: 1 });
 
     await api.encerrarSessao(id);
     expect(ultimaChamada()).toMatchObject({ url: `/api/jogos/flecha/sessoes/${id}/encerrar`, method: "POST", body: undefined });

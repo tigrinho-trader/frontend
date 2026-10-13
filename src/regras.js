@@ -20,15 +20,16 @@ export function shade(hex, amt) {
 
 // coins = valor base do pássaro; o campo de tiro multiplica esse valor
 export const BIRD_TYPES = {
-  red:    { name: 'Vermelho', r: 25, color: '#e53935', belly: '#f8d4c8', speed: 170, coins: 2 },
-  big:    { name: 'Grandão',  r: 36, color: '#7b5a4a', belly: '#e0c4ae', speed: 115, coins: 1 },
-  yellow: { name: 'Amarelo',  r: 21, color: '#fbc02d', belly: '#fff3c4', speed: 290, coins: 4 },
-  blue:   { name: 'Azul',     r: 16, color: '#42a5f5', belly: '#d6ecff', speed: 220, coins: 5 },
-  gold:   { name: 'Dourado',  r: 19, color: '#ffca28', belly: '#fff8d0', speed: 360, coins: 15, shiny: true },
-  // Pássaros de mercado: não entram no sorteio dos campos; nascem sozinhos e voam conforme a cotação (bitcoin.js)
-  btc:    { name: 'Bitcoin',  r: 23, color: '#f7931a', belly: '#ffe0b2', speed: 190, coins: 3, btc: true, mercado: 'btc' },
-  eth:    { name: 'Ethereum', r: 23, color: '#627eea', belly: '#e3e8ff', speed: 190, coins: 3, mercado: 'eth' },
-  ouro:   { name: 'Ouro PAXG', r: 23, color: '#c9a227', belly: '#fff1c1', speed: 190, coins: 3, mercado: 'ouro', shiny: true },
+  red:    { name: 'Vermelho', r: 25, color: '#e53935', belly: '#f8d4c8', speed: 170, coins: 0 },
+  big:    { name: 'Grandão',  r: 36, color: '#7b5a4a', belly: '#e0c4ae', speed: 115, coins: 0 },
+  yellow: { name: 'Amarelo',  r: 21, color: '#fbc02d', belly: '#fff3c4', speed: 290, coins: 0 },
+  blue:   { name: 'Azul',     r: 16, color: '#42a5f5', belly: '#d6ecff', speed: 220, coins: 0 },
+  gold:   { name: 'Dourado',  r: 19, color: '#ffca28', belly: '#fff8d0', speed: 360, coins: 0, shiny: true },
+  // Pássaros de mercado: não entram no sorteio dos campos; nascem sozinhos e voam conforme a cotação (bitcoin.js).
+  // Nenhum pássaro paga moedas ao ser acertado: moeda só vem da aposta das flechas de mercado.
+  btc:    { name: 'Bitcoin',  r: 23, color: '#f7931a', belly: '#ffe0b2', speed: 190, coins: 0, btc: true, mercado: 'btc' },
+  eth:    { name: 'Ethereum', r: 23, color: '#627eea', belly: '#e3e8ff', speed: 190, coins: 0, mercado: 'eth' },
+  ouro:   { name: 'Ouro PAXG', r: 23, color: '#c9a227', belly: '#fff1c1', speed: 190, coins: 0, mercado: 'ouro', shiny: true },
 };
 
 for (const t of Object.values(BIRD_TYPES)) {
@@ -44,24 +45,28 @@ for (const t of Object.values(BIRD_TYPES)) {
 export const RANGES = [
   {
     slug: 'vilarejo', name: 'Campo do Vilarejo', theme: 'village', fee: 5, arrowPrice: 1, mult: 2, tier: 1,
+    ativos: ['btc'],
     desc: 'Pássaros lentos e voo reto. Bom para treinar.',
     speedMul: 1.0, wobbleChance: 0, wobbleAmp: 0, spawnEvery: 1.6, maxBirds: 3,
     pool: { red: 5, big: 3, yellow: 1, blue: 0, gold: 0.3 },
   },
   {
     slug: 'bosque', name: 'Bosque dos Arqueiros', theme: 'forest', fee: 15, arrowPrice: 3, mult: 4, tier: 2,
+    ativos: ['btc', 'eth'],
     desc: 'Mais pássaros rápidos e alguns que sobem e descem.',
     speedMul: 1.15, wobbleChance: 0.2, wobbleAmp: 35, spawnEvery: 1.35, maxBirds: 4,
     pool: { red: 4, big: 2, yellow: 3, blue: 1, gold: 0.5 },
   },
   {
     slug: 'pico', name: 'Pico das Águias', theme: 'peak', fee: 40, arrowPrice: 8, mult: 10, tier: 3,
+    ativos: ['btc', 'eth', 'ouro'],
     desc: 'Pássaros velozes e voo em ondas. Mais dourados.',
     speedMul: 1.3, wobbleChance: 0.4, wobbleAmp: 50, spawnEvery: 1.1, maxBirds: 5,
     pool: { red: 3, big: 1, yellow: 3, blue: 3, gold: 0.8 },
   },
   {
     slug: 'reserva-real', name: 'Reserva Real', theme: 'royal', fee: 100, arrowPrice: 20, mult: 25, tier: 4,
+    ativos: ['btc', 'eth', 'ouro'],
     desc: 'Só para mestres: pássaros muito rápidos e imprevisíveis.',
     speedMul: 1.45, wobbleChance: 0.6, wobbleAmp: 65, spawnEvery: 0.9, maxBirds: 6,
     pool: { red: 2, big: 1, yellow: 3, blue: 4, gold: 1.2 },
@@ -81,24 +86,9 @@ export const APOSTA_MERCADO = 100;
 
 export const ARROW_TYPES = [
   {
-    id: 'wood', name: 'Madeira', price: 1, coins: 1, desc: 'A flecha básica e barata.',
+    id: 'wood', name: 'Madeira', price: 0, coins: 1, desc: 'Grátis: para treinar a mira.',
     shaft: ['#5d3a1a', '#c08a52'], head: ['#f5f7fa', '#a9b2bc', '#5f6a75'], headStroke: '#37414a',
     fletch: ['#ef5350', '#c62828'], trail: '255,255,255', headSize: 1,
-  },
-  {
-    id: 'iron', name: 'Ferro', price: 2, coins: 2.5, desc: 'Ponta pesada que arranca mais moedas.',
-    shaft: ['#3b2a1c', '#7d6248'], head: ['#e3eaee', '#7b8f9b', '#2f3d45'], headStroke: '#1c262b',
-    fletch: ['#64b5f6', '#1565c0'], trail: '170,210,255', headSize: 1.2,
-  },
-  {
-    id: 'gold', name: 'Ouro', price: 4, coins: 5.5, desc: 'Brilha e rende muitas moedas.',
-    shaft: ['#3b2410', '#7a5530'], head: ['#fffbe0', '#ffca28', '#a86b00'], headStroke: '#7a4a00',
-    fletch: ['#ffffff', '#ffd54f'], trail: '255,214,90', headSize: 1.25, glow: 'rgba(255,214,90,0.9)',
-  },
-  {
-    id: 'diamond', name: 'Diamante', price: 8, coins: 12, desc: 'A mais cara. Para quem não erra.',
-    shaft: ['#90a4ae', '#eceff1'], head: ['#ffffff', '#4dd0e1', '#00838f'], headStroke: '#006064',
-    fletch: ['#e1bee7', '#8e24aa'], trail: '150,240,255', headSize: 1.35, glow: 'rgba(120,230,255,0.95)', sparkle: '#b2ebf2',
   },
   {
     // Flechas de mercado: previsão do ativo em 5 s, alvo fixo na direita, só acertam o pássaro do ativo
@@ -149,8 +139,12 @@ export const countArrows = q => ARROW_TYPES.reduce((s, t) => s + (q[t.id] || 0),
 export const orderCost = (order, range) =>
   ARROW_TYPES.reduce((s, t) => s + (order[t.id] || 0) * arrowCost(t, range), 0);
 
-/** Entrada + 1 flecha de madeira: o mínimo para jogar num campo. */
-export const minCost = range => range.fee + range.arrowPrice;
+/** Flechas que aparecem neste campo (loja, HUD, teclas): a madeira e as de mercado das criptos do campo. */
+export const tiposNoCampo = range =>
+  ARROW_TYPES.filter(t => !t.mercado || (range?.ativos || []).includes(t.mercado));
+
+/** A madeira é grátis: o mínimo para jogar num campo é a entrada. */
+export const minCost = range => range.fee + arrowCost(ARROW_BY_ID.wood, range);
 export const canEnter = (wallet, range) => wallet >= minCost(range);
 export const isBroke = wallet => !RANGES.some(r => canEnter(wallet, r));
 

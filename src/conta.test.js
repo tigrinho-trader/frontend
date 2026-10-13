@@ -45,9 +45,9 @@ const EU = {
 function sessao(extra = {}) {
   return {
     id: "s-1", campo: "vilarejo", status: "ABERTA", custo: 15, ganhos: 0, resultado: -15, acertos: 0,
-    flechas: { wood: 10, iron: 0, gold: 0, diamond: 0 },
-    compradas: { wood: 10, iron: 0, gold: 0, diamond: 0 },
-    disparadas: { wood: 0, iron: 0, gold: 0, diamond: 0 },
+    flechas: { wood: 10 },
+    compradas: { wood: 10 },
+    disparadas: { wood: 0 },
     ...extra,
   };
 }
@@ -260,9 +260,9 @@ describe("perfil", () => {
     await estabilizar();
     const linhas = [...$("perfil-acertos").querySelectorAll("tr")]
       .map((tr) => [...tr.querySelectorAll("td")].map((td) => td.textContent.replace(/\s+/g, " ").trim()).join(" "));
-    expect(linhas[0]).toBe("₿ Bitcoin 5 3 1 1 75% −R$ 0,30");
-    expect(linhas[2]).toBe("Au Ouro 0 0 0 0 — R$ 0,00");
-    expect(linhas[3]).toBe("Total 7 3 3 1 50% −R$ 0,42");
+    expect(linhas[0]).toBe("₿ Bitcoin 5 3 1 1 75% +R$ 20,00 −R$ 0,30");
+    expect(linhas[2]).toBe("Au Ouro 0 0 0 0 — R$ 0,00 R$ 0,00");
+    expect(linhas[3]).toBe("Total 7 3 3 1 50% R$ 0,00 −R$ 0,42");
 
     rotas["GET /jogos/flecha/estudo/meus-acertos"] = [200, { porAtivo: [n("BTCUSDT", 0, 0, 0, 0, null, 0)], total: {} }];
     $("btn-perfil-voltar").click();
@@ -279,7 +279,7 @@ describe("perfil", () => {
 
   it("Saldo: moedas, valor de referência, flechas guardadas e movimentações", async () => {
     rotas["GET /jogos/flecha/aljava"] = [200, {
-      campos: { vilarejo: { wood: 3, iron: 0, gold: 0, diamond: 0 }, bosque: { wood: 0, iron: 0, gold: 0, diamond: 0 } },
+      campos: { vilarejo: { wood: 3 }, bosque: { wood: 0 } },
       mercado: { btc: 2, eth: 0, ouro: 1 },
     }];
     await iniciarApp();
@@ -389,7 +389,7 @@ describe("jogo com o servidor", () => {
     $("btn-enter").click();
     await estabilizar();
     const post = chamadas.find((c) => c.chave === "POST /jogos/flecha/sessoes");
-    expect(post.corpo).toEqual({ campo: "vilarejo", flechas: { wood: 10, iron: 0, gold: 0, diamond: 0, btc: 0, eth: 0, ouro: 0 } });
+    expect(post.corpo).toEqual({ campo: "vilarejo", flechas: { wood: 10, btc: 0, eth: 0, ouro: 0 } });
     expect(document.getElementById("wrap").dataset.state).toBe("playing");
   });
 
@@ -432,7 +432,7 @@ describe("jogo com o servidor", () => {
       saldo = 1025;                       // a carteira recebe o resultado da rodada
       return [200, sessao({
         status: "ENCERRADA", ganhos: 40, resultado: 25, acertos: 3,
-        disparadas: { wood: 4, iron: 0, gold: 0, diamond: 0 },
+        disparadas: { wood: 4 },
       })];
     };
     await iniciarApp();

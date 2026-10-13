@@ -6,7 +6,7 @@ import {
   DEFAULT_ARROWS, MAX_ARROWS, REFILL_QTY, BIRD_TYPES, RANGES, ARROW_TYPES, ARROW_BY_ID, ARROWS_BY_PRICE_DESC,
   APOSTA_MERCADO,
   clamp, formatMult, birdValue, arrowCost, coinsForHit, emptyQuiver, countArrows, orderCost, minCost,
-  canEnter as canEnterWith, isBroke as isBrokeWith, fitOrder, changeOrder, pickBirdType,
+  canEnter as canEnterWith, isBroke as isBrokeWith, fitOrder, changeOrder, pickBirdType, tiposNoCampo,
   segmentHitsCircle, arrowPosition,
 } from './regras.js';
 import { Scenery } from './cenarios.js';
@@ -267,14 +267,13 @@ function renderRanges() {
     const card = document.createElement('div');
     card.className = 'range' + (ok ? '' : ' locked');
     const pips = '➶'.repeat(r.tier) + `<span class="off">${'➶'.repeat(4 - r.tier)}</span>`;
-    const top = ARROWS_BY_PRICE_DESC[0];
+    const criptos = r.ativos.map(id => `<b style="color:${ATIVOS[id].cor}">${ATIVOS[id].marca}</b> ${ATIVOS[id].nome}`).join(', ');
     card.innerHTML = `
       <span class="tier" title="Dificuldade">${pips}</span>
       <h3>${r.name}</h3>
       <p>${r.desc}</p>
-      <p>Entrada <b><span class="coin"></span>${r.fee}</b> · flechas de <b><span class="coin"></span>${r.arrowPrice}</b> a <b><span class="coin"></span>${arrowCost(top, r)}</b></p>
-      <p>Pássaros <span class="mult">×${r.mult}</span>:
-         vermelho <b>${birdValue(BIRD_TYPES.red, r)}</b>, dourado <b>${birdValue(BIRD_TYPES.gold, r)}</b> moedas</p>
+      <p>Entrada <b><span class="coin"></span>${r.fee}</b> · flechas de madeira <b>grátis</b> para treinar</p>
+      <p>Cripto: ${criptos} · aposta de <b><span class="coin"></span>${APOSTA_MERCADO}</b></p>
       <button class="btn" data-range="${i}" ${ok ? '' : 'disabled'}>
         ${ok ? 'Escolher' : `Precisa de ${minCost(r)}`}
       </button>`;
@@ -369,7 +368,7 @@ function renderBuy() {
   const left = game.wallet - total;
   $('buy-title').textContent = r.name;
 
-  $('arrow-shop').innerHTML = ARROW_TYPES.map(t => {
+  $('arrow-shop').innerHTML = tiposNoCampo(r).map(t => {
     const cost = arrowCost(t, r), n = order[t.id];
     const canAdd = left >= cost && count + nGuard < MAX_ARROWS;
     const ganho = t.mercado
@@ -427,7 +426,7 @@ function avisarEstudo() {
 // Se a flecha escolhida acabou, pega a próxima que ainda tiver
 function ensureSelection() {
   if (game.quiver[game.selected] > 0) return;
-  const next = ARROW_TYPES.find(t => game.quiver[t.id] > 0);
+  const next = tiposNoCampo(game.range).find(t => game.quiver[t.id] > 0);
   if (next) game.selected = next.id;
 }
 
@@ -497,7 +496,7 @@ function fillRefill() {
   netEl.textContent = (net > 0 ? '+' : '') + moedas(net);
   netEl.className = net > 0 ? 'pos' : net < 0 ? 'neg' : '';
   $('ref-wallet').textContent = moedas(livre);
-  $('refill-options').innerHTML = ARROW_TYPES.map(t => {
+  $('refill-options').innerHTML = tiposNoCampo(r).map(t => {
     const cost = REFILL_QTY * arrowCost(t, r);
     const ok = livre >= cost && arrowsLeft() + REFILL_QTY <= MAX_ARROWS && !game.ocupado && !game.encerrando;
     return `
@@ -694,7 +693,7 @@ function spawnPassaroMercado(ativo, { daFlecha = false } = {}) {
 
 /** Cada ativo solta um pássaro a cada `nasceACada` segundos (assim que houver cotação dele). */
 function updateMercadoSpawner(dt) {
-  for (const a of LISTA_ATIVOS) {
+  for (const a of LISTA_ATIVOS.filter(x => game.range.ativos.includes(x.id))) {
     game.mercadoTimers[a.id] = (game.mercadoTimers[a.id] ?? a.nasceACada) - dt;
     if (game.mercadoTimers[a.id] > 0 || feeds[a.id].preco() === null) continue;
     game.mercadoTimers[a.id] = a.nasceACada;
@@ -807,6 +806,15 @@ function hitBird(arrow, bird) {
   }
   // valor do pássaro × força da flecha × combo
   const coins = coinsForHit(bird.type, game.range, arrow.type, arrow.hits);
+  if (coins <= 0) {
+    // os pássaros não pagam moedas: acertar é treino (o servidor ainda conta o acerto)
+    arrow.acertos.push(bird.typeId);
+    addText(bird.x, bird.y - 34, arrow.hits > 1 ? `COMBO x${arrow.hits}!` : 'acertou!', '#ffffff', 28);
+    impact(bird);
+    sfx.hit();
+    game.shake = 0.12;
+    return;
+  }
   arrow.acertos.push(bird.typeId);   // vai para o servidor quando a flecha terminar
   arrow.coins += coins;
   // estimativa local: o servidor confirma (ou corrige) quando o tiro for registrado
@@ -910,7 +918,6 @@ function updateArrows(dt) {
       ({ x: ar.x, y: ar.y } = arrowPosition(ar.x0, ar.y0, ar.vx0, ar.vy0, ar.g, ar.t));
       ar.angle = Math.atan2(ar.vy0 + ar.g * ar.t, ar.vx0);
       ar.trail.push({ x: ar.x, y: ar.y });
-      if (ar.type.sparkle && Math.random() < dt * 40) spark(ar.x - Math.cos(ar.angle) * 20, ar.y - Math.sin(ar.angle) * 20, ar.type.sparkle);
       if (ar.trail.length > 12) ar.trail.shift();
 
       if (ar.alvo) {
@@ -1153,9 +1160,9 @@ function update(dt) {
   game.time += dt;
   scene().update(dt, game.time);
 
-  // as cotações só são ouvidas durante a rodada
-  for (const feed of Object.values(feeds)) {
-    if (game.state === 'playing') {
+  // as cotações só são ouvidas durante a rodada, e só as das criptos do campo
+  for (const [id, feed] of Object.entries(feeds)) {
+    if (game.state === 'playing' && game.range.ativos.includes(id)) {
       if (!feed.ligado()) feed.ligar();
     } else if (feed.ligado()) {
       feed.desligar();
@@ -1426,7 +1433,7 @@ const dolares = (v, casas = 0) =>
 
 /** Placa com as cotações que guiam os pássaros de mercado: uma linha por ativo. */
 function drawTickerMercado() {
-  const linhas = LISTA_ATIVOS.filter(a => feeds[a.id].preco() !== null);
+  const linhas = LISTA_ATIVOS.filter(a => game.range.ativos.includes(a.id) && feeds[a.id].preco() !== null);
   if (!linhas.length) return;
   const x = 856, y = 14, w = 280, h = 22 + linhas.length * 24;
   plaque(x, y, w, h, 14);
@@ -1514,20 +1521,11 @@ function drawArrowShape(type = ARROW_TYPES[0], c = ctx) {
   c.strokeStyle = type.headStroke;
   c.lineWidth = 1;
   c.beginPath();
-  if (type.id === 'diamond') {
-    // ponta lapidada
-    c.moveTo(2, 0); c.lineTo(-8 * k, -6 * k); c.lineTo(-16 * k, -3 * k); c.lineTo(-12 * k, 0); c.lineTo(-16 * k, 3 * k); c.lineTo(-8 * k, 6 * k);
-  } else {
-    c.moveTo(1, 0); c.lineTo(-15 * k, -6.5 * k); c.lineTo(-11 * k, 0); c.lineTo(-15 * k, 6.5 * k);
-  }
+  c.moveTo(1, 0); c.lineTo(-15 * k, -6.5 * k); c.lineTo(-11 * k, 0); c.lineTo(-15 * k, 6.5 * k);
   c.closePath();
   c.fill();
   c.shadowBlur = 0;
   c.stroke();
-  if (type.id === 'diamond') {
-    c.strokeStyle = 'rgba(255,255,255,0.8)';
-    c.beginPath(); c.moveTo(2, 0); c.lineTo(-12 * k, 0); c.moveTo(-8 * k, -6 * k); c.lineTo(-6 * k, 0); c.stroke();
-  }
 
   for (const s of [-1, 1]) {
     c.fillStyle = s < 0 ? type.fletch[0] : type.fletch[1];
@@ -2100,7 +2098,8 @@ function drawCoin(x, y, r) {
 }
 
 // Espaços da aljava no HUD (clicáveis para trocar de flecha)
-const HUD_SLOTS = ARROW_TYPES.map((t, i) => ({ id: t.id, x: 24 + i * 47, y: 58, w: 44, h: 52 }));
+/** Espaços do HUD para as flechas deste campo (a madeira e as de mercado das criptos dele). */
+const slotsHud = () => tiposNoCampo(game.range).map((t, i) => ({ id: t.id, x: 24 + i * 47, y: 58, w: 44, h: 52 }));
 
 function drawHUD() {
   const r = game.range;
@@ -2110,7 +2109,7 @@ function drawHUD() {
   ctx.textAlign = 'left';
   outlinedText(r.name, 32, 46, "24px 'Lilita One', sans-serif", '#ffffff', '#4a2a10', 5);
 
-  HUD_SLOTS.forEach((s, i) => {
+  slotsHud().forEach((s, i) => {
     const type = ARROW_BY_ID[s.id], n = game.quiver[s.id], sel = game.selected === s.id && n > 0;
     ctx.save();
     ctx.globalAlpha = n > 0 ? 1 : 0.35;
@@ -2307,7 +2306,7 @@ canvas.addEventListener('pointerdown', e => {
   const p = toGameCoords(e);
 
   // Clique na aljava do HUD troca de flecha em vez de mirar
-  const slot = HUD_SLOTS.find(s => p.x >= s.x && p.x <= s.x + s.w && p.y >= s.y && p.y <= s.y + s.h);
+  const slot = slotsHud().find(s => p.x >= s.x && p.x <= s.x + s.w && p.y >= s.y && p.y <= s.y + s.h);
   if (slot) { selectArrow(slot.id); return; }
 
   const a = game.aim;
@@ -2353,7 +2352,10 @@ window.addEventListener('keydown', e => {
   if (k === 'p' || k === 'escape') togglePause();
   else if (k === 'm') toggleMute();
   else if (k === 'b' && game.state === 'playing') togglePassarosComuns();
-  else if (game.state === 'playing' && k >= '1' && k <= String(ARROW_TYPES.length)) selectArrow(ARROW_TYPES[Number(k) - 1].id);
+  else if (game.state === 'playing' && /^[1-9]$/.test(k)) {
+    const tipo = tiposNoCampo(game.range)[Number(k) - 1];
+    if (tipo) selectArrow(tipo.id);
+  }
 });
 
 // Se a aba perder o foco, pausa o jogo
