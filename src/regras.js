@@ -75,12 +75,11 @@ export const RANGES = [
 // O slug identifica o campo na API do trading-service (sessões do Flecha Certeira)
 export const RANGE_BY_SLUG = Object.fromEntries(RANGES.map(r => [r.slug, r]));
 
-// Tipos de flecha: custam "price" vezes o preço base do campo e multiplicam
-// as moedas do pássaro por "coins". As melhores rendem um pouco mais por moeda
-// gasta, mas cada erro sai bem mais caro (alto risco, alto retorno).
+// Tipos de flecha: custam "price" vezes o preço base do campo (a madeira é grátis) e multiplicam
+// as moedas do pássaro por "coins" (hoje os pássaros valem 0: acertá-los é treino).
 /**
- * Flechas de mercado (bitcoin, ethereum, ouro) custam sempre isto: é a aposta binária de R$ 10 do estudo
- * (10 moedas = R$ 1). Acertou se o preço sobe ou desce: recebe o dobro. Quem decide é o servidor, pelo preço real.
+ * Flechas de mercado (bitcoin, ethereum, ouro) custam sempre isto: R$ 10 do estudo (10 moedas = R$ 1). Quando a
+ * operação fecha, o servidor devolve 100 + 10 × o resultado dela em reais (ou 100, se ela não aconteceu).
  */
 export const APOSTA_MERCADO = 100;
 
@@ -93,19 +92,19 @@ export const ARROW_TYPES = [
   {
     // Flechas de mercado: previsão do ativo em 5 s, alvo fixo na direita, só acertam o pássaro do ativo
     id: 'btc', name: 'Bitcoin', price: 1, precoFixo: APOSTA_MERCADO, coins: 2, especial: 'btc', mercado: 'btc',
-    desc: 'Aposta de 100 moedas: o bitcoin sobe ou desce em 5 s? Acertou, recebe 200.',
+    desc: 'Custa 100 moedas: o bitcoin sobe ou desce em 5 s? Voltam 100 mais o resultado da operação.',
     shaft: ['#5d3a1a', '#f7931a'], head: ['#fff3e0', '#f7931a', '#8a4b00'], headStroke: '#5d3000',
     fletch: ['#ffffff', '#f7931a'], trail: '247,147,26', headSize: 1.25, glow: 'rgba(247,147,26,0.9)',
   },
   {
     id: 'eth', name: 'Ethereum', price: 1, precoFixo: APOSTA_MERCADO, coins: 2, especial: 'eth', mercado: 'eth',
-    desc: 'Aposta de 100 moedas: o ethereum sobe ou desce em 5 s? Acertou, recebe 200.',
+    desc: 'Custa 100 moedas: o ethereum sobe ou desce em 5 s? Voltam 100 mais o resultado da operação.',
     shaft: ['#2b2f4a', '#627eea'], head: ['#eef1ff', '#8c9eff', '#303f9f'], headStroke: '#1a237e',
     fletch: ['#ffffff', '#627eea'], trail: '98,126,234', headSize: 1.25, glow: 'rgba(98,126,234,0.9)',
   },
   {
     id: 'ouro', name: 'Ouro PAXG', price: 1, precoFixo: APOSTA_MERCADO, coins: 2, especial: 'ouro', mercado: 'ouro',
-    desc: 'Aposta de 100 moedas: o ouro sobe ou desce em 5 s? Acertou, recebe 200.',
+    desc: 'Custa 100 moedas: o ouro sobe ou desce em 5 s? Voltam 100 mais o resultado da operação.',
     shaft: ['#4a3410', '#c9a227'], head: ['#fffbe6', '#e6c35c', '#8a6d10'], headStroke: '#5c4708',
     fletch: ['#ffffff', '#c9a227'], trail: '201,162,39', headSize: 1.25, glow: 'rgba(230,195,92,0.9)',
   },

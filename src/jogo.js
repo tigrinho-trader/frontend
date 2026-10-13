@@ -373,8 +373,8 @@ function renderBuy() {
     const cost = arrowCost(t, r), n = order[t.id];
     const canAdd = left >= cost && count + nGuard < MAX_ARROWS;
     const ganho = t.mercado
-      ? `aposta: acertou, recebe <b class="mult">${2 * APOSTA_MERCADO}</b>`
-      : `moedas <b class="mult">×${formatMult(t.coins)}</b>`;
+      ? `volta <b class="mult">${APOSTA_MERCADO}</b> + resultado da operação`
+      : 'grátis · treino';
     const tem = guard[t.id] ? ` · <b class="guardadas">+${guard[t.id]} guardada${guard[t.id] === 1 ? '' : 's'}</b>` : '';
     return `
       <div class="arrow-row${n ? ' active' : ''}" title="${t.desc}">
@@ -508,7 +508,7 @@ function fillRefill() {
       <button class="refill-opt" data-type="${t.id}" ${ok ? '' : 'disabled'}>
         <img src="${arrowIcon(t)}" alt="">
         <b>+${REFILL_QTY} ${t.name}</b>
-        <span>${t.mercado ? `aposta · recebe ${2 * APOSTA_MERCADO}` : `moedas ×${formatMult(t.coins)}`} · <span class="coin"></span>${cost}</span>
+        <span>${t.mercado ? `volta ${APOSTA_MERCADO} + resultado` : 'treino'} · <span class="coin"></span>${cost}</span>
       </button>`;
   }).join('');
 }
