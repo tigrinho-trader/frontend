@@ -260,9 +260,9 @@ describe("perfil", () => {
     await estabilizar();
     const linhas = [...$("perfil-acertos").querySelectorAll("tr")]
       .map((tr) => [...tr.querySelectorAll("td")].map((td) => td.textContent.replace(/\s+/g, " ").trim()).join(" "));
-    expect(linhas[0]).toBe("₿ Bitcoin 5 3 1 1 75% +R$ 20,00 −R$ 0,30");
-    expect(linhas[2]).toBe("Au Ouro 0 0 0 0 — R$ 0,00 R$ 0,00");
-    expect(linhas[3]).toBe("Total 7 3 3 1 50% R$ 0,00 −R$ 0,42");
+    expect(linhas[0]).toBe("₿ Bitcoin 5 3 1 1 75% −R$ 0,30");
+    expect(linhas[2]).toBe("Au Ouro 0 0 0 0 — R$ 0,00");
+    expect(linhas[3]).toBe("Total 7 3 3 1 50% −R$ 0,42");
 
     rotas["GET /jogos/flecha/estudo/meus-acertos"] = [200, { porAtivo: [n("BTCUSDT", 0, 0, 0, 0, null, 0)], total: {} }];
     $("btn-perfil-voltar").click();
@@ -445,10 +445,11 @@ describe("jogo com o servidor", () => {
     $("btn-quit").click();
     await estabilizar();
     expect($("result").classList.contains("show")).toBe(true);
-    expect($("res-title").textContent).toBe("Lucro!");
-    expect($("res-net").textContent).toBe("+25");
+    // sem apostas, o resultado da rodada é só a entrada do Vilarejo; a carteira segue o servidor
+    expect($("res-title").textContent).toBe("Prejuízo...");
+    expect($("res-net").textContent).toBe("−5");
     expect($("res-hits").textContent).toBe("3 com 4 flechas");
-    expect($("res-earned").textContent).toBe("+40");
+    expect($("res-arrows").textContent).toBe("0 compradas · 0 guardadas");
     expect($("res-wallet").textContent).toBe("1.025");
   });
 });

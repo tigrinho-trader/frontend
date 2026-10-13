@@ -207,29 +207,24 @@ function preencherPerfil() {
   $('perfil-apelido').value = perfil?.apelido || '';
 }
 
-/** Cada aposta de mercado vale R$ 10 (100 moedas a 10 moedas por real). */
-const APOSTA_BRL = 10;
-
 /**
- * Linhas da tabela de acerto por criptomoeda (GET /jogos/flecha/estudo/meus-acertos) e o total. "Aposta" é o
- * placar (acertos − erros) × R$ 10; "Operações" é quanto as ordens na margem renderam, já com as taxas.
+ * Linhas da tabela de acerto por criptomoeda (GET /jogos/flecha/estudo/meus-acertos) e o total. "Saldo" é quanto as
+ * apostas ganharam menos quanto perderam, já com as taxas.
  */
 export function htmlAcertos(dados) {
   const cor = v => (v > 0 ? 'pos' : v < 0 ? 'neg' : '');
   const linha = (rotulo, n, classe = '') => {
     const acertos = Number(n?.acertos) || 0, erros = Number(n?.erros) || 0;
-    const aposta = (acertos - erros) * APOSTA_BRL;       // placar das apostas, sem taxas
-    const operacoes = Number(n?.resultadoLiquidoBrl) || 0;   // ordens na margem, com taxas
+    const saldo = Number(n?.resultadoLiquidoBrl) || 0;   // ganhos − perdas − taxas
     return `<tr${classe ? ` class="${classe}"` : ''}>
       <td>${rotulo}</td><td>${Number(n?.operacoes) || 0}</td><td>${acertos}</td>
       <td>${erros}</td><td>${Number(n?.empates) || 0}</td><td>${textoTaxa(n?.taxaAcertoPercentual)}</td>
-      <td class="${cor(aposta)}">${reaisComSinal(aposta)}</td>
-      <td class="${cor(operacoes)}">${reaisComSinal(operacoes)}</td>
+      <td class="${cor(saldo)}">${reaisComSinal(saldo)}</td>
     </tr>`;
   };
   const porAtivo = Array.isArray(dados?.porAtivo) ? dados.porAtivo : [];
   if (!porAtivo.some(n => Number(n.operacoes) > 0)) {
-    return '<tr><td colspan="8" class="vazio">Você ainda não fez apostas com as flechas de mercado.</td></tr>';
+    return '<tr><td colspan="7" class="vazio">Você ainda não fez apostas com as flechas de mercado.</td></tr>';
   }
   return porAtivo.map(n => {
     const ativo = ATIVO_POR_SIMBOLO[n.simbolo];
@@ -315,7 +310,7 @@ async function abrirPerfil() {
     : `<tr><td colspan="4" class="vazio erro">${escaparHtml(mensagemErro(transacoes.reason))}</td></tr>`;
   $('perfil-acertos').innerHTML = acertos.status === 'fulfilled'
     ? htmlAcertos(acertos.value)
-    : `<tr><td colspan="8" class="vazio erro">${escaparHtml(mensagemErro(acertos.reason))}</td></tr>`;
+    : `<tr><td colspan="7" class="vazio erro">${escaparHtml(mensagemErro(acertos.reason))}</td></tr>`;
 }
 
 async function salvarApelido(e) {

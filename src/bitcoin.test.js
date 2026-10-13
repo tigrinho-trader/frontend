@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  ATIVOS, ATIVO_POR_SIMBOLO, BINANCE_WS, contarNoPlacar, linhasDoPlacar, placarVazio, reaisComSinal,
+  ATIVOS, ATIVO_POR_SIMBOLO, BINANCE_WS, lucroDaAposta, moedasComSinal, contarNoPlacar, linhasDoPlacar, placarVazio, reaisComSinal,
   somarResultadoReais, taxaDeAcerto, textoTaxa, BTC_ALTURA, BTC_AMPLITUDE, LISTA_ATIVOS, criarFeedPreco, urlBinance, BTC_NASCE_A_CADA, BTC_PRECO_SIMULADO, FLECHA_BTC, acertaBinario, acertaNoAlvo,
   alturaBtc, alvoBinario,
   alvoFlechaBtc, criarFeedBtc, direcaoDaPrevisao, escalaBtc, lerMensagemBinance, precoPrevisto, textoResultadoEstudo,
@@ -318,21 +318,21 @@ describe("estudo da sabedoria das massas", () => {
   });
 
   it("mostra as moedas da aposta liquidada pelo servidor e o resultado da operação", () => {
-    const ganhou = textoResultadoEstudo({ status: "FECHADA", modo: "REAL", moedasPagas: 200,
+    const ganhou = textoResultadoEstudo({ status: "FECHADA", modo: "REAL", moedasPagas: 101.2,
       resultadoBinarioBrl: 10, resultadoLiquidoBrl: 0.12 });
-    expect(ganhou.texto).toBe("+100 moedas");
+    expect(ganhou.texto).toBe("+1,2 moedas");                              // R$ 0,12 × 10
     expect(sem(ganhou.detalhe)).toBe("acertou · operação real +R$ 0,12");
     expect(ganhou.cor).toBe("ganho");
 
-    const perdeu = textoResultadoEstudo({ status: "FECHADA", modo: "SIMULADO", moedasPagas: 0,
+    const perdeu = textoResultadoEstudo({ status: "FECHADA", modo: "SIMULADO", moedasPagas: 99.96,
       resultadoBinarioBrl: -10, resultadoLiquidoBrl: -0.0042 });
-    expect(perdeu.texto).toBe("−100 moedas");
+    expect(perdeu.texto).toBe("−0,04 moedas");
     expect(sem(perdeu.detalhe)).toBe("errou · simulação −R$ 0,0042");     // centavos de centavo aparecem
     expect(perdeu.cor).toBe("perda");
 
     const empate = textoResultadoEstudo({ status: "FECHADA", modo: "REAL", moedasPagas: 100,
       resultadoBinarioBrl: 0, resultadoLiquidoBrl: 0 });
-    expect(empate.texto).toBe("Aposta devolvida");
+    expect(empate.texto).toBe("0 moedas");
     expect(empate.detalhe.startsWith("empatou")).toBe(true);
     expect(empate.cor).toBe("neutro");
   });
@@ -344,6 +344,12 @@ describe("estudo da sabedoria das massas", () => {
     expect(textoResultadoEstudo({ status: "ABERTA", moedasPagas: null })).toBeNull();
     expect(textoResultadoEstudo({ status: "FECHADA" })).toBeNull();          // fechou, mas ainda não pagou
     expect(textoResultadoEstudo(null)).toBeNull();
+    // apostas antigas (200 / 0) e a soma da partida
+    expect(lucroDaAposta({ moedasPagas: 200 })).toBe(100);
+    expect(lucroDaAposta({ moedasPagas: 99.4 })).toBe(-0.6);
+    expect(lucroDaAposta({ moedasPagas: null })).toBe(0);
+    expect(moedasComSinal(-0.6)).toBe("−0,6");
+    expect(moedasComSinal(0)).toBe("0");
   });
 
 });

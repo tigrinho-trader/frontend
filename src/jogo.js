@@ -3,9 +3,9 @@
 // O dinheiro fica no servidor: saldo na carteira (wallet-service) e cada rodada é uma
 // sessão no trading-service (sessao.js); o navegador só estima entre as respostas.
 import {
-  DEFAULT_ARROWS, MAX_ARROWS, REFILL_QTY, BIRD_TYPES, RANGES, ARROW_TYPES, ARROW_BY_ID, ARROWS_BY_PRICE_DESC,
+  DEFAULT_ARROWS, MAX_ARROWS, REFILL_QTY, BIRD_TYPES, RANGES, ARROW_TYPES, ARROW_BY_ID,
   APOSTA_MERCADO,
-  clamp, formatMult, birdValue, arrowCost, coinsForHit, emptyQuiver, countArrows, orderCost, minCost,
+  clamp, formatMult, arrowCost, coinsForHit, emptyQuiver, countArrows, orderCost, minCost,
   canEnter as canEnterWith, isBroke as isBrokeWith, fitOrder, changeOrder, pickBirdType, tiposNoCampo,
   segmentHitsCircle, arrowPosition,
 } from './regras.js';
@@ -16,7 +16,7 @@ import { formatarMoedas, mensagemErro } from './telas.js';
 import {
   ATIVOS, BTC_MAX_VOANDO, BTC_ALTURA, FLECHA_BTC, LISTA_ATIVOS, acertaBinario, acertaNoAlvo, alturaBtc,
   alvoBinario, alvoFlechaBtc, contarNoPlacar, criarFeedPreco, direcaoDaPrevisao, linhasDoPlacar, placarVazio,
-  precoPrevisto, reaisComSinal, somarResultadoReais, textoResultadoEstudo,
+  lucroDaAposta, moedasComSinal, precoPrevisto, reaisComSinal, somarResultadoReais, textoResultadoEstudo,
   toleranciaEmDolares, velocidadeFlechaBtc, velocidadePassaroDaFlecha,
 } from './bitcoin.js';
 
@@ -130,6 +130,7 @@ const game = {
   guardadas: null,          // flechas guardadas do jogador (GET /jogos/flecha/aljava): { campos, mercado }
   placarPartida: placarVazio(),   // acertos nas apostas de mercado desta partida, por ativo
   reaisPartida: 0,          // soma, em reais, do resultado das operações feitas com as apostas desta partida
+  apostasPartida: 0,        // moedas que as apostas desta partida renderam (pago pelo servidor − 100 de cada)
   passarosComuns: lerPassarosComuns(),   // false: só os pássaros de criptomoeda aparecem na rodada
   pending: null,            // 'win' | 'lose' enquanto espera a animação terminar
   endTimer: 0,
@@ -475,6 +476,7 @@ async function enterRange() {
   game.estudo = null;
   game.placarPartida = placarVazio();
   game.reaisPartida = 0;
+  game.apostasPartida = 0;
   game.pending = null;
   game.endTimer = 0;
   game.banner = 2.6;
@@ -483,17 +485,20 @@ async function enterRange() {
   setState('playing');
 }
 
+/** Resultado da rodada para o jogador: a entrada mais o que as apostas renderam (pago − 100 de cada). */
+const resultadoDaRodada = () => Math.round((game.apostasPartida - (game.range?.fee || 0)) * 100) / 100;
+
 // O servidor só deixa comprar com o saldo da carteira menos o custo da rodada:
 // as moedas ganhas entram na carteira quando a rodada termina.
 const availableToBuy = () => game.saldoBase - game.spent;
 const canRefill = () => availableToBuy() >= REFILL_QTY * game.range.arrowPrice;
 
 function fillRefill() {
-  const r = game.range, net = game.earned - game.spent, livre = availableToBuy();
-  $('ref-spent').textContent = moedas(game.spent);
-  $('ref-earned').textContent = moedas(game.earned);
+  const r = game.range, net = resultadoDaRodada(), livre = availableToBuy();
+  $('ref-spent').textContent = `−${moedas(r.fee)}`;
+  $('ref-earned').textContent = moedasComSinal(game.apostasPartida);
   const netEl = $('ref-net');
-  netEl.textContent = (net > 0 ? '+' : '') + moedas(net);
+  netEl.textContent = moedasComSinal(net);
   netEl.className = net > 0 ? 'pos' : net < 0 ? 'neg' : '';
   $('ref-wallet').textContent = moedas(livre);
   $('refill-options').innerHTML = tiposNoCampo(r).map(t => {
@@ -568,37 +573,38 @@ async function endSession() {
   // Resultado oficial do servidor (ou a estimativa local, se ele não respondeu)
   const custo = final ? Number(final.custo) || 0 : game.spent;
   const ganhos = final ? Number(final.ganhos) || 0 : game.earned;
-  const net = final ? Number(final.resultado) || 0 : ganhos - custo;
+  // o que muda na carteira (as flechas compradas e não usadas ficam guardadas, já pagas)
+  const netCarteira = final ? Number(final.resultado) || 0 : ganhos - custo;
+  // o que o jogador ganhou ou perdeu na rodada: entrada + apostas
+  const net = resultadoDaRodada();
   const compradas = final?.compradas || game.bought;
+  const sobraram = final?.flechas || game.quiver;
   const disparadas = final?.disparadas
     ? ARROW_TYPES.reduce((s, t) => s + (Number(final.disparadas[t.id]) || 0), 0)
     : game.shotsFired;
   const acertos = final ? Number(final.acertos) || 0 : game.hits;
   sessaoCtl = null;
   const saldoBase = game.saldoBase;
-  game.wallet = Math.max(0, saldoBase + net);
+  game.wallet = Math.max(0, saldoBase + netCarteira);
 
   const title = $('res-title');
   title.textContent = net > 0 ? 'Lucro!' : net < 0 ? 'Prejuízo...' : 'Empatou!';
   title.className = net > 0 ? 'pos' : net < 0 ? 'neg' : '';
   const netEl = $('res-net');
-  netEl.innerHTML = `<span class="coin"></span>${net > 0 ? '+' : ''}${moedas(net)}`;
+  netEl.innerHTML = `<span class="coin"></span>${moedasComSinal(net)}`;
   netEl.className = 'net ' + (net > 0 ? 'pos' : net < 0 ? 'neg' : '');
   $('res-range').textContent = game.range.name;
   $('res-fee').textContent = `−${game.range.fee}`;
-  $('res-arrows-label').textContent = 'Flechas: ' + ARROW_TYPES
-    .filter(t => Number(compradas[t.id]) > 0)
-    .map(t => `${compradas[t.id]} ${t.name.toLowerCase()}`)
-    .join(', ');
-  $('res-arrows').textContent = `−${moedas(custo - game.range.fee)}`;
+  const deAposta = ARROW_TYPES.filter(t => t.mercado);
+  const somar = q => deAposta.reduce((s, t) => s + (Number(q?.[t.id]) || 0), 0);
+  $('res-arrows').textContent = `${somar(compradas)} compradas · ${somar(sobraram)} guardadas`;
   $('res-hits').textContent = `${acertos} com ${disparadas} flecha${disparadas === 1 ? '' : 's'}`;
   const placar = linhasDoPlacar(game.placarPartida);
   $('res-mercado-linha').hidden = !placar.length;
   $('res-mercado').textContent = placar.map(l => l.texto).join(' · ');
   $('res-reais-linha').hidden = !placar.length;
-  $('res-reais').textContent = reaisComSinal(game.reaisPartida);
-  $('res-reais').className = game.reaisPartida > 0 ? 'pos' : game.reaisPartida < 0 ? 'neg' : '';
-  $('res-earned').textContent = `+${moedas(ganhos)}`;
+  $('res-reais').textContent = `${moedasComSinal(game.apostasPartida)} moedas (${reaisComSinal(game.reaisPartida)})`;
+  $('res-reais').className = game.apostasPartida > 0 ? 'pos' : game.apostasPartida < 0 ? 'neg' : '';
   $('res-wallet').textContent = moedas(game.wallet);
   $('res-aviso').textContent = falha
     ? `O servidor não confirmou o fim da rodada (${mensagemErro(falha)}). Ela será acertada na carteira automaticamente.`
@@ -611,7 +617,7 @@ async function endSession() {
 
   // A carteira é atualizada pelo RabbitMQ (assíncrono): busca agora e de novo em 1,5 s.
   // A primeira leitura só vale se o resultado já entrou (senão mantém a estimativa).
-  const jaAplicado = saldo => net === 0 || saldo !== saldoBase;
+  const jaAplicado = saldo => netCarteira === 0 || saldo !== saldoBase;
   atualizarCarteira({ aceitar: jaAplicado }).catch(() => {});
   setTimeout(() => atualizarCarteira().catch(() => {}), 1500);
 }
@@ -1021,6 +1027,7 @@ async function acompanharEstudo(ar) {
     if (resultado) {
       contarNoPlacar(game.placarPartida, ar.alvo.ativo, op);
       game.reaisPartida = somarResultadoReais(game.reaisPartida, op);
+      game.apostasPartida = Math.round((game.apostasPartida + lucroDaAposta(op)) * 100) / 100;
       mostrarEstudo(resultado);
       // as moedas entram pelo servidor: durante a rodada, na sessão; depois dela, direto na carteira
       if (sessaoCtl) sessaoCtl.atualizar().catch(() => {});
@@ -1476,7 +1483,7 @@ function drawTickerMercado() {
     ctx.textAlign = 'right';
     ctx.font = '900 11px Nunito, sans-serif';
     ctx.fillStyle = game.reaisPartida > 0 ? '#b9f6ca' : game.reaisPartida < 0 ? '#ff8a80' : 'rgba(255,240,215,0.85)';
-    ctx.fillText(`operações ${reaisComSinal(game.reaisPartida)}`, x + w - 12, proximoY + 14);
+    ctx.fillText(`saldo ${reaisComSinal(game.reaisPartida)}`, x + w - 12, proximoY + 14);
     ctx.textAlign = 'left';
     let px = x + 12;
     for (const { ativo, texto } of placar) {
@@ -2143,36 +2150,25 @@ function drawHUD() {
   ctx.textAlign = 'left';
   outlinedText(moedas(game.wallet), WALLET_POS.x + 24, WALLET_POS.y + 11, "32px 'Lilita One', sans-serif", '#ffe57f', '#4a2a10', 5);
 
-  const net = game.earned - game.spent;
+  // resultado = entrada + o que as apostas renderam (as flechas que sobram ficam guardadas, não são perda)
+  const net = resultadoDaRodada();
   ctx.textAlign = 'right';
   ctx.font = '900 13px Nunito, sans-serif';
   ctx.fillStyle = 'rgba(255,240,215,0.9)';
   ctx.fillText('RESULTADO DA RODADA', px + pw - 18, 34);
-  outlinedText(`${net > 0 ? '+' : ''}${net}`, px + pw - 18, 62, "28px 'Lilita One', sans-serif",
+  outlinedText(moedasComSinal(net), px + pw - 18, 62, "28px 'Lilita One', sans-serif",
     net > 0 ? '#b9f6ca' : net < 0 ? '#ff8a80' : '#ffffff', '#4a2a10', 5);
 
-  // Barra: quanto já recuperou do que gastou
-  const barX = px + 18, barW = pw - 36, barY = 76, prog = game.spent ? clamp(game.earned / game.spent, 0, 1) : 0;
+  // Faixa: de onde vem o resultado
+  const barX = px + 18, barW = pw - 36, barY = 76;
   ctx.fillStyle = 'rgba(40,20,5,0.55)';
   roundRect(ctx, barX, barY, barW, 22, 11);
   ctx.fill();
-  if (prog > 0) {
-    const bw = Math.max(22, barW * prog);
-    const bg = ctx.createLinearGradient(0, barY, 0, barY + 22);
-    bg.addColorStop(0, prog >= 1 ? '#fff176' : '#aed581');
-    bg.addColorStop(1, prog >= 1 ? '#f9a825' : '#558b2f');
-    ctx.fillStyle = bg;
-    roundRect(ctx, barX, barY, bw, 22, 11);
-    ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,0.35)';
-    roundRect(ctx, barX + 4, barY + 3, bw - 8, 6, 3);
-    ctx.fill();
-  }
   ctx.textAlign = 'center';
   ctx.font = '900 14px Nunito, sans-serif';
   ctx.lineWidth = 3;
   ctx.strokeStyle = 'rgba(40,20,5,0.8)';
-  const barLabel = `ganhou ${game.earned} de ${game.spent} investidos`;
+  const barLabel = `entrada −${moedas(game.range.fee)} · apostas ${moedasComSinal(game.apostasPartida)}`;
   ctx.strokeText(barLabel, W / 2, barY + 16);
   ctx.fillStyle = '#fff';
   ctx.fillText(barLabel, W / 2, barY + 16);

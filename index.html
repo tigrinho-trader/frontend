@@ -107,13 +107,12 @@
         <div class="tabela-rolagem curta">
           <table class="tabela acertos">
             <thead><tr><th>Ativo</th><th>Apostas</th><th>Acertos</th><th>Erros</th><th>Empates</th><th>Acerto</th>
-              <th title="Placar das apostas: (acertos − erros) × R$ 10">Aposta</th>
-              <th title="O que as operações na margem renderam, já com as taxas">Operações (com taxas)</th></tr></thead>
-            <tbody id="perfil-acertos"><tr><td colspan="8" class="vazio">Carregando…</td></tr></tbody>
+              <th title="Quanto ganhou menos quanto perdeu, já descontadas as taxas">Saldo</th></tr></thead>
+            <tbody id="perfil-acertos"><tr><td colspan="7" class="vazio">Carregando…</td></tr></tbody>
           </table>
         </div>
-        <p class="nota-acertos">Aposta: (acertos − erros) × R$ 10. Operações: o resultado das ordens na margem, já com as
-          taxas de ~0,1% para abrir e para fechar, que em 5 s costumam ser maiores que o movimento do preço.</p>
+        <p class="nota-acertos">Saldo: quanto as suas apostas ganharam menos quanto perderam, já descontadas as taxas da
+          corretora (~0,1% para abrir e para fechar). Cada R$ 1 vale 10 moedas.</p>
 
         <h3 class="secao">Últimas movimentações</h3>
         <div class="tabela-rolagem curta">
@@ -290,7 +289,7 @@
     <div class="overlay" id="refill">
       <div class="card shop">
         <h2>Acabaram as flechas!</h2>
-        <p class="sub">Até agora: gastou <b id="ref-spent">0</b>, ganhou <b id="ref-earned">0</b> → <b id="ref-net">0</b></p>
+        <p class="sub">Até agora: entrada <b id="ref-spent">0</b>, apostas <b id="ref-earned">0</b> → <b id="ref-net">0</b></p>
         <p class="sub">Disponível para comprar: <span class="coin"></span><b id="ref-wallet">0</b> · comprar mais flechas?</p>
         <p class="note dica">As moedas ganhas entram na carteira quando a rodada termina.</p>
         <div class="refill-options" id="refill-options"></div>
@@ -317,11 +316,10 @@
         <table class="stats">
           <tr><td>Campo</td><td id="res-range">-</td></tr>
           <tr><td>Entrada</td><td id="res-fee" class="neg">-0</td></tr>
-          <tr><td id="res-arrows-label">Flechas compradas</td><td id="res-arrows" class="neg">-0</td></tr>
+          <tr><td>Flechas de aposta</td><td id="res-arrows">0</td></tr>
           <tr><td>Pássaros acertados</td><td id="res-hits">0</td></tr>
           <tr id="res-mercado-linha" hidden><td>Apostas de mercado</td><td id="res-mercado">—</td></tr>
-          <tr id="res-reais-linha" hidden><td>Operações desta partida (R$)</td><td id="res-reais">—</td></tr>
-          <tr><td>Moedas ganhas</td><td id="res-earned" class="pos">+0</td></tr>
+          <tr id="res-reais-linha" hidden><td>Saldo das apostas</td><td id="res-reais">—</td></tr>
           <tr class="total"><td>Saldo atual</td><td><span class="coin"></span><span id="res-wallet">0</span></td></tr>
         </table>
         <p class="note" id="res-aviso"></p>

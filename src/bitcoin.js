@@ -301,19 +301,34 @@ const reais = v => {
     { minimumFractionDigits: casas, maximumFractionDigits: casas })}`;
 };
 
+const fmtMoedasAposta = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 });
+
+/** Moedas com sinal e centavos: "+0,3", "−0,6", "0". */
+export const moedasComSinal = v => `${v > 0 ? '+' : v < 0 ? '−' : ''}${fmtMoedasAposta.format(Math.abs(Number(v) || 0))}`;
+
+/**
+ * Quanto a aposta liquidada rendeu em moedas: o que o servidor pagou menos as 100 apostadas (0 enquanto não pagou).
+ * O servidor paga 100 + 10 × o resultado da operação em reais (R$ 1 = 10 moedas); se a operação não aconteceu, 100.
+ */
+export function lucroDaAposta(op) {
+  if (!op || op.moedasPagas === null || op.moedasPagas === undefined) return 0;
+  return Math.round((Number(op.moedasPagas) - APOSTA_MERCADO) * 100) / 100;
+}
+
 /**
  * Texto curto para o jogador sobre a aposta da flecha de mercado, ou null enquanto o servidor não liquidou.
- * `moedasPagas`: 200 no acerto, 100 se o preço não mexeu ou a operação não aconteceu, 0 no erro.
  * `cor`: 'ganho' | 'perda' | 'neutro'.
  */
 export function textoResultadoEstudo(op) {
   if (!op || op.moedasPagas === null || op.moedasPagas === undefined) return null;
-  const lucro = Number(op.moedasPagas) - APOSTA_MERCADO;
+  const lucro = lucroDaAposta(op);
   const nome = ATIVO_POR_SIMBOLO[op.simbolo]?.nome;
   const ativo = nome ? `${nome} · ` : '';
-  const texto = lucro > 0 ? `+${lucro} moedas` : lucro < 0 ? `−${-lucro} moedas` : 'Aposta devolvida';
   const cor = lucro > 0 ? 'ganho' : lucro < 0 ? 'perda' : 'neutro';
-  if (op.status !== 'FECHADA') return { texto, detalhe: `${ativo}${op.motivo || 'operação não aconteceu'}`, cor };
+  if (op.status !== 'FECHADA') {
+    return { texto: 'Aposta devolvida', detalhe: `${ativo}${op.motivo || 'operação não aconteceu'}`, cor };
+  }
+  const texto = `${moedasComSinal(lucro)} moedas`;
   const binario = Number(op.resultadoBinarioBrl) || 0;
   const tipo = op.modo === 'REAL' ? 'operação real' : 'simulação';
   return {
