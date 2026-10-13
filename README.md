@@ -4,40 +4,50 @@ Parte do projeto **Tigrinho Trader** (disciplina Projeto de Software).
 
 ## Finalidade
 
-**Flecha Certeira**: jogo de arco e flecha no navegador, com moedas fictícias. O arqueiro paga a entrada de um
-campo de tiro, compra flechas e tenta acertar pássaros em movimento. A graça é **prever** o caminho: a flecha
-segue uma parábola e os pássaros não param, então é preciso mirar onde o pássaro *vai* estar.
+**Flecha Certeira**: jogo de arco e flecha no navegador, usado num **estudo sobre previsão de preços**: dá para
+um grupo de pessoas prever a direção de curto prazo do preço de um ativo ("sabedoria das massas")? O arqueiro
+paga a entrada de um campo de tiro com moedas do jogo, monta a aljava e tenta acertar pássaros em movimento. A
+graça é **prever**: a flecha segue uma parábola e os pássaros não param, então é preciso mirar onde o pássaro
+*vai* estar. Os pássaros de mercado (bitcoin, ethereum e ouro PAXG) voam conforme a cotação ao vivo da Binance,
+e a flecha de mercado registra a previsão do jogador sobre a direção do preço.
 
 É um site estático (canvas + módulos ES, sem framework) que fala com o `api-gateway` em `/api`. O jogador
 entra com **login OpenID Connect** (por padrão um Keycloak local), e as moedas ficam na **carteira do servidor** (wallet-service): cada rodada é uma
-sessão no trading-service, que é a fonte da verdade do dinheiro. Nada de moedas no `localStorage`.
+sessão no trading-service, que é a fonte da verdade das moedas. Nada de moedas no `localStorage`.
 
 ## Como funciona
 
-- O saldo é o da carteira (`GET /api/carteira`; quem entra pela primeira vez ganha o bônus de boas-vindas da
+- O saldo é o da carteira (`GET /api/carteira`; quem entra pela primeira vez recebe o bônus de boas-vindas da
   carteira). Para atirar, escolhe um **campo**, paga a **entrada** e monta a **aljava**. Quando as flechas
-  acabam, dá para comprar mais ou encerrar. O resultado mostra lucro ou prejuízo.
+  acabam, dá para comprar mais ou encerrar. O resultado mostra quanto o saldo mudou na rodada (a entrada e o
+  retorno das flechas de mercado).
 - **Mira:** arrastar para trás e soltar, como um estilingue. A linha pontilhada é a trajetória exata; cada
   ponto amarelo vale 0,5 s de voo.
-- **Combo:** uma flecha que atravessa vários pássaros multiplica as moedas.
+- **Pássaros comuns** são só treino de mira: acertá-los vale 0 moedas.
+- **Flechas de mercado:** cada uma vale uma previsão da direção do preço do ativo (sobe ou desce) e só acerta o
+  pássaro daquele ativo. Quando a operação do estudo é liquidada, o servidor devolve **100 + 10 × o resultado
+  líquido da operação em R$**, ou exatamente **100** se a operação não aconteceu.
+- Flechas que sobram ficam **guardadas** (tela Saldo) para as próximas rodadas: as de mercado servem em qualquer
+  campo; as comuns, só no campo onde foram compradas.
 
-| Campo | Entrada | Flecha (base) | Pássaros valem | Cenário |
-|---|---|---|---|---|
-| Campo do Vilarejo | 5 | 1 | ×2 | dia de sol, vila e moinho |
-| Bosque dos Arqueiros | 15 | 3 | ×4 | fim de tarde, floresta, folhas caindo |
-| Pico das Águias | 40 | 8 | ×10 | montanhas nevadas, nevasca |
-| Reserva Real | 100 | 20 | ×25 | pôr do sol, castelo, tochas |
-
-| Flecha | Preço | Moedas | Tecla |
+| Campo | Entrada | Pássaros de mercado | Cenário |
 |---|---|---|---|
-| Madeira | ×1 | ×1 | 1 |
-| Ferro | ×2 | ×2,5 | 2 |
-| Ouro | ×4 | ×5,5 | 3 |
-| Diamante | ×8 | ×12 | 4 |
+| Campo do Vilarejo | 5 | bitcoin | dia de sol, vila e moinho |
+| Bosque dos Arqueiros | 15 | bitcoin e ethereum | fim de tarde, floresta, folhas caindo |
+| Pico das Águias | 40 | bitcoin, ethereum e ouro | montanhas nevadas, nevasca |
+| Reserva Real | 100 | bitcoin, ethereum e ouro | pôr do sol, castelo, tochas |
 
-Flechas melhores rendem um pouco mais por moeda gasta, mas cada erro custa mais caro.
+| Flecha | Preço | Para que serve |
+|---|---|---|
+| Madeira | grátis | treinar a mira nos pássaros comuns |
+| Bitcoin | 100 | previsão da direção do bitcoin |
+| Ethereum | 100 | previsão da direção do ethereum |
+| Ouro PAXG | 100 | previsão da direção do ouro (PAXG) |
 
-Atalhos: **1–4** trocam de flecha, **P/Esc** pausa e **M** liga ou desliga o som.
+As flechas de ferro, ouro e diamante foram removidas.
+
+Atalhos: **1–9** trocam entre as flechas do campo, **B** mostra ou esconde os pássaros comuns, **P/Esc** pausa e
+**M** liga ou desliga o som.
 
 ## Moedas no servidor
 
@@ -47,8 +57,12 @@ Cada rodada é uma **sessão** do Flecha Certeira no trading-service (`/api/jogo
 |---|---|---|
 | "Pagar e entrar" | `POST /sessoes` `{ campo, flechas }` | o servidor confere o saldo disponível e guarda o custo (entrada + flechas). Erros como **422** (saldo insuficiente) ou **409** (já existe rodada aberta) aparecem na loja, com o botão "Encerrar a rodada aberta" no caso do 409. |
 | Cada flecha termina (crava no chão ou sai da tela) | `POST /sessoes/{id}/tiros` `{ flecha, acertos }` | `acertos` = tipos dos pássaros atingidos por essa flecha, na ordem. Os tiros vão um por vez, na ordem, com pelo menos **160 ms** entre eles (`src/sessao.js`). |
-| Comprar mais flechas | `POST /sessoes/{id}/flechas` | só com o saldo da carteira menos o custo da rodada: as moedas ganhas entram na carteira quando a rodada termina. |
+| Comprar mais flechas | `POST /sessoes/{id}/flechas` | só com o saldo da carteira menos o custo da rodada: as moedas que a rodada rende entram na carteira quando ela termina. |
 | Fim da rodada / "Sair do campo" | `POST /sessoes/{id}/encerrar` | a tela de resultado usa a resposta do servidor. A carteira é atualizada pelo RabbitMQ (assíncrono), então o saldo é lido de novo ~1,5 s depois. |
+
+Cada flecha de mercado usada registra uma operação do estudo (`POST /api/jogos/flecha/estudo/operacoes`; o
+servidor já desconta a flecha da sessão), que o jogo acompanha em `GET /api/jogos/flecha/estudo/operacoes/{id}`
+até ser liquidada (`src/sessao.js`).
 
 Durante a rodada o HUD mostra `saldo antes − custo + ganhos`. Os ganhos de cada tiro são calculados no navegador
 na hora (para o jogo não esperar a rede), mas **o servidor manda**: cada resposta substitui ganhos e flechas
@@ -116,13 +130,15 @@ No Auth0, a aplicação SPA precisa das mesmas URLs de retorno, logout e origem,
 
 ## Telas da conta
 
-- **Menu**: sem login, "Entrar" e "Criar conta". Logado: foto e apelido, saldo, "Jogar", "Comprar moedas",
-  "Meu perfil", "Administração" (só para `ADMIN`) e "Sair".
-- **Comprar moedas**: com o Pix ligado na carteira (`ABACATEPAY_API_KEY`), o jogador escolhe o pacote (preço em
-  R$), recebe o QR Code e o copia e cola, e o jogo confere o pagamento a cada 3 s (ou no botão "Já paguei"): quem
-  confirma é o servidor, perguntando ao AbacatePay. Com chave de teste (`abc_dev_`) aparece "Simular pagamento".
-  Sem Pix configurado, cai no pagamento de teste (sandbox), que credita na hora. Também aparece na escolha de
-  campo, quando a loja de flechas responde "saldo insuficiente" e no resultado quando o jogador fica sem moedas.
+- **Menu**: sem login, "Entrar" e "Criar conta". Logado: foto e apelido, **Saldo** (moedas, flechas guardadas e
+  últimas movimentações), **Comprar** moedas, **Sacar** (desativado, "em breve"), **Jogar**, "Meu perfil",
+  "Administração" (só para `ADMIN`) e "Sair".
+- **Comprar moedas**: com o Pix ligado na carteira (`ABACATEPAY_API_KEY`), o jogador escolhe um pacote sugerido
+  ou digita a quantidade (R$ 1 = 10 moedas), recebe o QR Code e o copia e cola, e o jogo confere o pagamento a
+  cada 3 s (ou no botão "Já paguei"): quem confirma é o servidor, perguntando ao AbacatePay. Com chave de teste
+  (`abc_dev_`) aparece "Simular pagamento". Sem Pix configurado, cai no pagamento de teste (sandbox), que credita
+  na hora. Também aparece na escolha de campo, quando a loja de flechas responde "saldo insuficiente" e no
+  resultado quando o jogador fica sem moedas.
 - **Meu perfil**: foto, nome, email, papel, membro desde, apelido editável (3 a 20 letras, números ou `_`; se já
   estiver em uso, o servidor responde 409 e a tela avisa), as últimas 10 movimentações da carteira e
   "Excluir minha conta" (confirmação digitando `EXCLUIR`; a conta é anonimizada e o jogador sai).
@@ -173,7 +189,7 @@ docker run -p 3000:80 -e GATEWAY_URL=http://api-gateway:8080 frontend
 - `index.html`: estrutura das telas
 
 Para equilibrar o jogo, ajuste `RANGES` (campos) e `ARROW_TYPES` (flechas) em `src/regras.js` **e** as mesmas regras
-no trading-service (o servidor é quem paga).
+no trading-service (o servidor é quem credita as moedas).
 
 ## Repositorios do projeto
 
