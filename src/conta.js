@@ -9,6 +9,7 @@ import {
   precoEmReais, qrCodeSeguro, tempoRestante, textoFaixa, valorDasMoedas,
 } from './creditos.js';
 import { ARROW_TYPES, RANGE_BY_SLUG } from './regras.js';
+import { ATIVO_POR_SIMBOLO, reaisComSinal, textoTaxa } from './bitcoin.js';
 import {
   ROTULO_PAPEL, escaparHtml, formatarComSinal, formatarData, formatarMoedas, htmlExtrato, htmlLinhasUsuarios, iniciais,
   mensagemErro, nomeExibicao, paginacao, urlSegura, validarApelido,
@@ -206,6 +207,30 @@ function preencherPerfil() {
   $('perfil-apelido').value = perfil?.apelido || '';
 }
 
+/**
+ * Linhas da tabela de acerto por criptomoeda (GET /jogos/flecha/estudo/meus-acertos) e o total. "Resultado" é
+ * quanto as operações feitas com as apostas renderam (ou custaram) em reais.
+ */
+export function htmlAcertos(dados) {
+  const linha = (rotulo, n, classe = '') => {
+    const reais = Number(n?.resultadoLiquidoBrl) || 0;
+    const cor = reais > 0 ? 'pos' : reais < 0 ? 'neg' : '';
+    return `<tr${classe ? ` class="${classe}"` : ''}>
+      <td>${rotulo}</td><td>${Number(n?.operacoes) || 0}</td><td>${Number(n?.acertos) || 0}</td>
+      <td>${Number(n?.erros) || 0}</td><td>${Number(n?.empates) || 0}</td><td>${textoTaxa(n?.taxaAcertoPercentual)}</td>
+      <td class="${cor}">${reaisComSinal(reais)}</td>
+    </tr>`;
+  };
+  const porAtivo = Array.isArray(dados?.porAtivo) ? dados.porAtivo : [];
+  if (!porAtivo.some(n => Number(n.operacoes) > 0)) {
+    return '<tr><td colspan="7" class="vazio">Você ainda não fez apostas com as flechas de mercado.</td></tr>';
+  }
+  return porAtivo.map(n => {
+    const ativo = ATIVO_POR_SIMBOLO[n.simbolo];
+    return linha(ativo ? `${escaparHtml(ativo.marca)} ${escaparHtml(ativo.nome)}` : escaparHtml(n.simbolo || '?'), n);
+  }).join('') + linha('Total', dados.total, 'total');
+}
+
 // ---------------------------------------------------------------------------
 // Saldo: moedas, flechas guardadas e últimas movimentações
 // ---------------------------------------------------------------------------
@@ -270,8 +295,9 @@ async function abrirPerfil() {
   $('perfil-extrato').innerHTML = '<tr><td colspan="4" class="vazio">Carregando…</td></tr>';
   setState('perfil');
 
-  // Atualiza os dados e o extrato em paralelo
-  const [eu, transacoes] = await Promise.allSettled([api.meuPerfil(), api.extrato()]);
+  // Atualiza os dados, o extrato e os acertos em paralelo
+  $('perfil-acertos').innerHTML = '<tr><td colspan="7" class="vazio">Carregando…</td></tr>';
+  const [eu, transacoes, acertos] = await Promise.allSettled([api.meuPerfil(), api.extrato(), api.meusAcertos()]);
   if (estadoAtual() !== 'perfil') return;
   if (eu.status === 'fulfilled') {
     perfil = eu.value;
@@ -281,6 +307,9 @@ async function abrirPerfil() {
   $('perfil-extrato').innerHTML = transacoes.status === 'fulfilled'
     ? htmlExtrato(transacoes.value, 10)
     : `<tr><td colspan="4" class="vazio erro">${escaparHtml(mensagemErro(transacoes.reason))}</td></tr>`;
+  $('perfil-acertos').innerHTML = acertos.status === 'fulfilled'
+    ? htmlAcertos(acertos.value)
+    : `<tr><td colspan="7" class="vazio erro">${escaparHtml(mensagemErro(acertos.reason))}</td></tr>`;
 }
 
 async function salvarApelido(e) {
@@ -357,6 +386,9 @@ function pararAcompanhamento() {
   creditos.consulta = null;
   creditos.relogio = null;
 }
+
+/** Para as consultas periódicas do Pix (usado pelos testes ao trocar de app entre um caso e outro). */
+export const pararAcompanhamentos = pararAcompanhamento;
 
 function desenharCreditos() {
   $('creditos-saldo').textContent = formatarMoedas(saldoAtual());

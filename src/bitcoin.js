@@ -323,5 +323,47 @@ export function textoResultadoEstudo(op) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Acertos do jogador nas apostas de mercado
+// ---------------------------------------------------------------------------
+/** Placar de uma partida por ativo: { btc: { acertos, erros, empates }, eth: ..., ouro: ... }. */
+export const placarVazio = () => Object.fromEntries(LISTA_ATIVOS.map(a => [a.id, { acertos: 0, erros: 0, empates: 0 }]));
+
+/** Conta uma aposta liquidada (só operações FECHADA decidem; as devolvidas por falha não contam). */
+export function contarNoPlacar(placar, ativo, op) {
+  if (!op || op.status !== 'FECHADA' || !placar[ativo]) return placar;
+  const b = Number(op.resultadoBinarioBrl) || 0;
+  placar[ativo][b > 0 ? 'acertos' : b < 0 ? 'erros' : 'empates']++;
+  return placar;
+}
+
+/** Porcentagem de acerto, com os empates fora da conta; null sem apostas decididas. */
+export function taxaDeAcerto({ acertos, erros }) {
+  return acertos + erros > 0 ? (acertos * 100) / (acertos + erros) : null;
+}
+
+/** Valor em reais com sinal, ex.: "+R$ 0,12" ou "−R$ 0,0042" (centavos de centavo aparecem). */
+export const reaisComSinal = v => reais(Number(v) || 0);
+
+/** Soma ao total da partida o resultado em reais da operação feita com a aposta (só as FECHADA). */
+export function somarResultadoReais(total, op) {
+  return op?.status === 'FECHADA' ? total + (Number(op.resultadoLiquidoBrl) || 0) : total;
+}
+
+/** "60%" ou "—" (sem apostas decididas). */
+export const textoTaxa = taxa => (taxa === null || taxa === undefined ? '—'
+  : `${Number(taxa).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`);
+
+/** Uma linha por ativo que teve aposta na partida, ex.: "₿ 60% (3/5)". */
+export function linhasDoPlacar(placar) {
+  return LISTA_ATIVOS
+    .map(a => ({ a, p: placar?.[a.id] }))
+    .filter(({ p }) => p && p.acertos + p.erros + p.empates > 0)
+    .map(({ a, p }) => ({
+      ativo: a,
+      texto: `${a.marca} ${textoTaxa(taxaDeAcerto(p))} (${p.acertos}/${p.acertos + p.erros})`,
+    }));
+}
+
 /** Nome antigo: o feed do bitcoin. */
 export const criarFeedBtc = deps => criarFeedPreco({ ...deps, simbolo: BTC_SIMBOLO });

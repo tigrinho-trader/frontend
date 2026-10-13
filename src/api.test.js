@@ -74,6 +74,10 @@ describe("rotas", () => {
     expect(ultimaChamada().corpo).toEqual(dados);
     await api.aljavaGuardada();
     expect(ultimaChamada().url).toBe("/api/jogos/flecha/aljava");
+    await api.meusAcertos();
+    expect(ultimaChamada().url).toBe("/api/jogos/flecha/estudo/meus-acertos");
+    await api.meusAcertos("s-9");
+    expect(ultimaChamada().url).toBe("/api/jogos/flecha/estudo/meus-acertos?sessaoId=s-9");
     await api.operacaoEstudo("op 1");
     expect(ultimaChamada().method).toBe("GET");
     expect(ultimaChamada().url).toBe("/api/jogos/flecha/estudo/operacoes/op%201");

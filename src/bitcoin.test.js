@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  ATIVOS, ATIVO_POR_SIMBOLO, BINANCE_WS, BTC_ALTURA, BTC_AMPLITUDE, LISTA_ATIVOS, criarFeedPreco, urlBinance, BTC_NASCE_A_CADA, BTC_PRECO_SIMULADO, FLECHA_BTC, acertaBinario, acertaNoAlvo,
+  ATIVOS, ATIVO_POR_SIMBOLO, BINANCE_WS, contarNoPlacar, linhasDoPlacar, placarVazio, reaisComSinal,
+  somarResultadoReais, taxaDeAcerto, textoTaxa, BTC_ALTURA, BTC_AMPLITUDE, LISTA_ATIVOS, criarFeedPreco, urlBinance, BTC_NASCE_A_CADA, BTC_PRECO_SIMULADO, FLECHA_BTC, acertaBinario, acertaNoAlvo,
   alturaBtc, alvoBinario,
   alvoFlechaBtc, criarFeedBtc, direcaoDaPrevisao, escalaBtc, lerMensagemBinance, precoPrevisto, textoResultadoEstudo,
   toleranciaEmDolares, velocidadeFlechaBtc,
@@ -429,4 +430,41 @@ describe("ativos de mercado: bitcoin, ethereum e ouro", () => {
       .toBe("Ethereum · x");
   });
 
+});
+
+describe("placar da partida", () => {
+  const sem = (t) => t.replace(/\s/g, " ");
+  const fechada = (b, liquido = 0) => ({ status: "FECHADA", resultadoBinarioBrl: b, resultadoLiquidoBrl: liquido });
+
+  it("conta acertos, erros e empates por ativo; falhas não contam", () => {
+    const placar = placarVazio();
+    contarNoPlacar(placar, "btc", fechada(10));
+    contarNoPlacar(placar, "btc", fechada(10));
+    contarNoPlacar(placar, "btc", fechada(-10));
+    contarNoPlacar(placar, "btc", fechada(0));
+    contarNoPlacar(placar, "eth", { status: "FALHOU", resultadoBinarioBrl: null });
+    contarNoPlacar(placar, "xyz", fechada(10));
+    contarNoPlacar(placar, "eth", null);
+    expect(placar.btc).toEqual({ acertos: 2, erros: 1, empates: 1 });
+    expect(placar.eth).toEqual({ acertos: 0, erros: 0, empates: 0 });
+    expect(taxaDeAcerto(placar.btc)).toBeCloseTo(66.67, 1);      // empate fora da conta
+    expect(taxaDeAcerto(placar.eth)).toBeNull();
+    expect(linhasDoPlacar(placar).map((l) => l.texto)).toEqual(["₿ 66,7% (2/3)"]);
+    expect(linhasDoPlacar(null)).toEqual([]);
+  });
+
+  it("taxa formatada e soma da partida em reais", () => {
+    expect(textoTaxa(null)).toBe("—");
+    expect(textoTaxa(60)).toBe("60%");
+    expect(textoTaxa(66.666)).toBe("66,7%");
+    let total = 0;
+    total = somarResultadoReais(total, fechada(10, 0.12));
+    total = somarResultadoReais(total, fechada(-10, -0.3));
+    total = somarResultadoReais(total, { status: "RECUSADA", resultadoLiquidoBrl: 5 });
+    total = somarResultadoReais(total, null);
+    expect(total).toBeCloseTo(-0.18, 6);
+    expect(sem(reaisComSinal(total))).toBe("−R$ 0,18");
+    expect(sem(reaisComSinal(0.004))).toBe("+R$ 0,0040");
+    expect(reaisComSinal("x")).toBe("R$ 0,00");
+  });
 });

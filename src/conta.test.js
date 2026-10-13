@@ -71,14 +71,18 @@ async function fetchFalso(url, init) {
 
 const $ = (id) => document.getElementById(id);
 const espera = () => new Promise((r) => setTimeout(r, 0));
-async function estabilizar(n = 8) {
+// folga para a máquina carregada: as respostas falsas passam por várias promessas encadeadas
+async function estabilizar(n = 25) {
   for (let i = 0; i < n; i++) await espera();
 }
+
+let contaAtual = null;
 
 async function iniciarApp() {
   document.documentElement.innerHTML = HTML.replace(/<script[\s\S]*?<\/script>/g, "");
   vi.resetModules();
   const conta = await import("./conta.js");
+  contaAtual = conta;
   await conta.iniciarConta();
   await estabilizar();
 }
@@ -106,6 +110,9 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // o app do caso anterior não pode continuar consultando o Pix e redesenhar a tela do próximo
+  contaAtual?.pararAcompanhamentos();
+  contaAtual = null;
   vi.unstubAllGlobals();
 });
 
@@ -239,6 +246,35 @@ describe("perfil", () => {
     $("form-apelido").dispatchEvent(new Event("submit", { cancelable: true }));
     await estabilizar();
     expect($("perfil-apelido-msg").textContent).toBe("Esse apelido já está em uso. Escolha outro.");
+  });
+
+  it("perfil mostra o acerto e o resultado em reais por criptomoeda", async () => {
+    const n = (simbolo, operacoes, acertos, erros, empates, taxa, reais) =>
+      ({ simbolo, operacoes, acertos, erros, empates, taxaAcertoPercentual: taxa, resultadoLiquidoBrl: reais });
+    rotas["GET /jogos/flecha/estudo/meus-acertos"] = [200, {
+      porAtivo: [n("BTCUSDT", 5, 3, 1, 1, 75.0, -0.3), n("ETHUSDT", 2, 0, 2, 0, 0.0, -0.12), n("PAXGUSDT", 0, 0, 0, 0, null, 0)],
+      total: { operacoes: 7, acertos: 3, erros: 3, empates: 1, taxaAcertoPercentual: 50.0, resultadoLiquidoBrl: -0.42 },
+    }];
+    await iniciarApp();
+    $("btn-perfil").click();
+    await estabilizar();
+    const linhas = [...$("perfil-acertos").querySelectorAll("tr")]
+      .map((tr) => [...tr.querySelectorAll("td")].map((td) => td.textContent.replace(/\s+/g, " ").trim()).join(" "));
+    expect(linhas[0]).toBe("₿ Bitcoin 5 3 1 1 75% −R$ 0,30");
+    expect(linhas[2]).toBe("Au Ouro 0 0 0 0 — R$ 0,00");
+    expect(linhas[3]).toBe("Total 7 3 3 1 50% −R$ 0,42");
+
+    rotas["GET /jogos/flecha/estudo/meus-acertos"] = [200, { porAtivo: [n("BTCUSDT", 0, 0, 0, 0, null, 0)], total: {} }];
+    $("btn-perfil-voltar").click();
+    $("btn-perfil").click();
+    await estabilizar();
+    expect($("perfil-acertos").textContent).toContain("ainda não fez apostas");
+
+    rotas["GET /jogos/flecha/estudo/meus-acertos"] = [503, { detail: "trading fora", status: 503 }];
+    $("btn-perfil-voltar").click();
+    $("btn-perfil").click();
+    await estabilizar();
+    expect($("perfil-acertos").querySelector(".erro")).not.toBeNull();
   });
 
   it("Saldo: moedas, valor de referência, flechas guardadas e movimentações", async () => {
@@ -389,11 +425,16 @@ describe("jogo com o servidor", () => {
   });
 
   it("sair do campo encerra a sessão e mostra o resultado do servidor", async () => {
+    let saldo = 1000;
+    rotas["GET /carteira"] = () => [200, { usuarioId: EU.id, saldo, atualizadaEm: null }];
     rotas["POST /jogos/flecha/sessoes"] = [201, sessao()];
-    rotas["POST /jogos/flecha/sessoes/s-1/encerrar"] = [200, sessao({
-      status: "ENCERRADA", ganhos: 40, resultado: 25, acertos: 3,
-      disparadas: { wood: 4, iron: 0, gold: 0, diamond: 0 },
-    })];
+    rotas["POST /jogos/flecha/sessoes/s-1/encerrar"] = () => {
+      saldo = 1025;                       // a carteira recebe o resultado da rodada
+      return [200, sessao({
+        status: "ENCERRADA", ganhos: 40, resultado: 25, acertos: 3,
+        disparadas: { wood: 4, iron: 0, gold: 0, diamond: 0 },
+      })];
+    };
     await iniciarApp();
     $("btn-play").click();
     $("range-grid").querySelector('button[data-range="0"]').click();

@@ -16,6 +16,7 @@
     <div id="hud-buttons">
       <button id="btn-pause" class="icon-btn" title="Pausar (P)">⏸</button>
       <button id="btn-mute" class="icon-btn" title="Som (M)">🔊</button>
+      <button id="btn-passaros" class="icon-btn" title="Esconder os pássaros comuns (B)">🐦</button>
     </div>
 
     <!-- Menu inicial -->
@@ -88,6 +89,14 @@
           <button type="submit" class="btn small" id="btn-salvar-apelido">Salvar</button>
         </form>
         <p class="msg" id="perfil-apelido-msg"></p>
+
+        <h3 class="secao">Seu acerto nas flechas de mercado</h3>
+        <div class="tabela-rolagem curta">
+          <table class="tabela acertos">
+            <thead><tr><th>Ativo</th><th>Apostas</th><th>Acertos</th><th>Erros</th><th>Empates</th><th>Acerto</th><th>Resultado</th></tr></thead>
+            <tbody id="perfil-acertos"><tr><td colspan="7" class="vazio">Carregando…</td></tr></tbody>
+          </table>
+        </div>
 
         <h3 class="secao">Últimas movimentações</h3>
         <div class="tabela-rolagem curta">
@@ -293,6 +302,8 @@
           <tr><td>Entrada</td><td id="res-fee" class="neg">-0</td></tr>
           <tr><td id="res-arrows-label">Flechas compradas</td><td id="res-arrows" class="neg">-0</td></tr>
           <tr><td>Pássaros acertados</td><td id="res-hits">0</td></tr>
+          <tr id="res-mercado-linha" hidden><td>Apostas de mercado</td><td id="res-mercado">—</td></tr>
+          <tr id="res-reais-linha" hidden><td>Operações desta partida (R$)</td><td id="res-reais">—</td></tr>
           <tr><td>Moedas ganhas</td><td id="res-earned" class="pos">+0</td></tr>
           <tr class="total"><td>Saldo atual</td><td><span class="coin"></span><span id="res-wallet">0</span></td></tr>
         </table>

@@ -156,6 +156,8 @@ export const simularPagamentoPix = compraId => requisitar('POST', `/carteira/com
 // ---------------------------------------------------------------------------
 export const cotacao = simbolo => requisitar('GET', `/cotacoes/${encodeURIComponent(simbolo)}`, { publico: true });
 export const aljavaGuardada = () => requisitar('GET', '/jogos/flecha/aljava');
+export const meusAcertos = sessaoId =>
+  requisitar('GET', '/jogos/flecha/estudo/meus-acertos' + consulta({ sessaoId }));
 export const registrarOperacaoEstudo = dados => requisitar('POST', '/jogos/flecha/estudo/operacoes', { corpo: dados });
 export const operacaoEstudo = idOperacao => requisitar('GET', `/jogos/flecha/estudo/operacoes/${id(idOperacao)}`);
 export const regrasFlecha = () => requisitar('GET', '/jogos/flecha/regras', { publico: true });

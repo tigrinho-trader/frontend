@@ -15,7 +15,8 @@ import { criarControladorSessao } from './sessao.js';
 import { formatarMoedas, mensagemErro } from './telas.js';
 import {
   ATIVOS, BTC_MAX_VOANDO, BTC_ALTURA, FLECHA_BTC, LISTA_ATIVOS, acertaBinario, acertaNoAlvo, alturaBtc,
-  alvoBinario, alvoFlechaBtc, criarFeedPreco, direcaoDaPrevisao, precoPrevisto, textoResultadoEstudo,
+  alvoBinario, alvoFlechaBtc, contarNoPlacar, criarFeedPreco, direcaoDaPrevisao, linhasDoPlacar, placarVazio,
+  precoPrevisto, reaisComSinal, somarResultadoReais, textoResultadoEstudo,
   toleranciaEmDolares, velocidadeFlechaBtc, velocidadePassaroDaFlecha,
 } from './bitcoin.js';
 
@@ -127,6 +128,9 @@ const game = {
   mercadoTimers: {},        // por ativo: segundos até o próximo pássaro de mercado avulso
   estudo: null,             // último resultado do estudo mostrado no HUD: { texto, detalhe, cor }
   guardadas: null,          // flechas guardadas do jogador (GET /jogos/flecha/aljava): { campos, mercado }
+  placarPartida: placarVazio(),   // acertos nas apostas de mercado desta partida, por ativo
+  reaisPartida: 0,          // soma, em reais, do resultado das operações feitas com as apostas desta partida
+  passarosComuns: lerPassarosComuns(),   // false: só os pássaros de criptomoeda aparecem na rodada
   pending: null,            // 'win' | 'lose' enquanto espera a animação terminar
   endTimer: 0,
   banner: 0,
@@ -470,6 +474,8 @@ async function enterRange() {
   // bitcoin logo; ethereum e ouro escalonados para não nascerem juntos
   game.mercadoTimers = { btc: 1, eth: 2.5, ouro: 4 };
   game.estudo = null;
+  game.placarPartida = placarVazio();
+  game.reaisPartida = 0;
   game.pending = null;
   game.endTimer = 0;
   game.banner = 2.6;
@@ -587,6 +593,12 @@ async function endSession() {
     .join(', ');
   $('res-arrows').textContent = `−${moedas(custo - game.range.fee)}`;
   $('res-hits').textContent = `${acertos} com ${disparadas} flecha${disparadas === 1 ? '' : 's'}`;
+  const placar = linhasDoPlacar(game.placarPartida);
+  $('res-mercado-linha').hidden = !placar.length;
+  $('res-mercado').textContent = placar.map(l => l.texto).join(' · ');
+  $('res-reais-linha').hidden = !placar.length;
+  $('res-reais').textContent = reaisComSinal(game.reaisPartida);
+  $('res-reais').className = game.reaisPartida > 0 ? 'pos' : game.reaisPartida < 0 ? 'neg' : '';
   $('res-earned').textContent = `+${moedas(ganhos)}`;
   $('res-wallet').textContent = moedas(game.wallet);
   $('res-aviso').textContent = falha
@@ -716,7 +728,32 @@ function voarMercado(b, dt) {
   }
 }
 
+/** Preferência do navegador: mostrar os pássaros comuns na rodada (padrão: sim). */
+function lerPassarosComuns() {
+  try {
+    return localStorage.getItem('flecha-passaros-comuns') !== '0';
+  } catch {
+    return true;
+  }
+}
+
+function togglePassarosComuns() {
+  game.passarosComuns = !game.passarosComuns;
+  try {
+    localStorage.setItem('flecha-passaros-comuns', game.passarosComuns ? '1' : '0');
+  } catch { /* sem armazenamento: vale só nesta visita */ }
+  mostrarBotaoPassaros();
+  avisar(game.passarosComuns ? 'Pássaros comuns de volta.' : 'Só os pássaros de criptomoeda na rodada.', 'info', 2500);
+}
+
+function mostrarBotaoPassaros() {
+  const btn = $('btn-passaros');
+  btn.classList.toggle('desligado', !game.passarosComuns);
+  btn.title = game.passarosComuns ? 'Esconder os pássaros comuns (B)' : 'Mostrar os pássaros comuns (B)';
+}
+
 function updateSpawner(dt) {
+  if (!game.passarosComuns && !inLobby()) return;   // rodada só com os pássaros de criptomoeda
   game.spawnTimer -= dt;
   const flying = game.birds.filter(b => b.state === 'flying').length;
   if (game.spawnTimer <= 0 && flying < game.range.maxBirds) {
@@ -975,6 +1012,8 @@ async function acompanharEstudo(ar) {
       : await esperar(ESPERA_RESULTADO_MS).then(() => api.operacaoEstudo(registro.id)).catch(() => null);
     const resultado = textoResultadoEstudo(op);
     if (resultado) {
+      contarNoPlacar(game.placarPartida, ar.alvo.ativo, op);
+      game.reaisPartida = somarResultadoReais(game.reaisPartida, op);
       mostrarEstudo(resultado);
       // as moedas entram pelo servidor: durante a rodada, na sessão; depois dela, direto na carteira
       if (sessaoCtl) sessaoCtl.atualizar().catch(() => {});
@@ -1416,9 +1455,34 @@ function drawTickerMercado() {
     }
   });
 
+  // acertos desta partida nas apostas de mercado, por ativo
+  let proximoY = y + h + 8;
+  const placar = linhasDoPlacar(game.placarPartida);
+  if (placar.length) {
+    const ph = 40;
+    plaque(x, proximoY, w, ph, 12);
+    ctx.textAlign = 'left';
+    ctx.font = '800 10px Nunito, sans-serif';
+    ctx.fillStyle = 'rgba(255,240,215,0.85)';
+    ctx.fillText('ACERTOS NESTA PARTIDA', x + 12, proximoY + 14);
+    // quanto as operações desta partida renderam (ou custaram) em reais
+    ctx.textAlign = 'right';
+    ctx.font = '900 11px Nunito, sans-serif';
+    ctx.fillStyle = game.reaisPartida > 0 ? '#b9f6ca' : game.reaisPartida < 0 ? '#ff8a80' : 'rgba(255,240,215,0.85)';
+    ctx.fillText(`operações ${reaisComSinal(game.reaisPartida)}`, x + w - 12, proximoY + 14);
+    ctx.textAlign = 'left';
+    let px = x + 12;
+    for (const { ativo, texto } of placar) {
+      ctx.font = "15px 'Lilita One', sans-serif";
+      outlinedText(texto, px, proximoY + 32, "15px 'Lilita One', sans-serif", ativo.cor, '#4a2a10', 3);
+      px += ctx.measureText(texto).width + 14;
+    }
+    proximoY += ph + 8;
+  }
+
   // último resultado do estudo (a operação feita com a previsão do jogador)
   if (game.estudo) {
-    const ey = y + h + 8, eh = 44;
+    const ey = proximoY, eh = 44;
     plaque(x, ey, w, eh, 12);
     ctx.textAlign = 'left';
     outlinedText(game.estudo.texto, x + 14, ey + 21, "17px 'Lilita One', sans-serif",
@@ -2288,6 +2352,7 @@ window.addEventListener('keydown', e => {
   const k = e.key.toLowerCase();
   if (k === 'p' || k === 'escape') togglePause();
   else if (k === 'm') toggleMute();
+  else if (k === 'b' && game.state === 'playing') togglePassarosComuns();
   else if (game.state === 'playing' && k >= '1' && k <= String(ARROW_TYPES.length)) selectArrow(ARROW_TYPES[Number(k) - 1].id);
 });
 
@@ -2328,6 +2393,8 @@ $('btn-restart').addEventListener('click', () => setState('menu'));
 $('btn-resume').addEventListener('click', togglePause);
 $('btn-pause').addEventListener('click', togglePause);
 $('btn-mute').addEventListener('click', toggleMute);
+$('btn-passaros').addEventListener('click', togglePassarosComuns);
+mostrarBotaoPassaros();
 
 // ---------------------------------------------------------------------------
 // Loop principal

@@ -874,3 +874,20 @@ h3.secao {
 
 /* Loja: flechas que o jogador já tem guardadas */
 .arrow-info .guardadas { color: #2e7d32; }
+
+/* Botão dos pássaros comuns desligado: ícone apagado e riscado */
+.icon-btn.desligado { position: relative; opacity: 0.55; }
+.icon-btn.desligado::after {
+  content: '';
+  position: absolute;
+  left: 18%;
+  right: 18%;
+  top: 50%;
+  height: calc(var(--s) * 3px);
+  background: #c62828;
+  transform: rotate(-35deg);
+}
+
+/* Perfil: acerto por criptomoeda */
+.tabela.acertos td:not(:first-child), .tabela.acertos th:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
+.tabela.acertos tr.total td { font-weight: 900; border-top: 2px solid #e2cfae; }
