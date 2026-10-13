@@ -73,6 +73,12 @@ export const RANGE_BY_SLUG = Object.fromEntries(RANGES.map(r => [r.slug, r]));
 // Tipos de flecha: custam "price" vezes o preço base do campo e multiplicam
 // as moedas do pássaro por "coins". As melhores rendem um pouco mais por moeda
 // gasta, mas cada erro sai bem mais caro (alto risco, alto retorno).
+/**
+ * Flechas de mercado (bitcoin, ethereum, ouro) custam sempre isto: é a aposta binária de R$ 10 do estudo
+ * (10 moedas = R$ 1). Acertou se o preço sobe ou desce: recebe o dobro. Quem decide é o servidor, pelo preço real.
+ */
+export const APOSTA_MERCADO = 100;
+
 export const ARROW_TYPES = [
   {
     id: 'wood', name: 'Madeira', price: 1, coins: 1, desc: 'A flecha básica e barata.',
@@ -96,27 +102,27 @@ export const ARROW_TYPES = [
   },
   {
     // Flechas de mercado: previsão do ativo em 5 s, alvo fixo na direita, só acertam o pássaro do ativo
-    id: 'btc', name: 'Bitcoin', price: 1, coins: 2, especial: 'btc', mercado: 'btc',
-    desc: 'Previsão: mire a altura do BTC daqui a 5 s no alvo da direita. Só acerta o pássaro bitcoin e dobra as moedas dele.',
+    id: 'btc', name: 'Bitcoin', price: 1, precoFixo: APOSTA_MERCADO, coins: 2, especial: 'btc', mercado: 'btc',
+    desc: 'Aposta de 100 moedas: o bitcoin sobe ou desce em 5 s? Acertou, recebe 200.',
     shaft: ['#5d3a1a', '#f7931a'], head: ['#fff3e0', '#f7931a', '#8a4b00'], headStroke: '#5d3000',
     fletch: ['#ffffff', '#f7931a'], trail: '247,147,26', headSize: 1.25, glow: 'rgba(247,147,26,0.9)',
   },
   {
-    id: 'eth', name: 'Ethereum', price: 1, coins: 2, especial: 'eth', mercado: 'eth',
-    desc: 'Previsão: mire o Ethereum daqui a 5 s no alvo da direita. Só acerta o pássaro ethereum e dobra as moedas dele.',
+    id: 'eth', name: 'Ethereum', price: 1, precoFixo: APOSTA_MERCADO, coins: 2, especial: 'eth', mercado: 'eth',
+    desc: 'Aposta de 100 moedas: o ethereum sobe ou desce em 5 s? Acertou, recebe 200.',
     shaft: ['#2b2f4a', '#627eea'], head: ['#eef1ff', '#8c9eff', '#303f9f'], headStroke: '#1a237e',
     fletch: ['#ffffff', '#627eea'], trail: '98,126,234', headSize: 1.25, glow: 'rgba(98,126,234,0.9)',
   },
   {
-    id: 'ouro', name: 'Ouro PAXG', price: 1, coins: 2, especial: 'ouro', mercado: 'ouro',
-    desc: 'Previsão: mire o ouro (PAXG) daqui a 5 s no alvo da direita. Só acerta o pássaro do ouro e dobra as moedas dele.',
+    id: 'ouro', name: 'Ouro PAXG', price: 1, precoFixo: APOSTA_MERCADO, coins: 2, especial: 'ouro', mercado: 'ouro',
+    desc: 'Aposta de 100 moedas: o ouro sobe ou desce em 5 s? Acertou, recebe 200.',
     shaft: ['#4a3410', '#c9a227'], head: ['#fffbe6', '#e6c35c', '#8a6d10'], headStroke: '#5c4708',
     fletch: ['#ffffff', '#c9a227'], trail: '201,162,39', headSize: 1.25, glow: 'rgba(230,195,92,0.9)',
   },
 ];
 export const ARROW_BY_ID = Object.fromEntries(ARROW_TYPES.map(t => [t.id, t]));
-/** Da flecha mais cara para a mais barata (a ordem da lista não é a de preço: a bitcoin vem por último). */
-export const ARROWS_BY_PRICE_DESC = [...ARROW_TYPES].sort((a, b) => b.price - a.price);
+/** Flechas comuns da mais cara para a mais barata (as de mercado têm preço fixo e ficam de fora). */
+export const ARROWS_BY_PRICE_DESC = ARROW_TYPES.filter(t => !t.mercado).sort((a, b) => b.price - a.price);
 
 export const formatMult = m => String(m).replace('.', ',');
 
@@ -127,7 +133,7 @@ export function birdValue(type, range) {
   return Math.round(type.coins * range.mult);
 }
 
-export const arrowCost = (type, range) => type.price * range.arrowPrice;
+export const arrowCost = (type, range) => type.precoFixo ?? type.price * range.arrowPrice;
 
 /** Moedas de um acerto: valor do pássaro × força da flecha × combo (n-ésimo pássaro da mesma flecha). */
 export function coinsForHit(birdType, range, arrowType, comboHits = 1) {
@@ -148,19 +154,23 @@ export const minCost = range => range.fee + range.arrowPrice;
 export const canEnter = (wallet, range) => wallet >= minCost(range);
 export const isBroke = wallet => !RANGES.some(r => canEnter(wallet, r));
 
-/** Ajusta um pedido ao saldo: corta das flechas mais caras primeiro e garante ao menos 1 flecha. */
-export function fitOrder(order, range, wallet) {
+/**
+ * Ajusta um pedido ao saldo: corta das flechas mais caras (neste campo) primeiro e garante ao menos 1 flecha,
+ * contando as `guardadas` que o jogador já tem para este campo.
+ */
+export function fitOrder(order, range, wallet, guardadas = 0) {
   const fitted = { ...emptyQuiver(), ...order };
   const tooExpensive = () => range.fee + orderCost(fitted, range) > wallet;
-  for (const { id } of ARROWS_BY_PRICE_DESC) {
+  const porCusto = [...ARROW_TYPES].sort((a, b) => arrowCost(b, range) - arrowCost(a, range));
+  for (const { id } of porCusto) {
     while (fitted[id] > 0 && tooExpensive()) fitted[id]--;
   }
-  if (countArrows(fitted) === 0) fitted.wood = 1;
+  if (countArrows(fitted) + guardadas === 0) fitted.wood = 1;
   return fitted;
 }
 
-/** Soma (ou tira) flechas de um tipo, respeitando o saldo e o limite da aljava. */
-export function changeOrder(order, range, wallet, typeId, delta) {
+/** Soma (ou tira) flechas de um tipo, respeitando o saldo e o limite da aljava (somando as `guardadas`). */
+export function changeOrder(order, range, wallet, typeId, delta, guardadas = 0) {
   const next = { ...order };
   if (delta < 0) {
     next[typeId] = Math.max(0, next[typeId] + delta);
@@ -169,7 +179,7 @@ export function changeOrder(order, range, wallet, typeId, delta) {
   const cost = arrowCost(ARROW_BY_ID[typeId], range);
   for (let k = 0; k < delta; k++) {
     const left = wallet - range.fee - orderCost(next, range);
-    if (left < cost || countArrows(next) >= MAX_ARROWS) break;
+    if (left < cost || countArrows(next) + guardadas >= MAX_ARROWS) break;
     next[typeId]++;
   }
   return next;

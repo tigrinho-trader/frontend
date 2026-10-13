@@ -117,10 +117,16 @@ describe("loja", () => {
     expect(ajustado).toEqual(pedido({ wood: 10 }));
   });
 
-  it("corta pelo preço, não pela ordem da lista: a bitcoin (barata, a última) fica", () => {
-    // pico: entrada 40; diamante 64, bitcoin 8. Com 120 cabe 1 diamante? 40 + 64 + 2×8 = 120 sim; com 119 não.
-    expect(fitOrder(pedido({ diamond: 1, btc: 2 }), pico, 119)).toEqual(pedido({ btc: 2 }));
-    expect(fitOrder(pedido({ diamond: 1, btc: 2 }), pico, 120)).toEqual(pedido({ diamond: 1, btc: 2 }));
+  it("corta pelo custo no campo: a flecha de mercado (100 moedas) sai primeiro no vilarejo", () => {
+    // vilarejo: entrada 5; bitcoin 100, madeira 1. Com 60 não cabe a de bitcoin
+    expect(fitOrder(pedido({ wood: 5, btc: 1 }), vilarejo, 60)).toEqual(pedido({ wood: 5 }));
+    expect(fitOrder(pedido({ wood: 5, btc: 1 }), vilarejo, 110)).toEqual(pedido({ wood: 5, btc: 1 }));
+  });
+
+  it("com flechas guardadas não precisa comprar nenhuma, e elas contam no limite da aljava", () => {
+    expect(fitOrder(pedido({}), vilarejo, 100, 3)).toEqual(pedido({}));
+    expect(fitOrder(pedido({}), vilarejo, 100, 0)).toEqual(pedido({ wood: 1 }));
+    expect(changeOrder(pedido({}), vilarejo, 1000, "wood", 5, MAX_ARROWS - 2).wood).toBe(2);
   });
 
   it("garante ao menos 1 flecha ao ajustar", () => {

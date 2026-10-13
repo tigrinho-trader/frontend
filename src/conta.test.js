@@ -241,34 +241,46 @@ describe("perfil", () => {
     expect($("perfil-apelido-msg").textContent).toBe("Esse apelido já está em uso. Escolha outro.");
   });
 
-  it("flecha bitcoin: sobe ou desce por padrão e o jogador troca para previsão de preço", async () => {
-    let salvo = null;
-    rotas["PUT /usuarios/me/preferencias"] = (init) => {
-      salvo = JSON.parse(init.body);
-      return [200, { ...EU, modoFlechaBitcoin: salvo.modoFlechaBitcoin }];
-    };
+  it("Saldo: moedas, valor de referência, flechas guardadas e movimentações", async () => {
+    rotas["GET /jogos/flecha/aljava"] = [200, {
+      campos: { vilarejo: { wood: 3, iron: 0, gold: 0, diamond: 0 }, bosque: { wood: 0, iron: 0, gold: 0, diamond: 0 } },
+      mercado: { btc: 2, eth: 0, ouro: 1 },
+    }];
     await iniciarApp();
-    const prefs = await import("./preferencias.js");
-    expect(prefs.modoDaFlechaBitcoin()).toBe("BINARIO");     // perfil sem a preferência: padrão
-    $("btn-perfil").click();
+    expect($("btn-sacar").disabled).toBe(true);           // saque ainda não existe
+    $("btn-saldo").click();
     await estabilizar();
-    expect($("modo-flecha-binario").checked).toBe(true);
+    expect($("saldo").classList.contains("show")).toBe(true);
+    expect($("saldo-moedas").textContent).toBe("1.000");
+    expect($("saldo-referencia").textContent.replace(/\s/g, " ")).toContain("R$ 100,00");
+    const aljava = $("saldo-aljava").textContent;
+    expect(aljava).toContain("Mercado (qualquer campo): 2 bitcoin, 1 ouro paxg");
+    expect(aljava).toContain("Campo do Vilarejo: 3 madeira");
+    expect(aljava).not.toContain("Bosque");
+    expect($("saldo-extrato").textContent).toContain("Bônus inicial");
 
-    $("modo-flecha-previsao").checked = true;
-    $("modo-flecha-previsao").dispatchEvent(new Event("change", { bubbles: true }));
+    // comprar a partir do saldo volta para o saldo
+    $("btn-saldo-comprar").click();
+    expect($("wrap").dataset.state).toBe("creditos");
+    $("btn-creditos-voltar").click();
     await estabilizar();
-    expect(salvo).toEqual({ modoFlechaBitcoin: "PREVISAO" });
-    expect($("pref-flecha-msg").textContent).toContain("previsão de preço");
-    expect(prefs.modoDaFlechaBitcoin()).toBe("PREVISAO");
+    expect($("wrap").dataset.state).toBe("saldo");
+    $("btn-saldo-voltar").click();
+    expect($("wrap").dataset.state).toBe("menu");
+  });
 
-    // falha ao salvar: volta a marcação anterior e explica
-    rotas["PUT /usuarios/me/preferencias"] = [503, { detail: "user-service fora", status: 503 }];
-    $("modo-flecha-binario").checked = true;
-    $("modo-flecha-binario").dispatchEvent(new Event("change", { bubbles: true }));
+  it("Saldo sem flechas guardadas, ou com a aljava fora do ar", async () => {
+    rotas["GET /jogos/flecha/aljava"] = [200, { campos: {}, mercado: {} }];
+    await iniciarApp();
+    $("btn-saldo").click();
     await estabilizar();
-    expect($("modo-flecha-previsao").checked).toBe(true);
-    expect($("pref-flecha-msg").className).toContain("erro");
-    expect(prefs.modoDaFlechaBitcoin()).toBe("PREVISAO");
+    expect($("saldo-aljava").textContent).toContain("Nenhuma flecha guardada");
+
+    rotas["GET /jogos/flecha/aljava"] = [503, { detail: "trading fora", status: 503 }];
+    $("btn-saldo-voltar").click();
+    $("btn-saldo").click();
+    await estabilizar();
+    expect($("saldo-aljava").querySelector(".erro")).not.toBeNull();
   });
 
   it("excluir conta só com EXCLUIR digitado", async () => {

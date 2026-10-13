@@ -3,7 +3,7 @@
 // sobe; quando cai, desce. Reserva: sem mensagens da Binance, consulta a cotação do market-data-service
 // (GET /api/cotacoes/{simbolo}); sem nenhuma das duas, o preço vira um passeio aleatório marcado como
 // "simulado", para o jogo não parar.
-import { clamp } from './regras.js';
+import { APOSTA_MERCADO, clamp } from './regras.js';
 
 /**
  * Ativos com pássaro e flecha próprios. `casas`: casas decimais do preço na tela. `nasceACada`: segundos entre um
@@ -302,35 +302,25 @@ const reais = v => {
 };
 
 /**
- * Texto curto para o jogador sobre a operação feita com a previsão dele, ou null enquanto ela não termina.
+ * Texto curto para o jogador sobre a aposta da flecha de mercado, ou null enquanto o servidor não liquidou.
+ * `moedasPagas`: 200 no acerto, 100 se o preço não mexeu ou a operação não aconteceu, 0 no erro.
  * `cor`: 'ganho' | 'perda' | 'neutro'.
  */
 export function textoResultadoEstudo(op) {
-  if (!op) return null;
-  const tipo = op.modo === 'REAL' ? 'Operação real' : 'Simulação';
+  if (!op || op.moedasPagas === null || op.moedasPagas === undefined) return null;
+  const lucro = Number(op.moedasPagas) - APOSTA_MERCADO;
   const nome = ATIVO_POR_SIMBOLO[op.simbolo]?.nome;
   const ativo = nome ? `${nome} · ` : '';
-  if (op.status === 'FECHADA' && op.tipo === 'BINARIA') {
-    // o jogador vê o placar da aposta binária; a operação na margem fica no detalhe
-    const binario = Number(op.resultadoBinarioBrl) || 0;
-    const liquido = Number(op.resultadoLiquidoBrl) || 0;
-    return {
-      texto: `Aposta binária: ${reais(binario)}`,
-      detalhe: `${ativo}${binario > 0 ? 'acertou' : binario < 0 ? 'errou' : 'empatou'} · ${tipo.toLowerCase()} ${reais(liquido)}`,
-      cor: binario > 0 ? 'ganho' : binario < 0 ? 'perda' : 'neutro',
-    };
-  }
-  if (op.status === 'FECHADA') {
-    const liquido = Number(op.resultadoLiquidoBrl) || 0;
-    return {
-      texto: `${tipo}: ${reais(liquido)}`,
-      detalhe: `${ativo}previsão ${op.acertouDirecao ? 'certa' : 'errada'} · ${op.direcao === 'ALTA' ? 'alta' : 'queda'}`,
-      cor: liquido > 0 ? 'ganho' : liquido < 0 ? 'perda' : 'neutro',
-    };
-  }
-  if (op.status === 'RECUSADA') return { texto: 'Sem operação', detalhe: op.motivo || '', cor: 'neutro' };
-  if (op.status === 'FALHOU') return { texto: `${tipo} não concluída`, detalhe: op.motivo || '', cor: 'neutro' };
-  return null;
+  const texto = lucro > 0 ? `+${lucro} moedas` : lucro < 0 ? `−${-lucro} moedas` : 'Aposta devolvida';
+  const cor = lucro > 0 ? 'ganho' : lucro < 0 ? 'perda' : 'neutro';
+  if (op.status !== 'FECHADA') return { texto, detalhe: `${ativo}${op.motivo || 'operação não aconteceu'}`, cor };
+  const binario = Number(op.resultadoBinarioBrl) || 0;
+  const tipo = op.modo === 'REAL' ? 'operação real' : 'simulação';
+  return {
+    texto,
+    detalhe: `${ativo}${binario > 0 ? 'acertou' : binario < 0 ? 'errou' : 'empatou'} · ${tipo} ${reais(Number(op.resultadoLiquidoBrl) || 0)}`,
+    cor,
+  };
 }
 
 /** Nome antigo: o feed do bitcoin. */

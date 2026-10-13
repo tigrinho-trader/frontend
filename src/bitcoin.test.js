@@ -6,7 +6,9 @@ import {
   toleranciaEmDolares, velocidadeFlechaBtc,
   velocidadePassaroDaFlecha,
 } from "./bitcoin.js";
-import { ARROW_BY_ID, BIRD_TYPES, RANGES, arrowPosition, coinsForHit, pickBirdType } from "./regras.js";
+import {
+  APOSTA_MERCADO, ARROW_BY_ID, BIRD_TYPES, RANGES, arrowCost, arrowPosition, coinsForHit, pickBirdType,
+} from "./regras.js";
 
 const esperar = () => new Promise((r) => setTimeout(r, 0));
 
@@ -315,32 +317,35 @@ describe("estudo da sabedoria das massas", () => {
     expect(direcaoDaPrevisao({ agora: NaN, previsto: 1 })).toBeNull();
   });
 
-  it("mostra quanto a operação ganhou ou perdeu e se a previsão acertou", () => {
-    const ganhou = textoResultadoEstudo({ status: "FECHADA", modo: "REAL", direcao: "ALTA",
-      resultadoLiquidoBrl: 0.12, acertouDirecao: true });
-    expect(sem(ganhou.texto)).toBe("Operação real: +R$ 0,12");
-    expect(ganhou.detalhe).toBe("previsão certa · alta");
+  it("mostra as moedas da aposta liquidada pelo servidor e o resultado da operação", () => {
+    const ganhou = textoResultadoEstudo({ status: "FECHADA", modo: "REAL", moedasPagas: 200,
+      resultadoBinarioBrl: 10, resultadoLiquidoBrl: 0.12 });
+    expect(ganhou.texto).toBe("+100 moedas");
+    expect(sem(ganhou.detalhe)).toBe("acertou · operação real +R$ 0,12");
     expect(ganhou.cor).toBe("ganho");
 
-    const perdeu = textoResultadoEstudo({ status: "FECHADA", modo: "SIMULADO", direcao: "QUEDA",
-      resultadoLiquidoBrl: -0.0042, acertouDirecao: false });
-    expect(sem(perdeu.texto)).toBe("Simulação: −R$ 0,0042");     // centavos de centavo aparecem
-    expect(perdeu.detalhe).toBe("previsão errada · queda");
+    const perdeu = textoResultadoEstudo({ status: "FECHADA", modo: "SIMULADO", moedasPagas: 0,
+      resultadoBinarioBrl: -10, resultadoLiquidoBrl: -0.0042 });
+    expect(perdeu.texto).toBe("−100 moedas");
+    expect(sem(perdeu.detalhe)).toBe("errou · simulação −R$ 0,0042");     // centavos de centavo aparecem
     expect(perdeu.cor).toBe("perda");
 
-    expect(textoResultadoEstudo({ status: "FECHADA", modo: "REAL", resultadoLiquidoBrl: 0 }).cor).toBe("neutro");
+    const empate = textoResultadoEstudo({ status: "FECHADA", modo: "REAL", moedasPagas: 100,
+      resultadoBinarioBrl: 0, resultadoLiquidoBrl: 0 });
+    expect(empate.texto).toBe("Aposta devolvida");
+    expect(empate.detalhe.startsWith("empatou")).toBe(true);
+    expect(empate.cor).toBe("neutro");
   });
 
-  it("recusada ou com falha explica o motivo; em andamento ainda não tem texto", () => {
-    expect(textoResultadoEstudo({ status: "RECUSADA", motivo: "Perda maxima do dia atingida" }))
-      .toEqual({ texto: "Sem operação", detalhe: "Perda maxima do dia atingida", cor: "neutro" });
-    expect(textoResultadoEstudo({ status: "FALHOU", modo: "REAL", motivo: "Nao abriu: timeout" }).texto)
-      .toBe("Operação real não concluída");
-    expect(textoResultadoEstudo({ status: "FALHOU", modo: "SIMULADO" }).detalhe).toBe("");
-    expect(textoResultadoEstudo({ status: "RECUSADA" }).detalhe).toBe("");
-    expect(textoResultadoEstudo({ status: "ABERTA" })).toBeNull();
+  it("aposta que não aconteceu volta e explica o motivo; sem liquidação ainda não há texto", () => {
+    expect(textoResultadoEstudo({ status: "RECUSADA", moedasPagas: 100, motivo: "Perda maxima do dia atingida" }))
+      .toEqual({ texto: "Aposta devolvida", detalhe: "Perda maxima do dia atingida", cor: "neutro" });
+    expect(textoResultadoEstudo({ status: "FALHOU", moedasPagas: 100 }).detalhe).toBe("operação não aconteceu");
+    expect(textoResultadoEstudo({ status: "ABERTA", moedasPagas: null })).toBeNull();
+    expect(textoResultadoEstudo({ status: "FECHADA" })).toBeNull();          // fechou, mas ainda não pagou
     expect(textoResultadoEstudo(null)).toBeNull();
   });
+
 });
 
 describe("modo sobe ou desce (binário)", () => {
@@ -365,24 +370,11 @@ describe("modo sobe ou desce (binário)", () => {
     expect(acertaBinario("ALTA", { y: 0 })).toBe(false);                     // só pássaro bitcoin
   });
 
-  it("o jogador vê o placar da aposta binária e a operação no detalhe", () => {
-    const ganhou = textoResultadoEstudo({ status: "FECHADA", tipo: "BINARIA", modo: "SIMULADO",
-      resultadoBinarioBrl: 10, resultadoLiquidoBrl: -0.06 });
-    expect(sem(ganhou.texto)).toBe("Aposta binária: +R$ 10,00");
-    expect(sem(ganhou.detalhe)).toBe("acertou · simulação −R$ 0,06");
-    expect(ganhou.cor).toBe("ganho");
-
-    const perdeu = textoResultadoEstudo({ status: "FECHADA", tipo: "BINARIA", modo: "REAL",
-      resultadoBinarioBrl: -10, resultadoLiquidoBrl: -0.07 });
-    expect(sem(perdeu.texto)).toBe("Aposta binária: −R$ 10,00");
-    expect(sem(perdeu.detalhe)).toBe("errou · operação real −R$ 0,07");
-    expect(perdeu.cor).toBe("perda");
-
-    const empate = textoResultadoEstudo({ status: "FECHADA", tipo: "BINARIA", modo: "REAL",
-      resultadoBinarioBrl: 0, resultadoLiquidoBrl: 0 });
-    expect(empate.detalhe.startsWith("empatou")).toBe(true);
-    expect(empate.cor).toBe("neutro");
+  it("a aposta custa 100 moedas e paga o dobro no acerto", () => {
+    expect(APOSTA_MERCADO).toBe(100);
+    for (const r of RANGES) expect(arrowCost(ARROW_BY_ID.btc, r)).toBe(100);   // o mesmo em todo campo
   });
+
 });
 
 describe("ativos de mercado: bitcoin, ethereum e ouro", () => {
@@ -393,7 +385,7 @@ describe("ativos de mercado: bitcoin, ethereum e ouro", () => {
     for (const a of LISTA_ATIVOS) {
       expect(ATIVO_POR_SIMBOLO[a.simbolo]).toBe(a);
       expect(BIRD_TYPES[a.id]).toMatchObject({ coins: 3, mercado: a.id });
-      expect(ARROW_BY_ID[a.id]).toMatchObject({ price: 1, coins: 2, mercado: a.id });
+      expect(ARROW_BY_ID[a.id]).toMatchObject({ precoFixo: 100, mercado: a.id });
       for (const r of RANGES) expect(r.pool[a.id]).toBeUndefined();   // fora do sorteio dos campos
     }
     expect(ARROW_BY_ID.ouro.name).toBe("Ouro PAXG");                    // não confunde com a flecha de ouro
@@ -429,12 +421,12 @@ describe("ativos de mercado: bitcoin, ethereum e ouro", () => {
     expect(direcaoDaPrevisao({ agora: 2600, previsto: 2599.9 })).toBe("QUEDA");
   });
 
-  it("o resultado diz de qual ativo era a operação", () => {
-    const op = { status: "FECHADA", tipo: "BINARIA", modo: "SIMULADO", simbolo: "PAXGUSDT",
+  it("o resultado diz de qual ativo era a aposta", () => {
+    const op = { status: "FECHADA", modo: "SIMULADO", simbolo: "PAXGUSDT", moedasPagas: 200,
       resultadoBinarioBrl: 10, resultadoLiquidoBrl: -0.06 };
     expect(sem(textoResultadoEstudo(op).detalhe)).toBe("Ouro · acertou · simulação −R$ 0,06");
-    const prev = { status: "FECHADA", modo: "SIMULADO", simbolo: "ETHUSDT", direcao: "ALTA",
-      resultadoLiquidoBrl: 0.02, acertouDirecao: true };
-    expect(textoResultadoEstudo(prev).detalhe).toBe("Ethereum · previsão certa · alta");
+    expect(textoResultadoEstudo({ status: "RECUSADA", simbolo: "ETHUSDT", moedasPagas: 100, motivo: "x" }).detalhe)
+      .toBe("Ethereum · x");
   });
+
 });

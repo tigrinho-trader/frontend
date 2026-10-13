@@ -13,7 +13,8 @@ const esperarPadrao = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
  * @param {object} opcoes
- * @param {object} opcoes.api            funções abrirSessao, registrarTiro, comprarFlechas, encerrarSessao
+ * @param {object} opcoes.api            funções abrirSessao, registrarTiro, comprarFlechas, encerrarSessao,
+ *                                       registrarOperacaoEstudo, sessaoAtual
  * @param {(sessao: object, ganhosTiro?: number) => void} [opcoes.aoAtualizar] chamada a cada resposta do servidor
  * @param {(erro: Error, contexto: object) => void} [opcoes.aoErro] tiro recusado ou falha de rede
  */
@@ -102,6 +103,28 @@ export function criarControladorSessao({
           if (sessao) aoAtualizar(sessao);
           return null;
         }
+      });
+    },
+
+    /**
+     * Flecha de mercado: o servidor registra a aposta e já desconta a flecha. `aoConsumir` roda antes de aplicar a
+     * sessão nova (o HUD para de contar a flecha como "no ar"). Devolve a operação; lança o ErroApi.
+     */
+    registrarMercado(dados, aoConsumir = () => {}) {
+      return enfileirar(async () => {
+        const op = await api.registrarOperacaoEstudo({ ...dados, sessaoId: exigirSessao().id });
+        aoConsumir(op);
+        if (op?.sessao) aplicar(op.sessao);
+        return op;
+      });
+    },
+
+    /** Relê a sessão no servidor (ex.: depois que uma aposta de mercado foi paga). Devolve a sessão ou null. */
+    atualizar() {
+      return enfileirar(async () => {
+        const atual = await api.sessaoAtual();
+        if (atual && sessao && atual.id === sessao.id) aplicar(atual);
+        return atual || null;
       });
     },
 

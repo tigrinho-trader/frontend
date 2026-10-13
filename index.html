@@ -29,10 +29,9 @@
         <h1>Flecha Certeira</h1>
         <p class="sub">Pague para atirar, acerte os pássaros e saia com mais moedas!</p>
         <ul class="howto">
-          <li>Pague a <b>entrada</b> de um campo e compre <b>flechas</b>. Campos caros pagam mais, mas os pássaros voam mais rápido.</li>
-          <li><b>Arraste para trás e solte</b> para atirar. Cada ponto amarelo da mira vale <b>0,5 s</b> de voo.</li>
-          <li>Mire onde o pássaro <b>VAI estar</b>. Flechas melhores (teclas <b>1 a 7</b>) multiplicam as moedas.</li>
-          <li>Errou muito? Você <b>sai com menos moedas</b> do que entrou!</li>
+          <li>Pague a <b>entrada</b> de um campo e compre <b>flechas</b>. As que sobrarem ficam <b>guardadas</b> para a próxima rodada.</li>
+          <li><b>Arraste para trás e solte</b> e mire onde o pássaro <b>VAI estar</b>. Flechas melhores (teclas <b>1 a 7</b>) multiplicam as moedas.</li>
+          <li>Flechas de <b>bitcoin, ethereum e ouro</b>: aposte <b>100 moedas</b> que o preço sobe ou desce em 5 s. Acertou, recebe <b>200</b>.</li>
         </ul>
         <p class="aviso-menu" id="menu-aviso" hidden></p>
 
@@ -56,8 +55,12 @@
 
         <!-- Logado -->
         <div class="so-logado">
-          <button class="btn" id="btn-play">Jogar</button>
-          <button class="btn ouro" id="btn-comprar">Comprar moedas</button>
+          <div class="menu-principal">
+            <button class="btn" id="btn-play">Jogar</button>
+            <button class="btn secondary" id="btn-saldo">Saldo</button>
+            <button class="btn ouro" id="btn-comprar">Comprar moedas</button>
+            <button class="btn secondary" id="btn-sacar" disabled title="Em breve">Sacar <small>em breve</small></button>
+          </div>
           <div class="menu-acoes">
             <button class="btn secondary small" id="btn-perfil">Meu perfil</button>
             <button class="btn secondary small" id="btn-admin" hidden>Administração</button>
@@ -86,19 +89,6 @@
         </form>
         <p class="msg" id="perfil-apelido-msg"></p>
 
-        <fieldset class="pref-flecha" id="pref-flecha">
-          <legend>Flecha bitcoin</legend>
-          <label class="opcao">
-            <input type="radio" name="modo-flecha" id="modo-flecha-binario" value="BINARIO">
-            <span><b>Sobe ou desce</b> Escolha só se o BTC sobe ou desce nos próximos 5 s.</span>
-          </label>
-          <label class="opcao">
-            <input type="radio" name="modo-flecha" id="modo-flecha-previsao" value="PREVISAO">
-            <span><b>Previsão de preço</b> Mire o preço exato que o BTC vai ter daqui a 5 s.</span>
-          </label>
-        </fieldset>
-        <p class="msg" id="pref-flecha-msg"></p>
-
         <h3 class="secao">Últimas movimentações</h3>
         <div class="tabela-rolagem curta">
           <table class="tabela extrato">
@@ -122,6 +112,31 @@
         </div>
 
         <button class="btn secondary" id="btn-perfil-voltar">Voltar</button>
+      </div>
+    </div>
+
+    <!-- Saldo: moedas, flechas guardadas e movimentações -->
+    <div class="overlay" id="saldo">
+      <div class="card conta">
+        <h2>Seu saldo</h2>
+        <p class="saldo-grande"><span class="coin"></span><b id="saldo-moedas">0</b> moedas</p>
+        <p class="sub" id="saldo-referencia">Valor de referência: R$ 0,00 (10 moedas = R$ 1)</p>
+
+        <h3 class="secao">Flechas guardadas</h3>
+        <div id="saldo-aljava"><p class="vazio">Carregando…</p></div>
+
+        <h3 class="secao">Últimas movimentações</h3>
+        <div class="tabela-rolagem curta">
+          <table class="tabela extrato">
+            <thead><tr><th>Tipo</th><th>Valor</th><th>Descrição</th><th>Data</th></tr></thead>
+            <tbody id="saldo-extrato"><tr><td colspan="4" class="vazio">Carregando…</td></tr></tbody>
+          </table>
+        </div>
+
+        <div class="saldo-botoes">
+          <button class="btn ouro small" id="btn-saldo-comprar">Comprar moedas</button>
+          <button class="btn secondary" id="btn-saldo-voltar">Voltar</button>
+        </div>
       </div>
     </div>
 

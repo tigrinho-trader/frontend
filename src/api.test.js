@@ -72,6 +72,8 @@ describe("rotas", () => {
     expect(ultimaChamada().method).toBe("POST");
     expect(ultimaChamada().url).toBe("/api/jogos/flecha/estudo/operacoes");
     expect(ultimaChamada().corpo).toEqual(dados);
+    await api.aljavaGuardada();
+    expect(ultimaChamada().url).toBe("/api/jogos/flecha/aljava");
     await api.operacaoEstudo("op 1");
     expect(ultimaChamada().method).toBe("GET");
     expect(ultimaChamada().url).toBe("/api/jogos/flecha/estudo/operacoes/op%201");

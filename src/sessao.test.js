@@ -235,3 +235,47 @@ describe("controlador de sessão", () => {
     expect(ctl.pendentes()).toBe(0);
   });
 });
+
+describe("flechas de mercado", () => {
+  it("a aposta desconta a flecha no servidor e o HUD recebe a sessão nova", async () => {
+    let atual = sessaoBase({ flechas: { wood: 0, btc: 2 } });
+    const api = {
+      abrirSessao: vi.fn(async () => atual),
+      registrarOperacaoEstudo: vi.fn(async (dados) => {
+        atual = { ...atual, flechas: { ...atual.flechas, btc: atual.flechas.btc - 1 } };
+        return { id: "op-1", moedasPagas: null, sessao: atual, recebido: dados };
+      }),
+      sessaoAtual: vi.fn(async () => ({ ...atual, ganhos: 200 })),
+    };
+    const atualizacoes = [];
+    const ctl = criarControladorSessao({ api, aoAtualizar: (s) => atualizacoes.push(s) });
+    await ctl.abrir("vilarejo", {});
+
+    const consumidas = [];
+    const op = await ctl.registrarMercado({ direcao: "ALTA", simbolo: "BTCUSDT", tipo: "BINARIA" },
+      (o) => consumidas.push(o.id));
+    expect(op.recebido).toEqual({ direcao: "ALTA", simbolo: "BTCUSDT", tipo: "BINARIA", sessaoId: ID });
+    expect(consumidas).toEqual(["op-1"]);                 // avisa antes de aplicar a sessão nova
+    expect(ctl.estado().flechas.btc).toBe(1);
+
+    // depois que o servidor paga a aposta, relê a sessão
+    await ctl.atualizar();
+    expect(ctl.estado().ganhosServidor).toBe(200);
+    expect(atualizacoes.length).toBe(3);
+  });
+
+  it("releitura ignora outra sessão ou nenhuma; erro da aposta chega a quem chamou", async () => {
+    const api = {
+      abrirSessao: vi.fn(async () => sessaoBase()),
+      registrarOperacaoEstudo: vi.fn(async () => { throw new ErroApi(422, "Sem flechas Bitcoin na aljava"); }),
+      sessaoAtual: vi.fn(async () => null),
+    };
+    const ctl = criarControladorSessao({ api });
+    await ctl.abrir("vilarejo", {});
+    await expect(ctl.registrarMercado({ direcao: "QUEDA" })).rejects.toMatchObject({ status: 422 });
+    expect(await ctl.atualizar()).toBeNull();
+    api.sessaoAtual.mockResolvedValueOnce(sessaoBase({ id: "outra", ganhos: 999 }));
+    await ctl.atualizar();
+    expect(ctl.estado().ganhosServidor).toBe(0);
+  });
+});

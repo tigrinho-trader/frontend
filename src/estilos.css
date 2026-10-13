@@ -848,3 +848,29 @@ h3.secao {
 .pref-flecha .opcao:has(input:checked) { border-color: #f7931a; background: #fff3e0; }
 .pref-flecha .opcao b { display: block; font-size: calc(var(--s) * 16px); }
 .pref-flecha input { margin-top: calc(var(--s) * 3px); accent-color: #f7931a; }
+
+/* Menu: as quatro ações principais em grade */
+.menu-principal {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: calc(var(--s) * 8px);
+  max-width: calc(var(--s) * 470px);
+  margin: 0 auto calc(var(--s) * 4px);
+}
+#menu .menu-principal .btn { margin: 0; min-width: 0; font-size: calc(var(--s) * 21px); white-space: nowrap; }
+#menu .menu-principal .btn small { display: block; font-family: 'Nunito', sans-serif; font-size: calc(var(--s) * 12px); font-weight: 800; }
+#btn-sacar:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* Tela de saldo */
+.saldo-grande {
+  margin: calc(var(--s) * 4px) 0 0;
+  font-family: 'Lilita One', 'Nunito', sans-serif;
+  font-size: calc(var(--s) * 40px);
+  color: #c77c00;
+}
+.saldo-grande b { font-weight: 400; }
+.lista-aljava { margin: 0; padding-left: calc(var(--s) * 20px); text-align: left; font-size: calc(var(--s) * 16px); line-height: 1.5; }
+.saldo-botoes { display: flex; justify-content: center; align-items: center; gap: calc(var(--s) * 8px); flex-wrap: wrap; }
+
+/* Loja: flechas que o jogador já tem guardadas */
+.arrow-info .guardadas { color: #2e7d32; }

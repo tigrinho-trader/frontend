@@ -8,8 +8,7 @@ import {
   LIMITES_PADRAO, PACOTES, TEXTO_STATUS_FINAL, htmlPacotes, mensagemErroCompra, moedasDoValor, pacotesDoServidor,
   precoEmReais, qrCodeSeguro, tempoRestante, textoFaixa, valorDasMoedas,
 } from './creditos.js';
-import { RANGE_BY_SLUG } from './regras.js';
-import { definirPreferencias } from './preferencias.js';
+import { ARROW_TYPES, RANGE_BY_SLUG } from './regras.js';
 import {
   ROTULO_PAPEL, escaparHtml, formatarComSinal, formatarData, formatarMoedas, htmlExtrato, htmlLinhasUsuarios, iniciais,
   mensagemErro, nomeExibicao, paginacao, urlSegura, validarApelido,
@@ -57,7 +56,6 @@ function mensagemLogin(erro, prefixo = '') {
 }
 
 function mostrarPerfilNoMenu() {
-  definirPreferencias(perfil);                // o jogo consulta o modo da flecha bitcoin
   pintarAvatar($('menu-avatar'), perfil);
   $('menu-apelido').textContent = nomeExibicao(perfil);
   $('btn-admin').hidden = perfil?.papel !== 'ADMIN';
@@ -206,24 +204,55 @@ function preencherPerfil() {
   $('perfil-papel').textContent = ROTULO_PAPEL[perfil?.papel] || perfil?.papel || '—';
   $('perfil-desde').textContent = formatarData(perfil?.criadoEm);
   $('perfil-apelido').value = perfil?.apelido || '';
-  const modo = perfil?.modoFlechaBitcoin === 'PREVISAO' ? 'previsao' : 'binario';
-  $(`modo-flecha-${modo}`).checked = true;
 }
 
-async function salvarModoFlecha(e) {
-  const escolhido = e.target.value;
-  const anterior = perfil?.modoFlechaBitcoin || 'BINARIO';
-  msg('pref-flecha-msg', 'Salvando…');
-  try {
-    perfil = await api.alterarPreferencias({ modoFlechaBitcoin: escolhido });
-    mostrarPerfilNoMenu();
-    msg('pref-flecha-msg', escolhido === 'BINARIO'
-      ? 'Pronto: a flecha bitcoin agora é de sobe ou desce.'
-      : 'Pronto: a flecha bitcoin agora é de previsão de preço.', 'ok');
-  } catch (erro) {
-    $(`modo-flecha-${anterior === 'PREVISAO' ? 'previsao' : 'binario'}`).checked = true;
-    if (erro.status !== 401 && erro.status !== 403) msg('pref-flecha-msg', mensagemErro(erro), 'erro');
+// ---------------------------------------------------------------------------
+// Saldo: moedas, flechas guardadas e últimas movimentações
+// ---------------------------------------------------------------------------
+const MOEDAS_POR_REAL = 10;
+const reaisDeMoedas = m => (m / MOEDAS_POR_REAL).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+/** Flechas guardadas: as de mercado servem em qualquer campo; as comuns, só no campo onde foram compradas. */
+export function htmlAljavaGuardada(aljava) {
+  const itens = (flechas, tipos) => tipos
+    .map(t => [t, Number(flechas?.[t.id]) || 0])
+    .filter(([, n]) => n > 0)
+    .map(([t, n]) => `${n} ${escaparHtml(t.name.toLowerCase())}`);
+  const linhas = [];
+  const mercado = itens(aljava?.mercado, ARROW_TYPES.filter(t => t.mercado));
+  if (mercado.length) linhas.push(`<li><b>Mercado</b> (qualquer campo): ${mercado.join(', ')}</li>`);
+  for (const [slug, flechas] of Object.entries(aljava?.campos || {})) {
+    const comuns = itens(flechas, ARROW_TYPES.filter(t => !t.mercado));
+    if (comuns.length) {
+      linhas.push(`<li><b>${escaparHtml(RANGE_BY_SLUG[slug]?.name || slug)}</b>: ${comuns.join(', ')}</li>`);
+    }
   }
+  return linhas.length
+    ? `<ul class="lista-aljava">${linhas.join('')}</ul>`
+    : '<p class="vazio">Nenhuma flecha guardada. As que sobrarem numa rodada aparecem aqui.</p>';
+}
+
+function mostrarSaldoNaTela() {
+  const saldo = saldoAtual();
+  $('saldo-moedas').textContent = formatarMoedas(saldo);
+  $('saldo-referencia').textContent = `Valor de referência: ${reaisDeMoedas(saldo)} (10 moedas = R$ 1)`;
+}
+
+async function abrirSaldo() {
+  mostrarSaldoNaTela();
+  $('saldo-aljava').innerHTML = '<p class="vazio">Carregando…</p>';
+  $('saldo-extrato').innerHTML = '<tr><td colspan="4" class="vazio">Carregando…</td></tr>';
+  setState('saldo');
+  const [aljava, transacoes] = await Promise.allSettled([api.aljavaGuardada(), api.extrato(),
+    atualizarCarteira()]);
+  if (estadoAtual() !== 'saldo') return;
+  mostrarSaldoNaTela();
+  $('saldo-aljava').innerHTML = aljava.status === 'fulfilled'
+    ? htmlAljavaGuardada(aljava.value)
+    : `<p class="vazio erro">${escaparHtml(mensagemErro(aljava.reason))}</p>`;
+  $('saldo-extrato').innerHTML = transacoes.status === 'fulfilled'
+    ? htmlExtrato(transacoes.value, 10)
+    : `<tr><td colspan="4" class="vazio erro">${escaparHtml(mensagemErro(transacoes.reason))}</td></tr>`;
 }
 
 function fecharExclusao() {
@@ -237,7 +266,6 @@ function fecharExclusao() {
 async function abrirPerfil() {
   preencherPerfil();
   msg('perfil-apelido-msg', '');
-  msg('pref-flecha-msg', '');
   fecharExclusao();
   $('perfil-extrato').innerHTML = '<tr><td colspan="4" class="vazio">Carregando…</td></tr>';
   setState('perfil');
@@ -413,7 +441,8 @@ async function abrirCreditos(voltarPara = 'menu') {
 function sairDosCreditos() {
   pararAcompanhamento();
   creditos.compra = null;
-  voltarDaCompra(creditos.voltarPara);
+  if (creditos.voltarPara === 'saldo') abrirSaldo();   // volta com o saldo novo
+  else voltarDaCompra(creditos.voltarPara);
 }
 
 /** Aplica a resposta do servidor sobre a compra Pix acompanhada. */
@@ -651,7 +680,9 @@ $('btn-tentar').addEventListener('click', carregarConta);
 $('btn-perfil').addEventListener('click', abrirPerfil);
 $('btn-perfil-voltar').addEventListener('click', () => setState('menu'));
 $('form-apelido').addEventListener('submit', salvarApelido);
-$('pref-flecha').addEventListener('change', salvarModoFlecha);
+$('btn-saldo').addEventListener('click', abrirSaldo);
+$('btn-saldo-voltar').addEventListener('click', () => setState('menu'));
+$('btn-saldo-comprar').addEventListener('click', () => abrirCreditos('saldo'));
 $('perfil-apelido').addEventListener('input', () => msg('perfil-apelido-msg', ''));
 $('btn-excluir').addEventListener('click', () => {
   $('btn-excluir').hidden = true;

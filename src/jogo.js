@@ -4,6 +4,7 @@
 // sessão no trading-service (sessao.js); o navegador só estima entre as respostas.
 import {
   DEFAULT_ARROWS, MAX_ARROWS, REFILL_QTY, BIRD_TYPES, RANGES, ARROW_TYPES, ARROW_BY_ID, ARROWS_BY_PRICE_DESC,
+  APOSTA_MERCADO,
   clamp, formatMult, birdValue, arrowCost, coinsForHit, emptyQuiver, countArrows, orderCost, minCost,
   canEnter as canEnterWith, isBroke as isBrokeWith, fitOrder, changeOrder, pickBirdType,
   segmentHitsCircle, arrowPosition,
@@ -12,7 +13,6 @@ import { Scenery } from './cenarios.js';
 import * as api from './api.js';
 import { criarControladorSessao } from './sessao.js';
 import { formatarMoedas, mensagemErro } from './telas.js';
-import { modoDaFlechaBitcoin } from './preferencias.js';
 import {
   ATIVOS, BTC_MAX_VOANDO, BTC_ALTURA, FLECHA_BTC, LISTA_ATIVOS, acertaBinario, acertaNoAlvo, alturaBtc,
   alvoBinario, alvoFlechaBtc, criarFeedPreco, direcaoDaPrevisao, precoPrevisto, textoResultadoEstudo,
@@ -126,6 +126,7 @@ const game = {
   spawnTimer: 0,
   mercadoTimers: {},        // por ativo: segundos até o próximo pássaro de mercado avulso
   estudo: null,             // último resultado do estudo mostrado no HUD: { texto, detalhe, cor }
+  guardadas: null,          // flechas guardadas do jogador (GET /jogos/flecha/aljava): { campos, mercado }
   pending: null,            // 'win' | 'lose' enquanto espera a animação terminar
   endTimer: 0,
   banner: 0,
@@ -136,7 +137,7 @@ const game = {
 
 const OVERLAYS = {
   menu: 'menu', ranges: 'ranges', buy: 'buy', refill: 'refill', paused: 'pause', result: 'result',
-  perfil: 'perfil', admin: 'admin', bloqueado: 'bloqueado', creditos: 'creditos',
+  perfil: 'perfil', admin: 'admin', bloqueado: 'bloqueado', creditos: 'creditos', saldo: 'saldo',
 };
 
 export function setState(s) {
@@ -242,7 +243,8 @@ function reconciliar() {
 
 /** Informa ao servidor uma flecha que terminou o voo (cravou no chão ou saiu da tela). */
 function reportarTiro(ar) {
-  if (ar.reportado || !sessaoCtl) return;
+  // flecha de mercado: a aposta já foi registrada no disparo e quem paga é o servidor
+  if (ar.reportado || !sessaoCtl || ar.type.mercado) return;
   ar.reportado = true;
   sessaoCtl.registrarTiro(ar.type.id, ar.acertos, ar.coins);
 }
@@ -293,14 +295,37 @@ function arrowIcon(type) {
   return ARROW_ICONS[type.id];
 }
 
+/** Flechas guardadas que o jogador leva para este campo: as comuns compradas nele e as de mercado. */
+function guardadasNoCampo(range = game.range) {
+  const g = game.guardadas;
+  const campo = g?.campos?.[range.slug] || {};
+  return Object.fromEntries(ARROW_TYPES.map(t => [t.id, Number((t.mercado ? g?.mercado?.[t.id] : campo[t.id]) || 0)]));
+}
+
+async function carregarGuardadas() {
+  try {
+    game.guardadas = await api.aljavaGuardada();
+  } catch { /* sem a aljava guardada: a loja segue só com a compra */ }
+}
+
 function openBuy(range) {
   if (!canEnter(range)) return;
   game.range = range;
   // Se o pedido anterior ficou caro demais, corta das flechas mais caras primeiro
-  game.order = fitOrder(game.order, range, game.wallet);
+  game.order = fitOrder(game.order, range, game.wallet, countArrows(guardadasNoCampo(range)));
   mostrarErroCompra(null);
   setState('buy');
   renderBuy();
+  carregarGuardadas().then(() => {
+    if (game.state !== 'buy' || game.range !== range) return;
+    const nGuardadas = countArrows(guardadasNoCampo(range));
+    // já tem flechas guardadas aqui: não sugere comprar as 10 de madeira de sempre
+    if (nGuardadas > 0 && countArrows(game.order) === DEFAULT_ARROWS && game.order.wood === DEFAULT_ARROWS) {
+      game.order = emptyQuiver();
+    }
+    game.order = fitOrder(game.order, range, game.wallet, nGuardadas);
+    renderBuy();
+  });
 }
 
 // Erro do servidor ao abrir a sessão (saldo insuficiente, rodada já aberta, sem conexão...)
@@ -336,18 +361,23 @@ async function encerrarRodadaAberta() {
 function renderBuy() {
   const r = game.range, order = game.order;
   const arrowsCost = orderCost(order, r), total = r.fee + arrowsCost, count = countArrows(order);
+  const guard = guardadasNoCampo(r), nGuard = countArrows(guard);
   const left = game.wallet - total;
   $('buy-title').textContent = r.name;
 
   $('arrow-shop').innerHTML = ARROW_TYPES.map(t => {
     const cost = arrowCost(t, r), n = order[t.id];
-    const canAdd = left >= cost && count < MAX_ARROWS;
+    const canAdd = left >= cost && count + nGuard < MAX_ARROWS;
+    const ganho = t.mercado
+      ? `aposta: acertou, recebe <b class="mult">${2 * APOSTA_MERCADO}</b>`
+      : `moedas <b class="mult">×${formatMult(t.coins)}</b>`;
+    const tem = guard[t.id] ? ` · <b class="guardadas">+${guard[t.id]} guardada${guard[t.id] === 1 ? '' : 's'}</b>` : '';
     return `
       <div class="arrow-row${n ? ' active' : ''}" title="${t.desc}">
         <img src="${arrowIcon(t)}" alt="">
         <div class="arrow-info">
           <b class="arrow-name">${t.name}</b>
-          <span>moedas <b class="mult">×${formatMult(t.coins)}</b> · <span class="coin"></span>${cost} cada${t.mercado ? ` · preveja o ${ATIVOS[t.mercado].nome} daqui a 5 s` : ''}</span>
+          <span>${ganho} · <span class="coin"></span>${cost} cada${tem}</span>
         </div>
         <div class="arrow-qty">
           <button class="chip" data-type="${t.id}" data-d="-5" ${n ? '' : 'disabled'}>−5</button>
@@ -360,16 +390,16 @@ function renderBuy() {
   }).join('');
 
   $('buy-fee').textContent = r.fee;
-  $('buy-arrows-label').textContent = `${count} flecha${count === 1 ? '' : 's'}`;
+  $('buy-arrows-label').textContent = `${count} flecha${count === 1 ? '' : 's'}${nGuard ? ` (+${nGuard} guardada${nGuard === 1 ? '' : 's'})` : ''}`;
   $('buy-arrows').textContent = arrowsCost;
   $('buy-total').textContent = total;
   $('buy-after').textContent = moedas(left);
-  $('btn-enter').disabled = count === 0 || left < 0 || game.ocupado;
+  $('btn-enter').disabled = count + nGuard === 0 || left < 0 || game.ocupado;
   $('btn-enter').textContent = game.ocupado ? 'Entrando...' : 'Pagar e entrar';
 }
 
 function updateOrder(typeId, delta) {
-  game.order = changeOrder(game.order, game.range, game.wallet, typeId, delta);
+  game.order = changeOrder(game.order, game.range, game.wallet, typeId, delta, countArrows(guardadasNoCampo()));
   renderBuy();
 }
 
@@ -400,7 +430,8 @@ function ensureSelection() {
 async function enterRange() {
   const range = game.range, order = game.order;
   const total = range.fee + orderCost(order, range);
-  if (total > game.wallet || countArrows(order) === 0 || game.ocupado || sessaoCtl) return;
+  if (total > game.wallet || countArrows(order) + countArrows(guardadasNoCampo(range)) === 0
+    || game.ocupado || sessaoCtl) return;
   audio();
 
   // Abre a sessão no servidor: ele confere o saldo e guarda o custo da rodada
@@ -420,6 +451,7 @@ async function enterRange() {
   if (game.state !== 'buy') return;   // saiu da loja (ex.: sessão expirou) enquanto esperava
 
   sessaoCtl = ctl;
+  game.guardadas = null;    // as guardadas entraram na aljava da rodada (o servidor manda as flechas)
   game.saldoBase = game.wallet;
   sfx.pay();
   game.spent = total;
@@ -466,7 +498,7 @@ function fillRefill() {
       <button class="refill-opt" data-type="${t.id}" ${ok ? '' : 'disabled'}>
         <img src="${arrowIcon(t)}" alt="">
         <b>+${REFILL_QTY} ${t.name}</b>
-        <span>moedas ×${formatMult(t.coins)} · <span class="coin"></span>${cost}</span>
+        <span>${t.mercado ? `aposta · recebe ${2 * APOSTA_MERCADO}` : `moedas ×${formatMult(t.coins)}`} · <span class="coin"></span>${cost}</span>
       </button>`;
   }).join('');
 }
@@ -727,6 +759,15 @@ function hitBird(arrow, bird) {
 
   arrow.hits++;
   game.hits++;
+  if (arrow.type.mercado) {
+    // aposta de mercado: as moedas vêm do servidor, pelo preço real, quando ele liquidar a aposta
+    arrow.acertos.push(bird.typeId);
+    addText(bird.x, bird.y - 34, 'acertou o lado!', '#b9f6ca', 26);
+    impact(bird);
+    sfx.hit();
+    game.shake = 0.12;
+    return;
+  }
   // valor do pássaro × força da flecha × combo
   const coins = coinsForHit(bird.type, game.range, arrow.type, arrow.hits);
   arrow.acertos.push(bird.typeId);   // vai para o servidor quando a flecha terminar
@@ -766,8 +807,8 @@ function planoDoTiro() {
   const ativo = ARROW_BY_ID[game.selected]?.mercado;
   if (ativo) {
     const mirado = alvoFlechaBtc(LAUNCH, game.aim.angle, BTC_ALTURA);
-    // modo binário (padrão): a mira só escolhe o lado da linha de agora
-    const alvo = { ...(modoDaFlechaBitcoin() === 'BINARIO' ? alvoBinario(mirado.y) : mirado), ativo };
+    // sobe ou desce: a mira só escolhe o lado da linha de agora
+    const alvo = { ...alvoBinario(mirado.y), ativo };
     return { ...velocidadeFlechaBtc(LAUNCH, alvo), g: FLECHA_BTC.g, alvo };
   }
   return { ...launchVelocity(), g: G, alvo: null };
@@ -893,48 +934,51 @@ function chegarNoAlvo(ar) {
   acompanharEstudo(ar);
 }
 
-/** No disparo: manda a previsão para o estudo (o servidor abre a operação na hora). */
+/**
+ * No disparo: registra a aposta de 100 moedas (o servidor desconta a flecha e abre a operação na hora). Até a
+ * resposta, o HUD conta a flecha como "no ar"; depois, vale o número do servidor.
+ */
 function registrarNoEstudo(ar) {
-  const binaria = Boolean(ar.previsao?.binaria);
-  const direcao = binaria ? ar.previsao.direcao : direcaoDaPrevisao(ar.previsao);
-  const sessaoId = sessaoCtl?.sessao()?.id;
-  if (!direcao || !sessaoId) {
-    ar.estudo = { neutra: !direcao };
+  if (!sessaoCtl) {
+    ar.reportado = true;
     return;
   }
-  const dados = {
-    sessaoId, direcao,
-    simbolo: ATIVOS[ar.alvo.ativo].simbolo,
-    tipo: binaria ? 'BINARIA' : 'PREVISAO',
-    precoAgora: Math.round(ar.previsao.agora * 100) / 100,
+  ar.estudo = {
+    pedido: sessaoCtl.registrarMercado({
+      direcao: ar.previsao.direcao,
+      simbolo: ATIVOS[ar.alvo.ativo].simbolo,
+      tipo: 'BINARIA',
+      precoAgora: Math.round(ar.previsao.agora * 100) / 100,
+    }, () => { ar.reportado = true; }).catch(erro => {
+      ar.reportado = true;      // a aposta não entrou: a flecha continua com o jogador no servidor
+      reconciliar();
+      return { erro };
+    }),
   };
-  if (!binaria) dados.precoPrevisto = Math.round(ar.previsao.previsto * 100) / 100;
-  ar.estudo = { pedido: api.registrarOperacaoEstudo(dados).catch(erro => ({ erro })) };
 }
 
 const ESPERA_RESULTADO_MS = 1000, TENTATIVAS_RESULTADO = 10;
 
-/** Quando a flecha chega: espera a operação fechar no servidor e mostra quanto ela ganhou ou perdeu. */
+/** Quando a flecha chega: espera o servidor liquidar a aposta e mostra quantas moedas ela rendeu. */
 async function acompanharEstudo(ar) {
-  if (!ar.estudo) return;
-  if (ar.estudo.neutra) {
-    mostrarEstudo({ texto: 'Sem operação', detalhe: 'previsão em cima da linha de agora', cor: 'neutro' });
-    return;
-  }
+  if (!ar.estudo?.pedido) return;
   const registro = await ar.estudo.pedido;
   if (registro?.erro) {
     if (!tratadoPeloApp(registro.erro)) {
-      mostrarEstudo({ texto: 'Sem operação', detalhe: mensagemErro(registro.erro), cor: 'neutro' });
+      mostrarEstudo({ texto: 'Aposta não registrada', detalhe: mensagemErro(registro.erro), cor: 'neutro' });
     }
     return;
   }
   for (let i = 0; i < TENTATIVAS_RESULTADO; i++) {
-    const op = i === 0 && registro.status !== 'ABRINDO' && registro.status !== 'ABERTA'
+    const op = i === 0 && registro.moedasPagas !== null && registro.moedasPagas !== undefined
       ? registro
       : await esperar(ESPERA_RESULTADO_MS).then(() => api.operacaoEstudo(registro.id)).catch(() => null);
     const resultado = textoResultadoEstudo(op);
     if (resultado) {
       mostrarEstudo(resultado);
+      // as moedas entram pelo servidor: durante a rodada, na sessão; depois dela, direto na carteira
+      if (sessaoCtl) sessaoCtl.atualizar().catch(() => {});
+      else atualizarCarteira().catch(() => {});
       return;
     }
   }
@@ -1063,7 +1107,7 @@ const scene = () => Scenery.get(game.range.theme);
 // Loop de atualização
 // ---------------------------------------------------------------------------
 // Telas fora do campo de tiro (menu, loja e conta): só o cenário aparece ao fundo
-const TELAS_FORA_DO_CAMPO = ['menu', 'ranges', 'buy', 'creditos', 'perfil', 'admin', 'bloqueado'];
+const TELAS_FORA_DO_CAMPO = ['menu', 'ranges', 'buy', 'creditos', 'perfil', 'admin', 'bloqueado', 'saldo'];
 const inLobby = () => TELAS_FORA_DO_CAMPO.includes(game.state);
 
 function update(dt) {
