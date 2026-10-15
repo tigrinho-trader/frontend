@@ -33,7 +33,7 @@
               <span class="coin"></span><b id="menu-wallet">0</b><small>saldo</small>
             </button>
             <button type="button" class="pilula ouro" id="btn-comprar">+ Comprar moedas</button>
-            <button type="button" class="pilula" id="btn-sacar" disabled title="Em breve">Sacar <small>em breve</small></button>
+            <button type="button" class="pilula" id="btn-sacar" title="Sacar bônus em BTC">Sacar BTC</button>
             <button type="button" class="botao-redondo" id="btn-admin" hidden title="Administração" aria-label="Administração">⚙</button>
             <button type="button" class="botao-redondo" id="btn-sair" title="Sair" aria-label="Sair">⏻</button>
           </nav>
@@ -165,6 +165,30 @@
       </div>
     </div>
 
+    <div class="overlay" id="saque">
+      <div class="card conta">
+        <h2>Sacar bônus em BTC</h2>
+        <p class="sub">O sistema criará uma subconta Binance exclusiva para você e transferirá o equivalente do seu bônus.</p>
+        <p class="saque-disponivel">Disponível: <b id="saque-moedas">0</b> moedas · <b id="saque-reais-disponiveis">R$ 0,00</b></p>
+        <form class="form-saque" id="form-saque" novalidate>
+          <div class="saque-campo">
+            <label for="saque-valor">Quanto deseja sacar?</label>
+            <div class="saque-valor-box">
+              <span class="saque-prefixo">R$</span>
+              <input type="text" id="saque-valor" inputmode="decimal" autocomplete="off" placeholder="10,00" aria-describedby="saque-dica" required>
+            </div>
+            <button type="button" class="mini saque-tudo" id="btn-saque-tudo">Usar saldo máximo</button>
+          </div>
+          <p class="note" id="saque-dica">Conversão: 10 moedas = R$ 1. A cotação BTC/BRL é consultada no momento do saque.</p>
+          <p class="msg" id="saque-msg" aria-live="polite"></p>
+          <div class="saldo-botoes">
+            <button class="btn ouro small" type="submit" id="btn-saque-confirmar">Solicitar saque</button>
+            <button class="btn secondary" type="button" id="btn-saque-cancelar">Voltar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
     <!-- Comprar moedas -->
     <div class="overlay" id="creditos">
       <div class="card shop">
@@ -268,7 +292,7 @@
     <div class="overlay" id="buy">
       <div class="card shop">
         <h2 id="buy-title">Campo</h2>
-        <p class="sub">Monte sua aljava: flechas melhores custam mais e arrancam mais moedas dos pássaros.</p>
+        <p class="sub">Monte sua aljava: a madeira é grátis para treinar; as de cripto custam 100 e voltam 100 mais o resultado da operação.</p>
         <div class="arrow-shop" id="arrow-shop"></div>
         <p class="buy-summary">
           Entrada <b id="buy-fee">0</b> + <span id="buy-arrows-label">flechas</span> <b id="buy-arrows">0</b> =
