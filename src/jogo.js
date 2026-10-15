@@ -148,7 +148,7 @@ const game = {
 
 const OVERLAYS = {
   menu: 'menu', ranges: 'ranges', buy: 'buy', refill: 'refill', paused: 'pause', result: 'result',
-  perfil: 'perfil', admin: 'admin', bloqueado: 'bloqueado', creditos: 'creditos', saldo: 'saldo',
+  perfil: 'perfil', admin: 'admin', bloqueado: 'bloqueado', creditos: 'creditos', saldo: 'saldo', saque: 'saque',
 };
 
 export function setState(s) {
@@ -671,7 +671,8 @@ function spawnBird() {
 // Cotação de cada ativo em tempo real (Binance; reserva: market-data-service) que guia os pássaros de mercado.
 // Só ficam conectadas durante a rodada.
 const feeds = Object.fromEntries(LISTA_ATIVOS.map(a => [a.id, criarFeedPreco({
-  simbolo: a.simbolo, precoSimulado: a.precoSimulado, buscarReserva: () => api.cotacao(a.simbolo),
+  simbolo: a.simbolo, precoSimulado: a.precoSimulado, assinar: api.assinarCotacao,
+  buscarReserva: () => api.cotacao(a.simbolo),
 })]));
 
 /**

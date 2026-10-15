@@ -143,6 +143,7 @@ export const alterarPapel = (usuarioId, papel) =>
 // ---------------------------------------------------------------------------
 export const carteira = () => requisitar('GET', '/carteira');
 export const extrato = () => requisitar('GET', '/carteira/extrato');
+export const sacarMoedas = moedas => requisitar('POST', '/carteira/saques', { corpo: { valor: moedas } });
 /** Compra de moedas. Hoje é o pagamento de teste (sandbox) da carteira; depois, Pix. */
 export const comprarMoedas = valor => requisitar('POST', '/carteira/depositos', { corpo: { valor } });
 /** Compra por Pix (AbacatePay): configuração da loja, nova cobrança, status e simulação (só em modo de teste). */
@@ -155,6 +156,43 @@ export const simularPagamentoPix = compraId => requisitar('POST', `/carteira/com
 // trading-service: sessões do Flecha Certeira
 // ---------------------------------------------------------------------------
 export const cotacao = simbolo => requisitar('GET', `/cotacoes/${encodeURIComponent(simbolo)}`, { publico: true });
+
+// Uma unica conexao SSE por aba; o market-data-service distribui a mesma cotacao para todos os clientes.
+let streamCotacoes = null;
+const ouvintesCotacoes = new Map();
+let assinantesCotacoes = 0;
+
+function iniciarStreamCotacoes() {
+  if (streamCotacoes || typeof EventSource === 'undefined') return;
+  streamCotacoes = new EventSource(`${config.base}/cotacoes/stream`);
+  streamCotacoes.addEventListener('cotacao', evento => {
+    let cotacao;
+    try { cotacao = JSON.parse(evento.data); } catch { return; }
+    ouvintesCotacoes.get(cotacao?.simbolo)?.forEach(ouvinte => ouvinte(cotacao));
+  });
+  streamCotacoes.onerror = () => {
+    // EventSource reconecta sozinho. Os feeds mantêm a ultima cotacao durante a queda.
+  };
+}
+
+export function assinarCotacao(simbolo, ouvinte) {
+  if (typeof EventSource === 'undefined') return () => {};
+  const lista = ouvintesCotacoes.get(simbolo) || new Set();
+  lista.add(ouvinte);
+  ouvintesCotacoes.set(simbolo, lista);
+  assinantesCotacoes++;
+  iniciarStreamCotacoes();
+  return () => {
+    lista.delete(ouvinte);
+    if (!lista.size) ouvintesCotacoes.delete(simbolo);
+    assinantesCotacoes--;
+    if (assinantesCotacoes <= 0 && streamCotacoes) {
+      streamCotacoes.close();
+      streamCotacoes = null;
+      assinantesCotacoes = 0;
+    }
+  };
+}
 export const aljavaGuardada = () => requisitar('GET', '/jogos/flecha/aljava');
 export const meusAcertos = sessaoId =>
   requisitar('GET', '/jogos/flecha/estudo/meus-acertos' + consulta({ sessaoId }));

@@ -283,12 +283,21 @@ describe("perfil", () => {
       mercado: { btc: 2, eth: 0, ouro: 1 },
     }];
     await iniciarApp();
-    expect($("btn-sacar").disabled).toBe(true);           // saque ainda não existe
+    expect($("btn-sacar").disabled).toBe(false);
+    rotas["GET /carteira"] = [200, { usuarioId: EU.id, saldo: 900, atualizadaEm: null }];
+    rotas["POST /carteira/saques"] = [200, { usuarioId: EU.id, saldo: 900, atualizadaEm: null }];
+    $("btn-sacar").click();
+    expect($("saque").classList.contains("show")).toBe(true);
+    $("saque-valor").value = "10";
+    $("form-saque").dispatchEvent(new Event("submit", { cancelable: true }));
+    await estabilizar();
+    expect(chamadas.find((c) => c.chave === "POST /carteira/saques").corpo).toEqual({ valor: 100 });
+    expect($("saque-msg").textContent).toContain("Saque enviado");
     $("btn-saldo").click();
     await estabilizar();
     expect($("saldo").classList.contains("show")).toBe(true);
-    expect($("saldo-moedas").textContent).toBe("1.000");
-    expect($("saldo-referencia").textContent.replace(/\s/g, " ")).toContain("R$ 100,00");
+    expect($("saldo-moedas").textContent).toBe("900");
+    expect($("saldo-referencia").textContent.replace(/\s/g, " ")).toContain("R$ 90,00");
     const aljava = $("saldo-aljava").textContent;
     expect(aljava).toContain("Mercado (qualquer campo): 2 bitcoin, 1 ouro paxg");
     expect(aljava).toContain("Campo do Vilarejo: 3 madeira");

@@ -860,6 +860,17 @@ h3.secao {
 .saldo-grande b { font-weight: 400; }
 .lista-aljava { margin: 0; padding-left: calc(var(--s) * 20px); text-align: left; font-size: calc(var(--s) * 16px); line-height: 1.5; }
 .saldo-botoes { display: flex; justify-content: center; align-items: center; gap: calc(var(--s) * 8px); flex-wrap: wrap; }
+.saque-disponivel { margin: calc(var(--s) * 8px) 0; font-size: calc(var(--s) * 20px); color: #8a5200; }
+.form-saque { max-width: calc(var(--s) * 520px); margin: 0 auto; }
+.saque-campo { display: flex; flex-direction: column; align-items: center; gap: calc(var(--s) * 7px); margin: calc(var(--s) * 14px) auto; }
+.saque-campo label { font-size: calc(var(--s) * 19px); font-weight: 900; }
+.saque-valor-box { display: flex; align-items: center; width: min(100%, calc(var(--s) * 300px)); padding: calc(var(--s) * 3px) calc(var(--s) * 14px); background: linear-gradient(135deg, #fffdf8, #fff0c8); border: calc(var(--s) * 4px) solid #c9a77c; border-radius: calc(var(--s) * 18px); box-shadow: 0 calc(var(--s) * 5px) 0 #a8875c, inset 0 0 calc(var(--s) * 12px) rgba(199, 124, 0, 0.12); transition: border-color .15s, box-shadow .15s, transform .15s; }
+.saque-valor-box:focus-within { border-color: #f9a825; box-shadow: 0 calc(var(--s) * 5px) 0 #a8875c, 0 0 calc(var(--s) * 12px) rgba(249, 168, 37, .45); transform: translateY(calc(var(--s) * -1px)); }
+.saque-prefixo { color: #2e7d32; font-family: 'Lilita One', 'Nunito', sans-serif; font-size: calc(var(--s) * 29px); }
+#form-saque .saque-valor-box input { flex: 1; min-width: 0; max-width: none; padding: calc(var(--s) * 8px) 0; color: #4a2f17; background: transparent; border: 0; box-shadow: none; font-family: 'Lilita One', 'Nunito', sans-serif; font-size: calc(var(--s) * 30px); text-align: right; outline: none; }
+#form-saque .saque-valor-box input::placeholder { color: #c9a77c; }
+.saque-tudo { color: #2e7d32; border-color: #8bc34a; background: #f1f8e9; box-shadow: 0 calc(var(--s) * 3px) 0 #689f38; }
+.saque-tudo:hover { background: #e8f5e9; }
 
 /* Loja: flechas que o jogador já tem guardadas */
 .arrow-info .guardadas { color: #2e7d32; }

@@ -264,6 +264,46 @@ function mostrarSaldoNaTela() {
   $('saldo-referencia').textContent = `Valor de referência: ${reaisDeMoedas(saldo)} (10 moedas = R$ 1)`;
 }
 
+function abrirSaque() {
+  const saldo = saldoAtual();
+  $('saque-moedas').textContent = formatarMoedas(saldo);
+  $('saque-reais-disponiveis').textContent = reaisDeMoedas(saldo);
+  $('saque-valor').value = '';
+  msg('saque-msg', '');
+  setState('saque');
+  $('saque-valor').focus();
+}
+
+function preencherSaqueMaximo() {
+  const maximo = Math.floor((saldoAtual() / MOEDAS_POR_REAL) * 10) / 10;
+  $('saque-valor').value = maximo.toFixed(2).replace('.', ',');
+  $('saque-valor').focus();
+}
+
+async function solicitarSaque(e) {
+  e.preventDefault();
+  const reais = Number(String($('saque-valor').value).replace(',', '.'));
+  const saldo = saldoAtual();
+  if (!Number.isFinite(reais) || reais < 1) return msg('saque-msg', 'Informe pelo menos R$ 1,00.', 'erro');
+  const moedas = Math.round(reais * MOEDAS_POR_REAL);
+  if (moedas > saldo) return msg('saque-msg', `Seu saldo permite sacar no máximo ${reaisDeMoedas(saldo)}.`, 'erro');
+  const botao = $('btn-saque-confirmar');
+  botao.disabled = true;
+  msg('saque-msg', 'Criando subconta e transferindo BTC…');
+  try {
+    await api.sacarMoedas(moedas);
+    await atualizarCarteira();
+    msg('saque-msg', 'Saque enviado para sua subconta Binance!', 'ok');
+    $('saque-moedas').textContent = formatarMoedas(saldoAtual());
+    $('saque-reais-disponiveis').textContent = reaisDeMoedas(saldoAtual());
+    $('saque-valor').value = '';
+  } catch (e) {
+    msg('saque-msg', mensagemErro(e), 'erro');
+  } finally {
+    botao.disabled = false;
+  }
+}
+
 async function abrirSaldo() {
   mostrarSaldoNaTela();
   $('saldo-aljava').innerHTML = '<p class="vazio">Carregando…</p>';
@@ -716,6 +756,10 @@ $('form-apelido').addEventListener('submit', salvarApelido);
 $('btn-saldo').addEventListener('click', abrirSaldo);
 $('btn-saldo-voltar').addEventListener('click', () => setState('menu'));
 $('btn-saldo-comprar').addEventListener('click', () => abrirCreditos('saldo'));
+$('btn-sacar').addEventListener('click', abrirSaque);
+$('form-saque').addEventListener('submit', solicitarSaque);
+$('btn-saque-tudo').addEventListener('click', preencherSaqueMaximo);
+$('btn-saque-cancelar').addEventListener('click', () => setState('menu'));
 $('perfil-apelido').addEventListener('input', () => msg('perfil-apelido-msg', ''));
 $('btn-excluir').addEventListener('click', () => {
   $('btn-excluir').hidden = true;

@@ -9,6 +9,10 @@ server {
 
     location /api/ {
         proxy_pass ${GATEWAY_URL};
+        # Mantem o stream SSE de cotacoes em tempo real, sem aguardar um buffer de respostas.
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 1h;
         # O navegador fala com este nginx na mesma origem. Repassar o Origin faria o CORS do gateway
         # (que só libera FRONTEND_ORIGINS) recusar os POSTs com 403.
         proxy_set_header Origin "";

@@ -159,13 +159,13 @@ export function lerMensagemBinance(texto) {
  */
 export function criarFeedPreco({
   simbolo = BTC_SIMBOLO, precoSimulado = BTC_PRECO_SIMULADO, buscarReserva,
-  abrirSocket = url => new WebSocket(url), aleatorio = Math.random,
+  abrirSocket = url => new WebSocket(url), assinar, aleatorio = Math.random,
 }) {
   const url = urlBinance(simbolo);
   const f = {
     alvo: null, exibido: null, variacao24h: null, simulado: false, geracao: 0, fonte: null,
     historico: [], t: 0, ultimaBinance: -Infinity, proximaConsulta: 0, buscando: false, falhas: 0,
-    ligado: false, socket: null, proximaConexao: 0,
+    ligado: false, socket: null, proximaConexao: 0, cancelarAssinatura: null,
   };
 
   function registrar(preco) {
@@ -243,10 +243,19 @@ export function criarFeedPreco({
     /** Começa a ouvir a Binance (chamado quando a rodada está em andamento). */
     ligar() {
       f.ligado = true;
+      if (assinar && !f.cancelarAssinatura) {
+        f.cancelarAssinatura = assinar(simbolo, cotacao => {
+          if (receber(cotacao, 'servidor')) f.ultimaBinance = f.t;
+        });
+      }
     },
     /** Fecha a conexão com a Binance (fora da rodada não precisa de cotação). */
     desligar() {
       f.ligado = false;
+      if (f.cancelarAssinatura) {
+        f.cancelarAssinatura();
+        f.cancelarAssinatura = null;
+      }
       const socket = f.socket;
       f.socket = null;
       if (socket) socket.close();
@@ -254,9 +263,9 @@ export function criarFeedPreco({
     /** Avança o relógio, cuida da conexão e da reserva e desliza o preço mostrado até o último preço. */
     atualizar(dt) {
       f.t += dt;
-      if (f.ligado && !f.socket && f.t >= f.proximaConexao) conectar();
+      if (f.ligado && !assinar && !f.socket && f.t >= f.proximaConexao) conectar();
       const binanceCalada = f.t - f.ultimaBinance > SILENCIO_BINANCE;
-      if (f.ligado && binanceCalada && !f.buscando && f.t >= f.proximaConsulta) {
+      if (f.ligado && !assinar && binanceCalada && !f.buscando && f.t >= f.proximaConsulta) {
         f.proximaConsulta = f.t + CONSULTA_RESERVA;
         consultarReserva();
       }
