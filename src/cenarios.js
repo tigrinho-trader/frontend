@@ -6,9 +6,11 @@
 export const Scenery = (() => {
   'use strict';
 
-  const W = 1280, H = 720, GROUND_Y = 640;
+  // O fundo é desenhado com a largura máxima do jogo (telas largas); o que passa da tela é cortado.
+  const W = 1920, H = 720, GROUND_Y = 640;
   const TAU = Math.PI * 2;
-  const RES = 2;                         // resolução dos canvas pré-desenhados
+  const RES = 1.5;                       // resolução dos canvas pré-desenhados
+  let visivel = 1280;                    // largura lógica que aparece agora (muda com a tela)
 
   const rand = (a, b) => a + Math.random() * (b - a);
 
@@ -35,9 +37,9 @@ export const Scenery = (() => {
     c.closePath();
   }
 
-  function layer(draw, res = RES) {
+  function layer(draw, res = RES, largura = W) {
     const c = document.createElement('canvas');
-    c.width = W * res;
+    c.width = largura * res;
     c.height = H * res;
     const b = c.getContext('2d');
     b.scale(res, res);
@@ -579,7 +581,7 @@ export const Scenery = (() => {
 
   const AMBIENT = {
     pollen: {
-      make: () => ({ x: rand(0, W), y: rand(80, 600), r: rand(1, 2.4), phase: rand(0, 6), speed: rand(6, 16) }),
+      make: () => ({ x: rand(0, visivel), y: rand(80, 600), r: rand(1, 2.4), phase: rand(0, 6), speed: rand(6, 16) }),
       update(p, dt, t) {
         p.x += p.speed * dt;
         p.y += Math.sin(t * 0.8 + p.phase) * 6 * dt;
@@ -593,7 +595,7 @@ export const Scenery = (() => {
     },
     leaves: {
       make: () => ({
-        x: rand(0, W), y: rand(-20, GROUND_Y), vy: rand(22, 50), amp: rand(15, 40), phase: rand(0, 6),
+        x: rand(0, visivel), y: rand(-20, GROUND_Y), vy: rand(22, 50), amp: rand(15, 40), phase: rand(0, 6),
         rot: rand(0, 6), vr: rand(-2.5, 2.5), size: rand(4, 7),
         color: ['#e65100', '#f9a825', '#a1662f', '#7cb342', '#ef6c00'][Math.floor(rand(0, 5))],
       }),
@@ -601,7 +603,7 @@ export const Scenery = (() => {
         p.y += p.vy * dt;
         p.x += (Math.cos(t * 1.3 + p.phase) * p.amp + 12) * dt;
         p.rot += p.vr * dt;
-        if (p.y > GROUND_Y - 6 || p.x > W + 20) { p.y = rand(-40, -10); p.x = rand(-60, W); }
+        if (p.y > GROUND_Y - 6 || p.x > visivel + 20) { p.y = rand(-40, -10); p.x = rand(-60, visivel); }
       },
       draw(ctx, p, t) {
         ctx.save();
@@ -617,7 +619,7 @@ export const Scenery = (() => {
       },
     },
     snow: {
-      make: () => ({ x: rand(0, W), y: rand(-20, H), r: rand(1, 3), vy: rand(40, 95), phase: rand(0, 6), depth: Math.random() }),
+      make: () => ({ x: rand(0, visivel), y: rand(-20, H), r: rand(1, 3), vy: rand(40, 95), phase: rand(0, 6), depth: Math.random() }),
       update(p, dt, t) {
         p.y += p.vy * dt;
         p.x += (-30 - p.depth * 30 + Math.sin(t + p.phase) * 15) * dt;
@@ -631,7 +633,7 @@ export const Scenery = (() => {
       front: true,
     },
     fireflies: {
-      make: () => ({ x: rand(0, W), y: rand(380, 625), phase: rand(0, 6), sx: rand(10, 25), sy: rand(8, 18) }),
+      make: () => ({ x: rand(0, visivel), y: rand(380, 625), phase: rand(0, 6), sx: rand(10, 25), sy: rand(8, 18) }),
       update(p, dt, t) {
         p.x += Math.cos(t * 0.7 + p.phase) * p.sx * dt + 4 * dt;
         p.y += Math.sin(t * 0.9 + p.phase * 1.3) * p.sy * dt;
@@ -1006,13 +1008,14 @@ export const Scenery = (() => {
 
     scene.skyLayer = layer(b => paintSky(b, th));
     scene.landLayer = layer(b => th.land(b, seeded(th.seed), scene));
+    const VW = 1280;
     scene.vignetteLayer = layer(b => {
-      const v = b.createRadialGradient(W / 2, H * 0.45, W * 0.38, W / 2, H * 0.45, W * 0.78);
+      const v = b.createRadialGradient(VW / 2, H * 0.45, VW * 0.38, VW / 2, H * 0.45, VW * 0.78);
       v.addColorStop(0, 'rgba(0,20,40,0)');
       v.addColorStop(1, `rgba(0,15,35,${th.vignette})`);
       b.fillStyle = v;
-      b.fillRect(0, 0, W, H);
-    }, 1);
+      b.fillRect(0, 0, VW, H);
+    }, 1, VW);
 
     const sprites = [0, 1, 2, 3].map(i => makeCloudSprite(th.seed + 11 + i * 17, 170 + i * 30, th.clouds.pal));
     const farShare = Math.ceil(th.clouds.count * 0.4);
@@ -1022,7 +1025,7 @@ export const Scenery = (() => {
       const far = i < farShare;
       return {
         sprite: sprites[i % sprites.length], far,
-        x: rand(-100, W),
+        x: rand(-100, visivel),
         y: cloudY(far),
         s: far ? rand(0.45, 0.7) : rand(0.75, 1.15),
         speed: far ? rand(4, 9) : rand(12, 24),
@@ -1036,7 +1039,7 @@ export const Scenery = (() => {
     scene.update = (dt, t) => {
       for (const c of scene.clouds) {
         c.x += c.speed * dt;
-        if (c.x > W + 50) { c.x = -c.sprite.w * c.s - 50; c.y = cloudY(c.far); }
+        if (c.x > visivel + 50) { c.x = -c.sprite.w * c.s - 50; c.y = cloudY(c.far); }
       }
       for (const p of scene.ambient) amb.update(p, dt, t);
     };
@@ -1085,7 +1088,7 @@ export const Scenery = (() => {
       if (amb.front) drawAmbient(ctx);
     };
 
-    scene.drawVignette = ctx => ctx.drawImage(scene.vignetteLayer, 0, 0, W, H);
+    scene.drawVignette = ctx => ctx.drawImage(scene.vignetteLayer, 0, 0, visivel, H);
     return scene;
   }
 
@@ -1104,5 +1107,8 @@ export const Scenery = (() => {
     return s;
   }
 
-  return { get, themes: Object.keys(THEMES) };
+  /** Largura lógica visível agora: nuvens, partículas e vinheta acompanham a tela. */
+  const ajustarLargura = largura => { visivel = largura; };
+
+  return { get, themes: Object.keys(THEMES), ajustarLargura, larguraMaxima: W };
 })();

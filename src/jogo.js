@@ -23,7 +23,10 @@ import {
 // ---------------------------------------------------------------------------
 // Configuração geral
 // ---------------------------------------------------------------------------
-const W = 1280, H = 720;          // resolução lógica do jogo
+// Resolução lógica: a altura é fixa (720) e a largura acompanha a proporção da tela, de 1280 (16:9) até a largura
+// do cenário (1920): telas largas e celulares deitados ficam sem faixas nas laterais.
+const H = 720, W_MIN = 1280;
+let W = W_MIN;
 const GROUND_Y = 640;             // altura do chão
 const G = 900;                    // gravidade (px/s²)
 const MIN_SPEED = 300, MAX_SPEED = 1350;
@@ -88,6 +91,9 @@ const wrap = $('wrap');
 
 function resize() {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = Math.round(Math.min(Scenery.larguraMaxima, Math.max(W_MIN, H * window.innerWidth / window.innerHeight)));
+  Scenery.ajustarLargura(W);
+  FLECHA_BTC.xAlvo = W - 90;          // o alvo das flechas de mercado fica sempre perto da borda direita
   const scale = Math.min(window.innerWidth / W, window.innerHeight / H);
   const cw = Math.floor(W * scale), ch = Math.floor(H * scale);
   wrap.style.width = cw + 'px';
@@ -1109,7 +1115,7 @@ function addText(x, y, text, color, size, coin = false, max = 1.2) {
 }
 
 // Moedas que saem do pássaro e voam até a carteira no HUD
-const WALLET_POS = { x: W / 2 - 150, y: 46 };
+const WALLET_POS = { get x() { return W / 2 - 150; }, y: 46 };
 function flyingCoins(x, y, n) {
   for (let i = 0; i < n; i++) {
     game.particles.push({
@@ -1442,7 +1448,12 @@ const dolares = (v, casas = 0) =>
 function drawTickerMercado() {
   const linhas = LISTA_ATIVOS.filter(a => game.range.ativos.includes(a.id) && feeds[a.id].preco() !== null);
   if (!linhas.length) return;
-  const x = 856, y = 14, w = 280, h = 22 + linhas.length * 24;
+  const w = 280, h = 22 + linhas.length * 24;
+  // botões HTML do canto direito (pausa, som, pássaros): 3 × 52 px + 2 vãos de 10 + margem de 16
+  const botoes = 16 + 3 * 52 + 2 * 10;
+  const cabeAoLado = W - botoes - 16 - w >= W / 2 + 200 + 16;   // à direita da placa central
+  const x = cabeAoLado ? W - botoes - 16 - w : W - 16 - w;
+  const y = cabeAoLado ? 14 : 16 + 52 + 14;
   plaque(x, y, w, h, 14);
   const algumSimulado = linhas.some(a => feeds[a.id].simulado());
   ctx.textAlign = 'right';
