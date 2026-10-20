@@ -13,6 +13,7 @@ export const ATIVOS = {
   btc: { id: 'btc', simbolo: 'BTCUSDT', nome: 'Bitcoin', marca: '₿', cor: '#f7931a', casas: 0, nasceACada: 3, precoSimulado: 100000 },
   eth: { id: 'eth', simbolo: 'ETHUSDT', nome: 'Ethereum', marca: 'Ξ', cor: '#627eea', casas: 2, nasceACada: 6, precoSimulado: 3000 },
   ouro: { id: 'ouro', simbolo: 'PAXGUSDT', nome: 'Ouro', marca: 'Au', cor: '#c9a227', casas: 2, nasceACada: 6, precoSimulado: 2600 },
+  v100: { id: 'v100', simbolo: '1HZ100V', nome: 'Volatilidade 100', marca: 'V', cor: '#d32f2f', casas: 2, nasceACada: 3, precoSimulado: 1000, provedor: 'deriv' },
 };
 export const LISTA_ATIVOS = Object.values(ATIVOS);
 export const ATIVO_POR_SIMBOLO = Object.fromEntries(LISTA_ATIVOS.map(a => [a.simbolo, a]));
@@ -159,7 +160,7 @@ export function lerMensagemBinance(texto) {
  */
 export function criarFeedPreco({
   simbolo = BTC_SIMBOLO, precoSimulado = BTC_PRECO_SIMULADO, buscarReserva,
-  abrirSocket = url => new WebSocket(url), assinar, aleatorio = Math.random,
+  abrirSocket = url => new WebSocket(url), assinar, usarBinance = true, aleatorio = Math.random,
 }) {
   const url = urlBinance(simbolo);
   const f = {
@@ -263,7 +264,7 @@ export function criarFeedPreco({
     /** Avança o relógio, cuida da conexão e da reserva e desliza o preço mostrado até o último preço. */
     atualizar(dt) {
       f.t += dt;
-      if (f.ligado && !assinar && !f.socket && f.t >= f.proximaConexao) conectar();
+      if (f.ligado && usarBinance && !assinar && !f.socket && f.t >= f.proximaConexao) conectar();
       const binanceCalada = f.t - f.ultimaBinance > SILENCIO_BINANCE;
       if (f.ligado && !assinar && binanceCalada && !f.buscando && f.t >= f.proximaConsulta) {
         f.proximaConsulta = f.t + CONSULTA_RESERVA;
@@ -340,9 +341,11 @@ export function textoResultadoEstudo(op) {
   const texto = `${moedasComSinal(lucro)} moedas`;
   const binario = Number(op.resultadoBinarioBrl) || 0;
   const tipo = op.modo === 'REAL' ? 'operação real' : 'simulação';
+  const percentual = Number(op.resultadoPercentual);
+  const pct = Number.isFinite(percentual) ? ` · ${percentual >= 0 ? '+' : ''}${percentual.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%` : '';
   return {
     texto,
-    detalhe: `${ativo}${binario > 0 ? 'acertou' : binario < 0 ? 'errou' : 'empatou'} · ${tipo} ${reais(Number(op.resultadoLiquidoBrl) || 0)}`,
+    detalhe: `${ativo}${binario > 0 ? 'acertou' : binario < 0 ? 'errou' : 'empatou'} · ${tipo}${pct} ${reais(Number(op.resultadoLiquidoBrl) || 0)}`,
     cor,
   };
 }

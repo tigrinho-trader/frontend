@@ -672,6 +672,7 @@ function spawnBird() {
 // Só ficam conectadas durante a rodada.
 const feeds = Object.fromEntries(LISTA_ATIVOS.map(a => [a.id, criarFeedPreco({
   simbolo: a.simbolo, precoSimulado: a.precoSimulado, assinar: api.assinarCotacao,
+  usarBinance: a.provedor !== 'deriv',
   buscarReserva: () => api.cotacao(a.simbolo),
 })]));
 

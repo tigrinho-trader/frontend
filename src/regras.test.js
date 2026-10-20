@@ -53,14 +53,14 @@ describe("campos de tiro", () => {
   });
 
   it("campos mais caros têm mais criptomoedas", () => {
-    expect(RANGES.map((r) => r.ativos)).toEqual([["btc"], ["btc", "eth"], ["btc", "eth", "ouro"], ["btc", "eth", "ouro"]]);
+    expect(RANGES.map((r) => r.ativos)).toEqual([["btc"], ["btc", "eth"], ["btc", "eth", "ouro", "v100"], ["btc", "eth", "ouro", "v100"]]);
   });
 
   it("no campo aparecem a madeira e as flechas das criptos dele", () => {
     expect(tiposNoCampo(vilarejo).map((t) => t.id)).toEqual(["wood", "btc"]);
-    expect(ARROW_TYPES.map((t) => t.id)).toEqual(["wood", "btc", "eth", "ouro"]);   // ferro, ouro e diamante saíram
+    expect(ARROW_TYPES.map((t) => t.id)).toEqual(["wood", "btc", "eth", "ouro", "v100"]);   // ferro, ouro e diamante saíram
     expect(tiposNoCampo(bosque).map((t) => t.id)).toEqual(["wood", "btc", "eth"]);
-    expect(tiposNoCampo(pico).map((t) => t.id)).toEqual(["wood", "btc", "eth", "ouro"]);
+    expect(tiposNoCampo(pico).map((t) => t.id)).toEqual(["wood", "btc", "eth", "ouro", "v100"]);
     expect(tiposNoCampo(null).map((t) => t.id)).toEqual(["wood"]);
   });
 });

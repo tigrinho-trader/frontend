@@ -398,7 +398,7 @@ describe("jogo com o servidor", () => {
     $("btn-enter").click();
     await estabilizar();
     const post = chamadas.find((c) => c.chave === "POST /jogos/flecha/sessoes");
-    expect(post.corpo).toEqual({ campo: "vilarejo", flechas: { wood: 10, btc: 0, eth: 0, ouro: 0 } });
+    expect(post.corpo).toEqual({ campo: "vilarejo", flechas: { wood: 10, btc: 0, eth: 0, ouro: 0, v100: 0 } });
     expect(document.getElementById("wrap").dataset.state).toBe("playing");
   });
 

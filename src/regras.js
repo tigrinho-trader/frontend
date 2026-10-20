@@ -30,6 +30,7 @@ export const BIRD_TYPES = {
   btc:    { name: 'Bitcoin',  r: 23, color: '#f7931a', belly: '#ffe0b2', speed: 190, coins: 0, btc: true, mercado: 'btc' },
   eth:    { name: 'Ethereum', r: 23, color: '#627eea', belly: '#e3e8ff', speed: 190, coins: 0, mercado: 'eth' },
   ouro:   { name: 'Ouro PAXG', r: 23, color: '#c9a227', belly: '#fff1c1', speed: 190, coins: 0, mercado: 'ouro', shiny: true },
+  v100:   { name: 'Volatilidade 100', r: 23, color: '#d32f2f', belly: '#ffe1e1', speed: 190, coins: 0, mercado: 'v100' },
 };
 
 for (const t of Object.values(BIRD_TYPES)) {
@@ -59,14 +60,14 @@ export const RANGES = [
   },
   {
     slug: 'pico', name: 'Pico das Águias', theme: 'peak', fee: 40, arrowPrice: 8, mult: 10, tier: 3,
-    ativos: ['btc', 'eth', 'ouro'],
+    ativos: ['btc', 'eth', 'ouro', 'v100'],
     desc: 'Pássaros velozes e voo em ondas. Mais dourados.',
     speedMul: 1.3, wobbleChance: 0.4, wobbleAmp: 50, spawnEvery: 1.1, maxBirds: 5,
     pool: { red: 3, big: 1, yellow: 3, blue: 3, gold: 0.8 },
   },
   {
     slug: 'reserva-real', name: 'Reserva Real', theme: 'royal', fee: 100, arrowPrice: 20, mult: 25, tier: 4,
-    ativos: ['btc', 'eth', 'ouro'],
+    ativos: ['btc', 'eth', 'ouro', 'v100'],
     desc: 'Só para mestres: pássaros muito rápidos e imprevisíveis.',
     speedMul: 1.45, wobbleChance: 0.6, wobbleAmp: 65, spawnEvery: 0.9, maxBirds: 6,
     pool: { red: 2, big: 1, yellow: 3, blue: 4, gold: 1.2 },
@@ -107,6 +108,12 @@ export const ARROW_TYPES = [
     desc: 'Custa 100 moedas: o ouro sobe ou desce em 5 s? Voltam 100 mais o resultado da operação.',
     shaft: ['#4a3410', '#c9a227'], head: ['#fffbe6', '#e6c35c', '#8a6d10'], headStroke: '#5c4708',
     fletch: ['#ffffff', '#c9a227'], trail: '201,162,39', headSize: 1.25, glow: 'rgba(230,195,92,0.9)',
+  },
+  {
+    id: 'v100', name: 'Volatilidade 100', price: 1, precoFixo: APOSTA_MERCADO, coins: 2, especial: 'v100', mercado: 'v100',
+    desc: 'Custa 100 moedas: o Volatilidade 100 sobe ou desce em 5 ticks (~5 s)? Voltam 100 mais o resultado da operação.',
+    shaft: ['#3b1010', '#d32f2f'], head: ['#fff0f0', '#ef5350', '#8e1b1b'], headStroke: '#5d1010',
+    fletch: ['#ffffff', '#d32f2f'], trail: '211,47,47', headSize: 1.25, glow: 'rgba(211,47,47,0.9)',
   },
 ];
 export const ARROW_BY_ID = Object.fromEntries(ARROW_TYPES.map(t => [t.id, t]));

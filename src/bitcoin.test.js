@@ -387,7 +387,7 @@ describe("ativos de mercado: bitcoin, ethereum e ouro", () => {
   const sem = (t) => t.replace(/\s/g, " ");
 
   it("cada ativo tem par na Binance, pássaro e flecha próprios", () => {
-    expect(LISTA_ATIVOS.map((a) => a.simbolo)).toEqual(["BTCUSDT", "ETHUSDT", "PAXGUSDT"]);
+    expect(LISTA_ATIVOS.map((a) => a.simbolo)).toEqual(["BTCUSDT", "ETHUSDT", "PAXGUSDT", "1HZ100V"]);
     for (const a of LISTA_ATIVOS) {
       expect(ATIVO_POR_SIMBOLO[a.simbolo]).toBe(a);
       expect(BIRD_TYPES[a.id]).toMatchObject({ coins: 0, mercado: a.id });
