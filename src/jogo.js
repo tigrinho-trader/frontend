@@ -5,8 +5,8 @@
 import {
   DEFAULT_ARROWS, MAX_ARROWS, REFILL_QTY, BIRD_TYPES, RANGES, ARROW_TYPES, ARROW_BY_ID,
   NIVEIS_FLECHA, TAXA_DEVOLUCAO_PADRAO, VALOR_FLECHA_PADRAO, VALOR_MINIMO_FLECHA,
-  centavos, chaveLote, comunsDoPedido, espacosDaAljava, lerValorFlecha, mercadoDoPedido, nivelDoValor, nomeDoValor,
-  seloDoValor, textoDevolucao, textoValor, visualDoValor,
+  centavos, chaveLote, comunsDoPedido, espacosDaAljava, lerValorFlecha, mercadoDoPedido, nivelAnterior, nivelDoValor,
+  nomeDoValor, proximoNivel, seloDoValor, textoDevolucao, textoValor, visualDoValor,
   clamp, formatMult, arrowCost, coinsForHit, emptyQuiver, countArrows, orderCost, minCost,
   canEnter as canEnterWith, isBroke as isBrokeWith, fitOrder, changeOrder, pickBirdType, tiposNoCampo,
   segmentHitsCircle, arrowPosition,
@@ -142,6 +142,8 @@ const game = {
   personalizado: {},        // tipos com o campo de valor personalizado aberto na loja
   textoValor: {},           // o que o jogador está digitando no valor personalizado
   valoresInvalidos: {},     // erro do valor personalizado digitado, por tipo
+  valorAntes: {},           // valor da flecha antes de começar a digitar o personalizado (para o efeito ao confirmar)
+  efeito: null,             // efeito de "a flecha ficou mais forte" a tocar na linha da loja: { flecha, texto, ... }
   refillQtd: {},            // quantidade escolhida na compra durante a rodada, por tipo
   regras: { niveis: NIVEIS_FLECHA, minimo: VALOR_MINIMO_FLECHA, taxaDevolucao: TAXA_DEVOLUCAO_PADRAO },
   birds: [],
@@ -410,6 +412,8 @@ function openBuy(range) {
     .map(t => [t.id, !nivelDoValor(game.valorPadrao, game.regras.niveis)]));
   game.textoValor = {};
   game.valoresInvalidos = {};
+  game.valorAntes = {};
+  game.efeito = null;
   // Se o pedido anterior ficou caro demais, corta das flechas mais caras primeiro
   game.order = fitOrder(game.order, range, game.wallet, countArrows(guardadasNoCampo(range)), game.valores);
   mostrarErroCompra(null);
@@ -462,25 +466,51 @@ async function encerrarRodadaAberta() {
  * o campo para digitar o valor.
  */
 function htmlNiveis(t) {
-  const valor = game.valores[t.id] ?? game.valorPadrao;
+  const { niveis } = game.regras;
+  const nome = escaparHtml(t.name);
+  const valor = centavos(game.valores[t.id] ?? game.valorPadrao);
   const proprio = game.personalizado[t.id];
   const erro = game.valoresInvalidos[t.id];
-  const botoes = game.regras.niveis.map((v, i) => {
-    const marcado = !proprio && centavos(valor) === centavos(v);
-    return `<button type="button" class="nivel nivel-${i + 1}${marcado ? ' sel' : ''}" data-flecha="${t.id}"
-      data-valor="${v}" aria-pressed="${marcado}">N${i + 1} · ${textoValor(v)}</button>`;
-  }).join('');
+  const nivel = nivelDoValor(valor, niveis), visual = visualDoValor(valor, niveis);
+  const acima = proximoNivel(valor, niveis), abaixo = nivelAnterior(valor, niveis);
+  const caro = acima !== null && acima > limiteDoValor();   // nem uma flecha do nível de cima cabe no saldo
+  const estrelas = [1, 2, 3].map(i => `<span class="estrela${i <= visual ? ' on' : ''}">★</span>`).join('');
   const texto = game.textoValor[t.id] ?? textoValor(valor);
   return `
-    <div class="niveis" role="group" aria-label="Valor de cada flecha ${escaparHtml(t.name)}">
-      ${botoes}
-      <button type="button" class="nivel nivel-outro${proprio ? ' sel' : ''}" data-flecha="${t.id}" data-valor="outro"
+    <div class="niveis" role="group" aria-label="Valor de cada flecha ${nome}">
+      <button type="button" class="nivel-rebaixar" data-flecha="${t.id}" data-acao="rebaixar" ${abaixo === null ? 'disabled' : ''}
+        title="${abaixo === null ? 'Já está no nível 1' : `Rebaixar para ${textoValor(abaixo)}`}"
+        aria-label="Rebaixar a flecha ${nome}">◀</button>
+      <span class="nivel-atual nivel-${visual}">${nivel ? `N${nivel}` : 'Personalizado'} · ${textoValor(valor)}</span>
+      <span class="nivel-estrelas" role="img" aria-label="Força ${visual} de 3">${estrelas}</span>
+      <button type="button" class="nivel-upgrade" data-flecha="${t.id}" data-acao="upgrade" ${acima === null || caro ? 'disabled' : ''}
+        title="${acima === null ? 'Nível máximo' : caro ? 'Saldo insuficiente para o próximo nível' : `Nível ${nivelDoValor(acima, niveis)}: ${textoValor(acima)} moedas`}"
+        >${acima === null ? 'Nível máximo' : `▲ Upgrade · ${textoValor(acima)}`}</button>
+      <button type="button" class="nivel-outro${proprio ? ' sel' : ''}" data-flecha="${t.id}" data-acao="personalizado"
         aria-pressed="${!!proprio}">Personalizado</button>
       ${proprio ? `<input type="text" class="valor-personalizado${erro ? ' invalido' : ''}" data-flecha="${t.id}"
         inputmode="decimal" maxlength="10" autocomplete="off" value="${escaparHtml(texto)}"
-        aria-label="Valor personalizado de cada flecha ${escaparHtml(t.name)}" aria-invalid="${!!erro}">` : ''}
+        aria-label="Valor personalizado de cada flecha ${nome}" aria-invalid="${!!erro}">
+        <button type="button" class="nivel-ok" data-flecha="${t.id}" data-acao="confirmar" ${erro ? 'disabled' : ''}>OK</button>` : ''}
       ${erro ? `<span class="valor-erro" role="alert">${escaparHtml(erro)}</span>` : ''}
     </div>`;
+}
+
+/**
+ * Efeito "a flecha ficou mais forte" na linha da loja: classes da linha e o HTML do "Nível 2!" e das faíscas. Só na
+ * linha do tipo que acabou de mudar; o efeito toca uma vez (a próxima pintura da loja já não o repete).
+ */
+function efeitoDaLinha(typeId) {
+  const ef = game.efeito;
+  if (!ef || ef.flecha !== typeId) return { classe: '', html: '' };
+  const classe = ` efeito ${ef.pequeno ? 'efeito-pequeno' : 'efeito-up'}${ef.forte ? ' efeito-forte' : ''}`
+    + `${menosMovimento() ? ' parado' : ''}`;
+  const faiscas = '<i></i>'.repeat(ef.forte ? 10 : 6);
+  return {
+    classe,
+    html: `<span class="efeito-pop" aria-hidden="true">${escaparHtml(ef.texto)}</span>
+      <span class="efeito-faiscas" aria-hidden="true">${faiscas}</span>`,
+  };
 }
 
 /** Algum valor personalizado digitado está inválido? (não deixa pagar) */
@@ -500,8 +530,11 @@ function renderBuy() {
     const info = t.mercado
       ? `valor da flecha <span class="coin"></span><b class="mult">${textoValor(cost)}</b> · previsão em 5 s${htmlNiveis(t)}`
       : `grátis · treino${tem}`;
+    const efeito = efeitoDaLinha(t.id);
     return `
-      <div class="arrow-row${n ? ' active' : ''}${t.mercado ? ' mercado' : ''}" title="${escaparHtml(t.desc)}">
+      <div class="arrow-row${n ? ' active' : ''}${t.mercado ? ' mercado' : ''}${efeito.classe}" data-linha="${t.id}"
+        title="${escaparHtml(t.desc)}">
+        ${efeito.html}
         <img src="${arrowIcon(t, visualDe(t, cost))}" alt="">
         <div class="arrow-info">
           <b class="arrow-name">${t.name}</b>
@@ -516,6 +549,7 @@ function renderBuy() {
         </div>
       </div>`;
   }).join('');
+  game.efeito = null;   // já tocou: redesenhar a loja não repete o efeito
 
   $('buy-fee').textContent = textoValor(r.fee);
   $('buy-arrows-label').textContent = `${count} flecha${count === 1 ? '' : 's'}${nGuard ? ` (+${nGuard} guardada${nGuard === 1 ? '' : 's'})` : ''}`;
@@ -541,25 +575,76 @@ function redesenharCompra() {
   else renderBuy();
 }
 
-/** Botão de nível (N1/N2/N3) ou "Personalizado" de uma flecha de mercado. */
-function escolherNivel(typeId, escolha) {
+/** Valor atual de uma flecha de mercado na loja. */
+const valorNaLoja = typeId => centavos(game.valores[typeId] ?? game.valorPadrao);
+
+/**
+ * Botões do valor de uma flecha de mercado na loja: "Upgrade" (Nível 1 → 2 → 3, com o efeito de a flecha ficar mais
+ * forte), "◀" (rebaixar), "Personalizado" (abre o campo) e "OK" (confirma o valor digitado).
+ */
+function acaoNivel(typeId, acao) {
   if (!ARROW_BY_ID[typeId]?.mercado) return;
-  if (escolha === 'outro') {
+  const { niveis } = game.regras;
+  const valor = valorNaLoja(typeId);
+  if (acao === 'upgrade') {
+    const acima = proximoNivel(valor, niveis);
+    if (acima === null || acima > limiteDoValor()) return;
+    const nivel = nivelDoValor(acima, niveis);
+    game.efeito = { flecha: typeId, texto: `Nível ${nivel}!`, forte: visualDoValor(acima, niveis) >= 3 };
+    aplicarValor(typeId, acima);
+    sfx.combo();
+  } else if (acao === 'rebaixar') {
+    const abaixo = nivelAnterior(valor, niveis);
+    if (abaixo !== null) aplicarValor(typeId, abaixo);
+  } else if (acao === 'personalizado') {
     game.personalizado[typeId] = true;
-    game.textoValor[typeId] = textoValor(game.valores[typeId] ?? game.valorPadrao);
-  } else {
-    game.personalizado[typeId] = false;
-    game.valores[typeId] = centavos(escolha);
-    delete game.textoValor[typeId];
-    delete game.valoresInvalidos[typeId];
+    game.textoValor[typeId] = textoValor(valor);
+    redesenharCompra();
+    focarValorPersonalizado(typeId);
+  } else if (acao === 'confirmar') {
+    confirmarValor(typeId);
+  }
+}
+
+/** Troca o valor da flecha por um nível pronto (fecha o personalizado). */
+function aplicarValor(typeId, valor) {
+  game.personalizado[typeId] = false;
+  game.valores[typeId] = centavos(valor);
+  delete game.textoValor[typeId];
+  delete game.valoresInvalidos[typeId];
+  delete game.valorAntes[typeId];
+  ajustarAoValor();
+  redesenharCompra();
+}
+
+/** "OK" ou Enter no valor personalizado: confirma e, se o valor mudou, toca um efeito menor na linha. */
+function confirmarValor(typeId) {
+  const { niveis } = game.regras;
+  const texto = game.textoValor[typeId] ?? textoValor(valorNaLoja(typeId));
+  const r = lerValorFlecha(texto, { minimo: game.regras.minimo, maximo: limiteDoValor() });
+  if (r.erro) {
+    game.valoresInvalidos[typeId] = r.erro;
+    redesenharCompra();
+    focarValorPersonalizado(typeId);
+    return;
+  }
+  const antes = game.valorAntes[typeId] ?? valorNaLoja(typeId);
+  delete game.valorAntes[typeId];
+  delete game.valoresInvalidos[typeId];
+  game.valores[typeId] = r.valor;
+  game.textoValor[typeId] = textoValor(r.valor);
+  if (nivelDoValor(r.valor, niveis)) game.personalizado[typeId] = false;   // digitou um nível pronto
+  if (r.valor !== antes) {
+    game.efeito = { flecha: typeId, texto: `${textoValor(r.valor)} moedas!`, pequeno: true,
+      forte: visualDoValor(r.valor, niveis) >= 3 };
   }
   ajustarAoValor();
   redesenharCompra();
-  if (escolha === 'outro') focarValorPersonalizado(typeId);
 }
 
 /** O jogador digitou um valor personalizado: valida (mínimo, 2 casas, até o saldo) e atualiza o total. */
 function digitarValor(typeId, texto) {
+  game.valorAntes[typeId] ??= valorNaLoja(typeId);
   game.textoValor[typeId] = texto;
   const r = lerValorFlecha(texto, { minimo: game.regras.minimo, maximo: limiteDoValor() });
   if (r.erro) {
@@ -587,10 +672,18 @@ function focarValorPersonalizado(typeId) {
   try { campo.setSelectionRange(campo.value.length, campo.value.length); } catch { /* sem cursor */ }
 }
 
-/** Pega a flecha de um espaço da aljava (a madeira ou um lote de mercado). */
+/** Tipo de flecha de uma chave da aljava ("btc@20" → "btc"). */
+const tipoDaChave = chave => String(chave || '').split('@')[0];
+
+/**
+ * Pega a flecha de um espaço da aljava (a madeira ou um lote de mercado). Com só o tipo ("btc"), pega o lote de
+ * maior valor que ainda tem flechas.
+ */
 function selectArrow(chave) {
-  const espaco = espacos().find(e => e.chave === chave);
-  if (espaco?.n > 0) game.selected = chave;
+  const lista = espacos();
+  const espaco = lista.find(e => e.chave === chave && e.n > 0)
+    || lista.find(e => e.id === tipoDaChave(chave) && e.n > 0);
+  if (espaco) game.selected = espaco.chave;
   if (tipoNaMao().mercado) avisarEstudo();
 }
 
@@ -607,9 +700,12 @@ function avisarEstudo() {
 }
 
 // Se a flecha escolhida acabou, pega a próxima que ainda tiver
+// Se o lote na mão acabou, pega o de maior valor do mesmo tipo (a aljava já vem do maior para o menor); sem nenhum
+// desse tipo, a próxima flecha que ainda tiver
 function ensureSelection() {
   if (selecionado()?.n > 0) return;
-  const next = espacos().find(e => e.n > 0);
+  const lista = espacos();
+  const next = lista.find(e => e.id === tipoDaChave(game.selected) && e.n > 0) || lista.find(e => e.n > 0);
   if (next) game.selected = next.chave;
 }
 
@@ -701,8 +797,10 @@ function fillRefill() {
     const info = t.mercado
       ? `valor da flecha <span class="coin"></span><b class="mult">${textoValor(unidade)}</b>${htmlNiveis(t)}`
       : 'grátis · treino';
+    const efeito = efeitoDaLinha(t.id);
     return `
-      <div class="arrow-row${t.mercado ? ' mercado' : ''}" title="${escaparHtml(t.desc)}">
+      <div class="arrow-row${t.mercado ? ' mercado' : ''}${efeito.classe}" data-linha="${t.id}" title="${escaparHtml(t.desc)}">
+        ${efeito.html}
         <img src="${arrowIcon(t, visualDe(t, unidade))}" alt="">
         <div class="arrow-info">
           <b class="arrow-name">${t.name}</b>
@@ -717,12 +815,15 @@ function fillRefill() {
           Comprar <span class="coin"></span>${textoValor(cost)}</button>
       </div>`;
   }).join('');
+  game.efeito = null;
 }
 
 /** Abre a compra de flechas sem sair do campo (o jogo fica parado enquanto ela está aberta). */
 function openRefill() {
   $('refill-erro').textContent = '';
   game.refillQtd = {};
+  game.efeito = null;
+  game.valorAntes = {};
   for (const t of ARROW_TYPES.filter(x => x.mercado)) game.valores[t.id] ??= game.valorPadrao;
   fillRefill();
   game.aim.active = false;
@@ -2721,8 +2822,8 @@ $('range-grid').addEventListener('click', e => {
 });
 
 $('arrow-shop').addEventListener('click', e => {
-  const nivel = e.target.closest('button[data-valor]');
-  if (nivel) { escolherNivel(nivel.dataset.flecha, nivel.dataset.valor); return; }
+  const nivel = e.target.closest('button[data-acao]');
+  if (nivel) { if (!nivel.disabled) acaoNivel(nivel.dataset.flecha, nivel.dataset.acao); return; }
   const btn = e.target.closest('button[data-type]');
   if (btn && !btn.disabled) updateOrder(btn.dataset.type, Number(btn.dataset.d));
 });
@@ -2732,14 +2833,21 @@ for (const id of ['arrow-shop', 'refill-options']) {
     const campo = e.target.closest('input.valor-personalizado');
     if (campo) digitarValor(campo.dataset.flecha, campo.value);
   });
+  $(id).addEventListener('keydown', e => {
+    const campo = e.target.closest?.('input.valor-personalizado');
+    if (campo && e.key === 'Enter') {
+      e.preventDefault();
+      confirmarValor(campo.dataset.flecha);
+    }
+  });
 }
 $('btn-enter').addEventListener('click', enterRange);
 $('btn-buy-back').addEventListener('click', () => setState('ranges'));
 $('btn-buy-fechar-aberta').addEventListener('click', encerrarRodadaAberta);
 
 $('refill-options').addEventListener('click', e => {
-  const nivel = e.target.closest('button[data-valor]');
-  if (nivel) { escolherNivel(nivel.dataset.flecha, nivel.dataset.valor); return; }
+  const nivel = e.target.closest('button[data-acao]');
+  if (nivel) { if (!nivel.disabled) acaoNivel(nivel.dataset.flecha, nivel.dataset.acao); return; }
   const qtd = e.target.closest('button[data-qtd]');
   if (qtd && !qtd.disabled) { mudarQtdRefill(qtd.dataset.qtd, Number(qtd.dataset.d)); return; }
   const btn = e.target.closest('button[data-type]');

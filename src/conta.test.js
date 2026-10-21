@@ -831,16 +831,67 @@ describe("arsenal", () => {
 });
 
 describe("loja com o valor das flechas de mercado", () => {
-  it("começa no padrão do Arsenal, troca de nível, aceita valor personalizado e manda os lotes", async () => {
-    rotas["GET /usuarios/me"] = [200, { ...EU, preferencias: { valorFlechaPadrao: 20 } }];
+  /** Abre a loja do Bosque (bitcoin e ethereum) com o padrão do Arsenal. */
+  async function abrirLoja(padrao = 20) {
+    rotas["GET /usuarios/me"] = [200, { ...EU, preferencias: { valorFlechaPadrao: padrao } }];
     rotas["POST /jogos/flecha/sessoes"] = [201, sessao()];
     await iniciarApp();
     $("btn-play").click();
-    $("range-grid").querySelector('button[data-range="1"]').click();   // Bosque: bitcoin e ethereum
-    const shop = $("arrow-shop");
-    const nivelSel = (flecha) => shop.querySelector(`.nivel.sel[data-flecha="${flecha}"]`).textContent.trim();
-    expect(nivelSel("btc")).toBe("N2 · 20");
-    expect(nivelSel("eth")).toBe("N2 · 20");
+    $("range-grid").querySelector('button[data-range="1"]').click();
+    return $("arrow-shop");
+  }
+  const nivelDe = (painel, flecha) =>
+    painel.querySelector(`[data-linha="${flecha}"] .nivel-atual`).textContent.replace(/\s+/g, " ").trim();
+  const linha = (painel, flecha) => painel.querySelector(`[data-linha="${flecha}"]`);
+  const botao = (painel, flecha, acao) => painel.querySelector(`button[data-flecha="${flecha}"][data-acao="${acao}"]`);
+
+  it("Upgrade sobe o nível da linha (10 → 20 → 30) com o efeito; ◀ volta sem efeito", async () => {
+    const shop = await abrirLoja(10);
+    expect(nivelDe(shop, "btc")).toBe("N1 · 10");
+    expect(botao(shop, "btc", "rebaixar").disabled).toBe(true);
+    expect(botao(shop, "btc", "upgrade").textContent.trim()).toBe("▲ Upgrade · 20");
+
+    botao(shop, "btc", "upgrade").click();
+    expect(nivelDe(shop, "btc")).toBe("N2 · 20");
+    expect(linha(shop, "btc").classList.contains("efeito-up")).toBe(true);
+    expect(linha(shop, "btc").classList.contains("efeito-forte")).toBe(false);
+    expect(linha(shop, "btc").querySelector(".efeito-pop").textContent).toBe("Nível 2!");
+    expect(linha(shop, "btc").querySelectorAll(".efeito-faiscas i").length).toBeGreaterThan(0);
+    expect(linha(shop, "btc").querySelectorAll(".estrela.on")).toHaveLength(2);
+    expect(linha(shop, "eth").classList.contains("efeito")).toBe(false);   // só a linha que mudou
+
+    botao(shop, "btc", "upgrade").click();
+    expect(nivelDe(shop, "btc")).toBe("N3 · 30");
+    expect(linha(shop, "btc").classList.contains("efeito-forte")).toBe(true);   // mais forte no nível 3
+    expect(linha(shop, "btc").querySelector(".efeito-pop").textContent).toBe("Nível 3!");
+    expect(botao(shop, "btc", "upgrade").disabled).toBe(true);
+    expect(botao(shop, "btc", "upgrade").textContent.trim()).toBe("Nível máximo");
+    expect(linha(shop, "btc").classList.contains("parado")).toBe(false);
+
+    // redesenhar a loja (ex.: quantidade) não repete o efeito
+    shop.querySelector('button[data-type="btc"][data-d="1"]').click();
+    expect(linha(shop, "btc").classList.contains("efeito")).toBe(false);
+    expect($("buy-arrows").textContent).toBe("30");
+
+    botao(shop, "btc", "rebaixar").click();
+    expect(nivelDe(shop, "btc")).toBe("N2 · 20");
+    expect(linha(shop, "btc").classList.contains("efeito")).toBe(false);
+    expect($("buy-arrows").textContent).toBe("20");
+  });
+
+  it("com prefers-reduced-motion o upgrade fica só com o destaque estático", async () => {
+    vi.stubGlobal("matchMedia", (q) => ({ matches: q.includes("reduce"), media: q }));
+    const shop = await abrirLoja(10);
+    botao(shop, "eth", "upgrade").click();
+    expect(nivelDe(shop, "eth")).toBe("N2 · 20");
+    expect(linha(shop, "eth").classList.contains("efeito-up")).toBe(true);
+    expect(linha(shop, "eth").classList.contains("parado")).toBe(true);
+  });
+
+  it("começa no padrão do Arsenal, faz upgrade, aceita valor personalizado e manda os lotes", async () => {
+    const shop = await abrirLoja(20);
+    expect(nivelDe(shop, "btc")).toBe("N2 · 20");
+    expect(nivelDe(shop, "eth")).toBe("N2 · 20");
 
     shop.querySelector('button[data-type="btc"][data-d="1"]').click();
     shop.querySelector('button[data-type="btc"][data-d="1"]').click();
@@ -848,17 +899,18 @@ describe("loja com o valor das flechas de mercado", () => {
     expect($("buy-fee").textContent).toBe("1,5");
     expect($("buy-total").textContent).toBe("41,5");                       // entrada 1,5 + 2 × 20
 
-    shop.querySelector('button[data-flecha="btc"][data-valor="30"]').click();
-    expect(nivelSel("btc")).toBe("N3 · 30");
+    botao(shop, "btc", "upgrade").click();
+    expect(nivelDe(shop, "btc")).toBe("N3 · 30");
     expect($("buy-arrows").textContent).toBe("60");
 
-    shop.querySelector('button[data-flecha="eth"][data-valor="outro"]').click();
+    botao(shop, "eth", "personalizado").click();
     const campo = () => shop.querySelector('input.valor-personalizado[data-flecha="eth"]');
     expect(campo().value).toBe("20");
     campo().value = "0,5";
     campo().dispatchEvent(new Event("input", { bubbles: true }));
     expect(shop.querySelector(".valor-erro").textContent).toBe("O valor mínimo é 1 moeda.");
     expect($("btn-enter").disabled).toBe(true);
+    expect(botao(shop, "eth", "confirmar").disabled).toBe(true);
     campo().value = "5000";
     campo().dispatchEvent(new Event("input", { bubbles: true }));
     expect(shop.querySelector(".valor-erro").textContent).toBe("Acima do seu saldo (998,5 moedas).");
@@ -866,6 +918,11 @@ describe("loja com o valor das flechas de mercado", () => {
     campo().dispatchEvent(new Event("input", { bubbles: true }));
     expect(shop.querySelector(".valor-erro")).toBeNull();
     expect(document.activeElement).toBe(campo());                            // continua digitando
+    expect(linha(shop, "eth").classList.contains("efeito")).toBe(false);    // o efeito vem ao confirmar
+    botao(shop, "eth", "confirmar").click();
+    expect(linha(shop, "eth").classList.contains("efeito-pequeno")).toBe(true);
+    expect(linha(shop, "eth").querySelector(".efeito-pop").textContent).toBe("12,5 moedas!");
+    expect(nivelDe(shop, "eth")).toBe("Personalizado · 12,5");
     shop.querySelector('button[data-type="eth"][data-d="1"]').click();
     expect($("buy-arrows").textContent).toBe("72,5");
     expect($("buy-total").textContent).toBe("74");                         // 1,5 + 60 + 12,5
@@ -930,21 +987,40 @@ describe("rodada com lotes de flechas de mercado", () => {
     delete HTMLCanvasElement.prototype.getBoundingClientRect;
   });
 
-  it("a tecla escolhe o lote na aljava e o tiro manda o valor desse lote", async () => {
+  function atirar() {
+    apontar("pointerdown", 600, 400);
+    apontar("pointermove", 500, 450);
+    apontar("pointerup", 500, 450);
+  }
+
+  it("aljava em fila do lote mais valioso; a tecla escolhe o lote e o tiro manda o valor dele", async () => {
     await entrarComLotes([{ flecha: "btc", valor: 10, quantidade: 2 }, { flecha: "btc", valor: 30, quantidade: 1 }]);
     rotas["POST /jogos/flecha/estudo/operacoes"] = [201, {
       id: "op-1", moedasPagas: null,
       sessao: sessao({ campo: "bosque", flechas: { wood: 10, btc: 2 }, mercado: [{ flecha: "btc", valor: 10, quantidade: 2 }] }),
     }];
-    // espaços: 1 madeira, 2 bitcoin N1 (10), 3 bitcoin N3 (30), 4 ethereum (vazio)
-    window.dispatchEvent(new KeyboardEvent("keydown", { key: "3" }));
-    apontar("pointerdown", 600, 400);
-    apontar("pointermove", 500, 450);
-    apontar("pointerup", 500, 450);
+    // espaços: 1 madeira, 2 bitcoin N3 (30), 3 bitcoin N1 (10), 4 ethereum (vazio)
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "2" }));
+    atirar();
     await estabilizar();
-    const op = chamadas.find((c) => c.chave === "POST /jogos/flecha/estudo/operacoes");
-    expect(op.corpo).toMatchObject({ simbolo: "BTCUSDT", tipo: "BINARIA", valor: 30, sessaoId: "s-1" });
-    expect(op.corpo.direcao).toMatch(/^(ALTA|QUEDA)$/);
+    const ops = () => chamadas.filter((c) => c.chave === "POST /jogos/flecha/estudo/operacoes");
+    expect(ops()[0].corpo).toMatchObject({ simbolo: "BTCUSDT", tipo: "BINARIA", valor: 30, sessaoId: "s-1" });
+    expect(ops()[0].corpo.direcao).toMatch(/^(ALTA|QUEDA)$/);
+
+    // o lote de 30 acabou: a mão passa sozinha para o próximo lote de bitcoin (10), não para a madeira
+    atirar();
+    await estabilizar();
+    expect(ops()).toHaveLength(2);
+    expect(ops()[1].corpo).toMatchObject({ valor: 10 });
+  });
+
+  it("a tecla 3 pega o lote seguinte da fila (o de menor valor)", async () => {
+    await entrarComLotes([{ flecha: "btc", valor: 10, quantidade: 2 }, { flecha: "btc", valor: 30, quantidade: 1 }]);
+    rotas["POST /jogos/flecha/estudo/operacoes"] = [201, { id: "op-1", moedasPagas: null }];
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "3" }));
+    atirar();
+    await estabilizar();
+    expect(chamadas.find((c) => c.chave === "POST /jogos/flecha/estudo/operacoes").corpo).toMatchObject({ valor: 10 });
   });
 
   it("'+ Flechas' abre a compra sem sair do campo e compra o lote com o valor escolhido", async () => {
@@ -960,7 +1036,9 @@ describe("rodada com lotes de flechas de mercado", () => {
     expect($("btn-refill-voltar").hidden).toBe(false);
 
     const opcoes = $("refill-options");
-    opcoes.querySelector('button[data-flecha="btc"][data-valor="20"]').click();
+    opcoes.querySelector('button[data-flecha="btc"][data-acao="upgrade"]').click();    // 10 → 20
+    expect(opcoes.querySelector('[data-linha="btc"]').classList.contains("efeito-up")).toBe(true);
+    expect(opcoes.querySelector('[data-linha="btc"] .efeito-pop').textContent).toBe("Nível 2!");
     opcoes.querySelector('button[data-qtd="btc"][data-d="1"]').click();     // 5 → 6
     const comprar = opcoes.querySelector('button.comprar-flechas[data-type="btc"]');
     expect(comprar.textContent.replace(/\s+/g, " ").trim()).toBe("Comprar 120");

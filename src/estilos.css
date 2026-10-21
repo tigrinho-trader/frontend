@@ -1020,12 +1020,14 @@ h3.secao {
 .nota-acertos { margin: calc(var(--s) * 6px) 0 0; font-size: calc(var(--s) * 13px); color: #8a6d4b; text-align: left; line-height: 1.35; }
 
 /* ---------------------------------------------------------------------------
-   Valor das flechas de mercado: Nível 1, 2, 3 ou Personalizado (loja e compra durante a rodada)
+   Valor das flechas de mercado na loja (antes de entrar e durante a rodada): ◀ rebaixar, nível atual com estrelas,
+   ▲ Upgrade (Nível 1 → 2 → 3) e Personalizado
    --------------------------------------------------------------------------- */
+.arrow-row { position: relative; }
 .arrow-row.mercado { align-items: flex-start; padding-top: calc(var(--s) * 6px); padding-bottom: calc(var(--s) * 6px); }
 .arrow-row.mercado img { margin-top: calc(var(--s) * 4px); }
 .niveis { display: flex; flex-wrap: wrap; align-items: center; gap: calc(var(--s) * 5px); margin-top: calc(var(--s) * 4px); }
-.nivel {
+.nivel-rebaixar, .nivel-upgrade, .nivel-outro, .nivel-ok {
   padding: calc(var(--s) * 3px) calc(var(--s) * 9px);
   font-family: 'Nunito', sans-serif;
   font-weight: 900;
@@ -1036,10 +1038,120 @@ h3.secao {
   border-radius: 999px;
   cursor: pointer;
 }
-.nivel:hover { background: #ffecc0; }
-.nivel.sel { color: #fff; background: #8b5a2b; border-color: #4e2f12; }
-.nivel-2.sel { background: linear-gradient(#ffca28, #c77c00); border-color: #8a5200; color: #4a2a10; }
-.nivel-3.sel { background: linear-gradient(#ff80ab, #ad1457); border-color: #6a0d34; box-shadow: 0 0 calc(var(--s) * 8px) rgba(255, 128, 171, 0.8); }
+.nivel-rebaixar { padding: calc(var(--s) * 3px) calc(var(--s) * 7px); font-size: calc(var(--s) * 11px); }
+.nivel-upgrade {
+  padding: calc(var(--s) * 4px) calc(var(--s) * 12px);
+  font-family: 'Lilita One', 'Nunito', sans-serif;
+  font-weight: 400;
+  font-size: calc(var(--s) * 15px);
+  color: #4a2a10;
+  background: linear-gradient(#ffe082, #f9a825);
+  border-color: #8a5200;
+  box-shadow: 0 calc(var(--s) * 3px) 0 #8a5200;
+}
+.nivel-upgrade:hover:not(:disabled) { filter: brightness(1.08); }
+.nivel-upgrade:active:not(:disabled) { transform: translateY(calc(var(--s) * 2px)); box-shadow: 0 calc(var(--s) * 1px) 0 #8a5200; }
+.nivel-rebaixar:hover:not(:disabled), .nivel-outro:hover, .nivel-ok:hover:not(:disabled) { background: #ffecc0; }
+.nivel-outro.sel { color: #fff; background: #8b5a2b; border-color: #4e2f12; }
+.nivel-rebaixar:disabled, .nivel-upgrade:disabled, .nivel-ok:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none; }
+.nivel-atual {
+  padding: calc(var(--s) * 2px) calc(var(--s) * 9px);
+  font-weight: 900;
+  font-size: calc(var(--s) * 13px);
+  color: #fff;
+  background: #8b5a2b;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.nivel-atual.nivel-2 { color: #4a2a10; background: linear-gradient(#ffca28, #c77c00); }
+.nivel-atual.nivel-3 { background: linear-gradient(#ff80ab, #ad1457); box-shadow: 0 0 calc(var(--s) * 8px) rgba(255, 128, 171, 0.8); }
+.nivel-estrelas { font-size: calc(var(--s) * 15px); letter-spacing: calc(var(--s) * 1px); }
+.nivel-estrelas .estrela { color: #d7c4a8; display: inline-block; }
+.nivel-estrelas .estrela.on { color: #ffb300; text-shadow: 0 calc(var(--s) * 1px) 0 #8a5200; }
+
+/* Efeito do upgrade na linha: a flecha cresce e brilha, faíscas saem dela, "Nível 2!" sobe e as estrelas pulam.
+   No nível 3 é mais forte; ao confirmar um valor personalizado, um efeito menor. */
+.efeito-pop {
+  position: absolute;
+  left: calc(var(--s) * 70px);
+  top: calc(var(--s) * 2px);
+  z-index: 2;
+  font-family: 'Lilita One', 'Nunito', sans-serif;
+  font-size: calc(var(--s) * 24px);
+  color: #ffeb3b;
+  text-shadow: 0 calc(var(--s) * 2px) 0 #b71c1c, 0 0 calc(var(--s) * 10px) rgba(255, 235, 59, 0.9);
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+}
+.efeito-forte .efeito-pop { font-size: calc(var(--s) * 30px); color: #fff; text-shadow: 0 calc(var(--s) * 2px) 0 #ad1457, 0 0 calc(var(--s) * 14px) #ff80ab; }
+.efeito-pequeno .efeito-pop { font-size: calc(var(--s) * 18px); }
+.efeito-faiscas { position: absolute; left: calc(var(--s) * 57px); top: calc(var(--s) * 26px); z-index: 2; pointer-events: none; }
+.efeito-faiscas i {
+  position: absolute;
+  width: calc(var(--s) * 10px);
+  height: calc(var(--s) * 10px);
+  margin: calc(var(--s) * -5px);
+  background: radial-gradient(circle, #fff 0%, #ffeb3b 45%, rgba(255, 235, 59, 0) 70%);
+  border-radius: 50%;
+  opacity: 0;
+}
+.efeito-forte .efeito-faiscas i { background: radial-gradient(circle, #fff 0%, #ff80ab 45%, rgba(255, 128, 171, 0) 70%); }
+@media (prefers-reduced-motion: no-preference) {
+  .arrow-row.efeito:not(.parado) { animation: linhaBrilha 1s ease-out; }
+  .arrow-row.efeito-forte:not(.parado) { animation: linhaBrilhaForte 1.2s ease-out; }
+  .arrow-row.efeito-up:not(.parado) > img { animation: linhaSobe 0.8s cubic-bezier(.2, 1.6, .4, 1); }
+  .arrow-row.efeito-forte:not(.parado) > img { animation: linhaSobeForte 1s cubic-bezier(.2, 1.6, .4, 1); }
+  .arrow-row.efeito-pequeno:not(.parado) > img { animation: linhaPisca 0.6s ease-out; }
+  .arrow-row.efeito:not(.parado) .efeito-pop { animation: arsenalUp 1.1s ease-out; }
+  .arrow-row.efeito:not(.parado) .efeito-faiscas i { animation: arsenalFaisca 0.8s ease-out backwards; }
+  .arrow-row.efeito-up:not(.parado) .nivel-atual,
+  .arrow-row.efeito-up:not(.parado) .estrela.on { animation: starPop 0.5s cubic-bezier(.2, 1.6, .4, 1) 0.15s backwards; }
+  .efeito-faiscas i:nth-child(1) { --dx: -60px; --dy: -26px; }
+  .efeito-faiscas i:nth-child(2) { --dx: 60px; --dy: -24px; animation-delay: 0.04s; }
+  .efeito-faiscas i:nth-child(3) { --dx: -50px; --dy: 24px; animation-delay: 0.08s; }
+  .efeito-faiscas i:nth-child(4) { --dx: 55px; --dy: 26px; animation-delay: 0.06s; }
+  .efeito-faiscas i:nth-child(5) { --dx: -10px; --dy: -34px; animation-delay: 0.1s; }
+  .efeito-faiscas i:nth-child(6) { --dx: 12px; --dy: 34px; animation-delay: 0.12s; }
+  .efeito-faiscas i:nth-child(7) { --dx: -85px; --dy: 0px; animation-delay: 0.14s; }
+  .efeito-faiscas i:nth-child(8) { --dx: 85px; --dy: 4px; animation-delay: 0.16s; }
+  .efeito-faiscas i:nth-child(9) { --dx: -35px; --dy: -40px; animation-delay: 0.18s; }
+  .efeito-faiscas i:nth-child(10) { --dx: 38px; --dy: 40px; animation-delay: 0.2s; }
+}
+/* Sem animação (prefers-reduced-motion): só um destaque estático na linha e o texto parado */
+.arrow-row.efeito.parado { box-shadow: 0 0 0 calc(var(--s) * 3px) #ffd54f; }
+.arrow-row.efeito-forte.parado { box-shadow: 0 0 0 calc(var(--s) * 3px) #ff80ab; }
+.arrow-row.efeito.parado .efeito-pop { opacity: 1; left: auto; right: calc(var(--s) * 10px); }
+@media (prefers-reduced-motion: reduce) {
+  .arrow-row.efeito { box-shadow: 0 0 0 calc(var(--s) * 3px) #ffd54f; }
+  .arrow-row.efeito .efeito-pop { opacity: 1; left: auto; right: calc(var(--s) * 10px); }
+}
+@keyframes linhaBrilha {
+  0% { box-shadow: 0 0 0 0 rgba(255, 213, 79, 0); }
+  30% { box-shadow: 0 0 0 calc(var(--s) * 4px) rgba(255, 213, 79, 0.9), 0 0 calc(var(--s) * 20px) rgba(255, 213, 79, 0.8); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 213, 79, 0); }
+}
+@keyframes linhaBrilhaForte {
+  0% { box-shadow: 0 0 0 0 rgba(255, 128, 171, 0); }
+  30% { box-shadow: 0 0 0 calc(var(--s) * 5px) rgba(255, 128, 171, 0.95), 0 0 calc(var(--s) * 30px) rgba(255, 235, 59, 0.9); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 128, 171, 0); }
+}
+@keyframes linhaSobe {
+  0% { transform: scale(1); filter: brightness(1); }
+  35% { transform: scale(1.45) rotate(-6deg); filter: brightness(1.6) drop-shadow(0 0 calc(var(--s) * 10px) #fff59d); }
+  100% { transform: scale(1); }
+}
+@keyframes linhaSobeForte {
+  0% { transform: scale(1); filter: brightness(1); }
+  30% { transform: scale(1.7) rotate(-8deg); filter: brightness(1.9) drop-shadow(0 0 calc(var(--s) * 16px) #ff80ab); }
+  60% { transform: scale(1.2) rotate(3deg); }
+  100% { transform: scale(1); }
+}
+@keyframes linhaPisca {
+  0% { transform: scale(1); filter: brightness(1); }
+  40% { transform: scale(1.2); filter: brightness(1.4) drop-shadow(0 0 calc(var(--s) * 6px) #fff59d); }
+  100% { transform: scale(1); }
+}
 .card input.valor-personalizado {
   flex: none;
   width: calc(var(--s) * 90px);

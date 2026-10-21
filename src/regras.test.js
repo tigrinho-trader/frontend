@@ -244,16 +244,18 @@ describe("lotes de flechas de mercado", () => {
     expect(chaveLote("wood")).toBe("wood");
   });
 
-  it("espaços da aljava: madeira e um por lote, do menor valor para o maior; tipo sem lote fica vazio", () => {
+  it("espaços da aljava: madeira e um por lote, em fila do maior valor para o menor; tipo sem lote fica vazio", () => {
     const quiver = pedido({ wood: 4, btc: 3, eth: 0 });
     const lotes = [
-      { flecha: "btc", valor: 30, quantidade: 1 },
       { flecha: "btc", valor: 10, quantidade: 2 },
+      { flecha: "btc", valor: 30, quantidade: 1 },
+      { flecha: "btc", valor: 12.5, quantidade: 1 },
     ];
     expect(espacosDaAljava(bosque, quiver, lotes)).toEqual([
       { chave: "wood", id: "wood", valor: null, n: 4 },
-      { chave: "btc@10", id: "btc", valor: 10, n: 2 },
       { chave: "btc@30", id: "btc", valor: 30, n: 1 },
+      { chave: "btc@12.5", id: "btc", valor: 12.5, n: 1 },
+      { chave: "btc@10", id: "btc", valor: 10, n: 2 },
       { chave: "eth", id: "eth", valor: null, n: 0 },
     ]);
     // o vilarejo só tem bitcoin

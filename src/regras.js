@@ -299,9 +299,9 @@ export function lotesDaSessao(sessao) {
 }
 
 /**
- * Espaços da aljava no HUD: a madeira e um espaço por lote de mercado (tipo + valor), na ordem dos tipos do campo
- * e do menor valor para o maior. Tipo de mercado sem lote aparece vazio (valor null). Cada espaço:
- * `{ chave, id, valor, n }`.
+ * Espaços da aljava no HUD: a madeira e um espaço por lote de mercado (tipo + valor), na ordem dos tipos do campo.
+ * Os lotes do mesmo tipo formam uma fila do MAIOR valor para o menor (o mais valioso vem primeiro). Tipo de mercado
+ * sem lote aparece vazio (valor null). Cada espaço: `{ chave, id, valor, n }`.
  */
 export function espacosDaAljava(range, quiver, lotes) {
   const espacos = [];
@@ -310,7 +310,7 @@ export function espacosDaAljava(range, quiver, lotes) {
       espacos.push({ chave: t.id, id: t.id, valor: null, n: Number(quiver?.[t.id]) || 0 });
       continue;
     }
-    const doTipo = (lotes || []).filter(l => l.flecha === t.id).sort((a, b) => a.valor - b.valor);
+    const doTipo = (lotes || []).filter(l => l.flecha === t.id).sort((a, b) => b.valor - a.valor);
     if (!doTipo.length) espacos.push({ chave: t.id, id: t.id, valor: null, n: 0 });
     for (const l of doTipo) espacos.push({ chave: chaveLote(t.id, l.valor), id: t.id, valor: l.valor, n: l.quantidade });
   }
