@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ErroApi } from "./api.js";
 import {
   LIMITES_PADRAO, PACOTES, PACOTE_POR_ID, faixaEmReais, htmlPacotes, mensagemErroCompra, moedasDoValor, textoFaixa,
-  valorDasMoedas,
+  precoEmReais, valorDasMoedas,
 } from "./creditos.js";
 
 describe("pacotes de moedas", () => {
@@ -107,21 +107,22 @@ describe("Pix", () => {
 });
 
 describe("valor livre em reais", () => {
-  const PIX = { centavosPorMoeda: 10, ...LIMITES_PADRAO.pix };
+  const PIX = { centavosPorMoeda: 100, ...LIMITES_PADRAO.pix };   // R$ 1 = 1 moeda
   const sem = (t) => t.replace(/\s/g, " ");
 
-  it("faixa do Pix vai de R$ 1 a R$ 1.000 (10 a 10.000 moedas)", () => {
-    expect(faixaEmReais(PIX)).toEqual({ min: 1, max: 1000 });
-    expect(sem(textoFaixa(PIX))).toBe("de R$ 1 a R$ 1.000");
-    expect(faixaEmReais({ centavosPorMoeda: 10, ...LIMITES_PADRAO.sandbox })).toEqual({ min: 1, max: 500 });
+  it("faixa padrão do Pix vai de R$ 5 a R$ 2.000 (5 a 2.000 moedas)", () => {
+    expect(faixaEmReais(PIX)).toEqual({ min: 5, max: 2000 });
+    expect(sem(textoFaixa(PIX))).toBe("de R$ 5 a R$ 2.000");
+    expect(faixaEmReais({ centavosPorMoeda: 100, ...LIMITES_PADRAO.sandbox })).toEqual({ min: 1, max: 5000 });
   });
 
-  it("converte reais inteiros em moedas (R$ 1 = 10 moedas)", () => {
-    expect(moedasDoValor("1", PIX)).toEqual({ moedas: 10 });
-    expect(moedasDoValor("25", PIX)).toEqual({ moedas: 250 });
-    expect(moedasDoValor(" R$ 37 ", PIX)).toEqual({ moedas: 370 });
-    expect(moedasDoValor("1.000", PIX)).toEqual({ moedas: 10000 });
-    expect(moedasDoValor("12,00", PIX)).toEqual({ moedas: 120 });
+  it("converte reais inteiros em moedas (R$ 1 = 1 moeda)", () => {
+    expect(moedasDoValor("5", PIX)).toEqual({ moedas: 5 });
+    expect(moedasDoValor("25", PIX)).toEqual({ moedas: 25 });
+    expect(moedasDoValor(" R$ 37 ", PIX)).toEqual({ moedas: 37 });
+    expect(moedasDoValor("2.000", PIX)).toEqual({ moedas: 2000 });
+    expect(moedasDoValor("12,00", PIX)).toEqual({ moedas: 12 });
+    expect(precoEmReais(25, 100).replace(/\s/g, " ")).toBe("R$ 25,00");
   });
 
   it("campo vazio não é erro", () => {
@@ -133,10 +134,10 @@ describe("valor livre em reais", () => {
   it("recusa centavos, texto e valores fora da faixa", () => {
     expect(moedasDoValor("2,50", PIX).erro).toContain("inteiro");
     expect(moedasDoValor("2.5", PIX).erro).toContain("inteiro");
-    for (const t of ["abc", "0", "-5", "1001", "1e3", "10 reais"]) {
+    for (const t of ["abc", "0", "4", "-5", "2001", "1e3", "10 reais"]) {
       const r = moedasDoValor(t, PIX);
       expect(r.moedas).toBeNull();
-      expect(sem(r.erro)).toBe("Escolha um valor de R$ 1 a R$ 1.000.");
+      expect(sem(r.erro)).toBe("Escolha um valor de R$ 5 a R$ 2.000.");
     }
   });
 
@@ -149,6 +150,7 @@ describe("valor livre em reais", () => {
 
   it("valor de um pacote em reais inteiros, ou vazio se não fechar", () => {
     expect(valorDasMoedas(1000, 10)).toBe("100");
+    expect(valorDasMoedas(25, 100)).toBe("25");
     expect(valorDasMoedas(15, 10)).toBe("");
     expect(valorDasMoedas(undefined, 10)).toBe("");
   });

@@ -1,14 +1,21 @@
-// Conta do jogador: login (OpenID Connect), menu, "Meu perfil", "Comprar moedas", "Administração" e conta bloqueada.
+// Conta do jogador: login (OpenID Connect), menu, "Meu perfil", "Arsenal", "Comprar moedas", "Administração" e conta
+// bloqueada.
 // Liga a API ao login e decide o que o menu mostra. O jogo em si fica em jogo.js.
 import * as auth from './auth.js';
 import * as api from './api.js';
 import { ErroApi, configurarApi } from './api.js';
-import { setState, atualizarCarteira, estadoAtual, saldoAtual, voltarDaCompra } from './jogo.js';
+import {
+  setState, atualizarCarteira, estadoAtual, saldoAtual, voltarDaCompra, carregarRegras, definirValorPadrao, iconeFlecha,
+  regrasAtuais, valorPadraoAtual,
+} from './jogo.js';
 import {
   LIMITES_PADRAO, PACOTES, TEXTO_STATUS_FINAL, htmlPacotes, mensagemErroCompra, moedasDoValor, pacotesDoServidor,
   precoEmReais, qrCodeSeguro, tempoRestante, textoFaixa, valorDasMoedas,
 } from './creditos.js';
-import { ARROW_TYPES, RANGE_BY_SLUG } from './regras.js';
+import {
+  ARROW_TYPES, RANGE_BY_SLUG, VALOR_FLECHA_PADRAO, lerValorFlecha, nivelAnterior, nivelDoValor, nomeDoValor,
+  proximoNivel, visualDoValor,
+} from './regras.js';
 import { ATIVO_POR_SIMBOLO, reaisComSinal, textoTaxa } from './bitcoin.js';
 import {
   ROTULO_PAPEL, escaparHtml, formatarComSinal, formatarData, formatarMoedas, htmlExtrato, htmlLinhasUsuarios, iniciais,
@@ -56,7 +63,12 @@ function mensagemLogin(erro, prefixo = '') {
   return `${prefixo}${mensagemErro(erro)}`;
 }
 
+/** Valor padrão das flechas de mercado guardado no perfil (tela Arsenal); sem preferência, 10. */
+export const valorPadraoDoPerfil = usuario =>
+  Number(usuario?.preferencias?.valorFlechaPadrao) || VALOR_FLECHA_PADRAO;
+
 function mostrarPerfilNoMenu() {
+  definirValorPadrao(valorPadraoDoPerfil(perfil));
   pintarAvatar($('menu-avatar'), perfil);
   $('menu-apelido').textContent = nomeExibicao(perfil);
   $('btn-admin').hidden = perfil?.papel !== 'ADMIN';
@@ -134,6 +146,7 @@ async function carregarConta() {
   try { sessionStorage.removeItem(CHAVE_RELOGIN); } catch { /* sem storage */ }
   mostrarPerfilNoMenu();
   modoMenu('logado');
+  carregarRegras();   // níveis, valor mínimo e taxa de devolução das flechas de mercado
   try {
     await atualizarCarteira();
   } catch (e) {
@@ -255,13 +268,14 @@ export function htmlAljavaGuardada(aljava) {
   }
   return linhas.length
     ? `<ul class="lista-aljava">${linhas.join('')}</ul>`
-    : '<p class="vazio">Nenhuma flecha guardada. As que sobrarem numa rodada aparecem aqui.</p>';
+    : '<p class="vazio">Nenhuma flecha guardada. As de madeira que sobrarem numa rodada aparecem aqui; as de mercado '
+      + 'voltam em moedas ao sair do campo.</p>';
 }
 
 function mostrarSaldoNaTela() {
   const saldo = saldoAtual();
   $('saldo-moedas').textContent = formatarMoedas(saldo);
-  $('saldo-referencia').textContent = `Valor de referência: ${reaisDeMoedas(saldo)} (10 moedas = R$ 1)`;
+  $('saldo-referencia').textContent = `Valor de referência: ${reaisDeMoedas(saldo)} (1 moeda = R$ 1)`;
 }
 
 function abrirSaque() {
@@ -275,7 +289,7 @@ function abrirSaque() {
 }
 
 function preencherSaqueMaximo() {
-  const maximo = Math.floor((saldoAtual() / MOEDAS_POR_REAL) * 10) / 10;
+  const maximo = Math.floor((saldoAtual() / MOEDAS_POR_REAL) * 100) / 100;
   $('saque-valor').value = maximo.toFixed(2).replace('.', ',');
   $('saque-valor').focus();
 }
@@ -285,7 +299,7 @@ async function solicitarSaque(e) {
   const reais = Number(String($('saque-valor').value).replace(',', '.'));
   const saldo = saldoAtual();
   if (!Number.isFinite(reais) || reais < 1) return msg('saque-msg', 'Informe pelo menos R$ 1,00.', 'erro');
-  const moedas = Math.round(reais * MOEDAS_POR_REAL);
+  const moedas = Math.round(reais * MOEDAS_POR_REAL * 100) / 100;
   if (moedas > saldo) return msg('saque-msg', `Seu saldo permite sacar no máximo ${reaisDeMoedas(saldo)}.`, 'erro');
   const botao = $('btn-saque-confirmar');
   botao.disabled = true;
@@ -393,6 +407,99 @@ async function excluirConta(e) {
 }
 
 // ---------------------------------------------------------------------------
+// Arsenal: valor padrão das flechas de mercado (Nível 1, 2, 3 ou personalizado), salvo no perfil
+// ---------------------------------------------------------------------------
+const arsenal = { salvando: false, animacao: null };
+
+function desenharArsenal({ estrelaNova = 0 } = {}) {
+  const valor = valorPadraoAtual();
+  const { niveis } = regrasAtuais();
+  const visual = visualDoValor(valor, niveis);
+  $('arsenal-palco').dataset.visual = String(visual);
+  $('arsenal-flecha').src = iconeFlecha('btc', valor);
+  $('arsenal-nivel').textContent = nomeDoValor(valor, niveis);
+  const nivel = nivelDoValor(valor, niveis);
+  $('arsenal-estrelas').innerHTML = [1, 2, 3].map(i =>
+    `<span class="estrela${i <= visual ? ' on' : ''}${i === estrelaNova ? ' nova' : ''}">★</span>`).join('');
+  $('arsenal-estrelas').setAttribute('aria-label', nivel ? `Nível ${nivel} de 3` : `Valor personalizado, brilho do nível ${visual}`);
+  const acima = proximoNivel(valor, niveis), abaixo = nivelAnterior(valor, niveis);
+  $('btn-arsenal-upgrade').disabled = arsenal.salvando || acima === null;
+  $('btn-arsenal-upgrade').textContent = acima === null ? '▲ Nível máximo' : `▲ Upgrade (${acima})`;
+  $('btn-arsenal-rebaixar').disabled = arsenal.salvando || abaixo === null;
+  $('btn-arsenal-rebaixar').textContent = abaixo === null ? '▼ Rebaixar' : `▼ Rebaixar (${abaixo})`;
+  $('btn-arsenal-salvar').disabled = arsenal.salvando;
+}
+
+function abrirArsenal() {
+  msg('arsenal-msg', '');
+  $('arsenal-valor').value = '';
+  $('arsenal-palco').classList.remove('subiu');
+  desenharArsenal();
+  setState('arsenal');
+}
+
+/** A flecha subiu de nível: cresce, brilha, solta faíscas e mostra "UP!" (CSS; sem animação se o jogador pediu). */
+function animarUpgrade() {
+  const palco = $('arsenal-palco');
+  palco.classList.remove('subiu');
+  void palco.offsetWidth;          // reinicia a animação mesmo em upgrades seguidos
+  palco.classList.add('subiu');
+  clearTimeout(arsenal.animacao);
+  arsenal.animacao = setTimeout(() => palco.classList.remove('subiu'), 1400);
+}
+
+/** Salva o valor padrão no perfil (PATCH /usuarios/me/preferencias) e anima quando o nível sobe. */
+async function salvarValorPadrao(novo) {
+  if (arsenal.salvando) return;
+  const antes = valorPadraoAtual();
+  const { niveis } = regrasAtuais();
+  arsenal.salvando = true;
+  msg('arsenal-msg', 'Salvando…');
+  desenharArsenal();
+  try {
+    const resposta = await api.atualizarPreferencias({ valorFlechaPadrao: novo });
+    perfil = resposta && typeof resposta === 'object'
+      ? { ...resposta, preferencias: { ...resposta.preferencias, valorFlechaPadrao: resposta.preferencias?.valorFlechaPadrao ?? novo } }
+      : { ...perfil, preferencias: { ...perfil?.preferencias, valorFlechaPadrao: novo } };
+    mostrarPerfilNoMenu();
+    const depois = valorPadraoAtual();
+    const subiu = depois > antes
+      && (visualDoValor(depois, niveis) > visualDoValor(antes, niveis) || nivelDoValor(depois, niveis) > nivelDoValor(antes, niveis));
+    arsenal.salvando = false;
+    desenharArsenal({ estrelaNova: subiu ? visualDoValor(depois, niveis) : 0 });
+    if (subiu) animarUpgrade();
+    msg('arsenal-msg', subiu ? `Subiu de nível! ${nomeDoValor(depois, niveis)}.` : `Salvo: ${nomeDoValor(depois, niveis)}.`, 'ok');
+  } catch (erro) {
+    arsenal.salvando = false;
+    desenharArsenal();
+    if (erro.status !== 401 && erro.status !== 403) msg('arsenal-msg', `Não foi possível salvar: ${mensagemErro(erro)}`, 'erro');
+    else msg('arsenal-msg', '');
+  }
+}
+
+function upgradeArsenal() {
+  const acima = proximoNivel(valorPadraoAtual(), regrasAtuais().niveis);
+  if (acima !== null) salvarValorPadrao(acima);
+}
+
+function rebaixarArsenal() {
+  const abaixo = nivelAnterior(valorPadraoAtual(), regrasAtuais().niveis);
+  if (abaixo !== null) salvarValorPadrao(abaixo);
+}
+
+function salvarValorPersonalizado(e) {
+  e.preventDefault();
+  const r = lerValorFlecha($('arsenal-valor').value, { minimo: regrasAtuais().minimo });
+  if (r.erro) {
+    msg('arsenal-msg', r.erro, 'erro');
+    $('arsenal-valor').focus();
+    return;
+  }
+  $('arsenal-valor').value = '';
+  salvarValorPadrao(r.valor);
+}
+
+// ---------------------------------------------------------------------------
 // Comprar moedas (Pix pelo AbacatePay; sem Pix configurado, pagamento de teste)
 // ---------------------------------------------------------------------------
 export const INTERVALO_CONSULTA_PIX = 3000;
@@ -400,7 +507,7 @@ export const INTERVALO_CONSULTA_PIX = 3000;
 const creditos = {
   selecionado: null, voltarPara: 'menu', comprando: false,
   modo: 'sandbox',            // 'pix' | 'sandbox' | 'indisponivel'
-  centavosPorMoeda: 10, pacotes: PACOTES, ...LIMITES_PADRAO.sandbox,
+  centavosPorMoeda: 100, pacotes: PACOTES, ...LIMITES_PADRAO.sandbox,   // R$ 1 = 1 moeda (o servidor manda o real)
   livre: null,                // valor digitado: { moedas } ou { moedas: null, erro }
   compra: null,               // compra Pix pendente sendo acompanhada
   consulta: null, relogio: null,
@@ -479,7 +586,7 @@ function desenharCreditos() {
 async function carregarConfigCompras() {
   try {
     const cfg = await api.configCompras();
-    creditos.centavosPorMoeda = Number(cfg?.centavosPorMoeda) || 10;
+    creditos.centavosPorMoeda = Number(cfg?.centavosPorMoeda) || 100;
     if (cfg?.pixHabilitado) {
       creditos.modo = 'pix';
       creditos.pacotes = pacotesDoServidor(cfg.pacotes);
@@ -494,6 +601,7 @@ async function carregarConfigCompras() {
     // carteira antiga (sem /compras): segue no pagamento de teste
     creditos.modo = 'sandbox';
     creditos.pacotes = PACOTES;
+    creditos.centavosPorMoeda = 100;
     Object.assign(creditos, LIMITES_PADRAO.sandbox);
     if (erro.status !== 404 && erro.status !== 401 && erro.status !== 403) {
       msg('creditos-msg', mensagemErroCompra(erro), 'erro');
@@ -508,6 +616,8 @@ async function abrirCreditos(voltarPara = 'menu') {
   limparEscolha();
   creditos.compra = null;
   msg('creditos-msg', '');
+  msg('cupom-msg', '');
+  $('creditos-cupom').value = '';
   desenharCreditos();
   setState('creditos');
   await carregarConfigCompras();
@@ -613,19 +723,34 @@ async function comprarPacote() {
   }
 }
 
-async function resgatarCupom() {
+/** Mensagem do resgate de cupom que falhou: 422 cupom inválido, 409 já usado nesta conta. */
+export function mensagemErroCupom(erro) {
+  if (erro?.status === 422) return 'Cupom inválido.';
+  if (erro?.status === 409) return 'Você já usou este cupom.';
+  return `Não foi possível resgatar o cupom: ${mensagemErro(erro)}`;
+}
+
+async function resgatarCupom(e) {
+  e?.preventDefault();
   const campo = $('creditos-cupom');
   const codigo = campo.value.trim();
-  if (!codigo || creditos.comprando) return;
+  if (creditos.comprando) return;
+  if (!codigo) {
+    msg('cupom-msg', 'Digite o código do cupom.', 'erro');
+    campo.focus();
+    return;
+  }
   creditos.comprando = true;
+  msg('cupom-msg', 'Conferindo o cupom…');
   desenharCreditos();
   try {
     const resposta = await api.resgatarCupom(codigo);
     campo.value = '';
     await atualizarCarteira().catch(() => {});
-    msg('creditos-msg', `Cupom aceito! Seu novo saldo é ${formatarMoedas(resposta?.saldo)} moedas.`, 'ok');
+    msg('cupom-msg', `Cupom resgatado: +${formatarMoedas(resposta?.moedas)} moedas!`, 'ok');
   } catch (erro) {
-    if (erro.status !== 401 && erro.status !== 403) msg('creditos-msg', mensagemErro(erro), 'erro');
+    if (erro.status !== 401 && erro.status !== 403) msg('cupom-msg', mensagemErroCupom(erro), 'erro');
+    else msg('cupom-msg', '');
   } finally {
     creditos.comprando = false;
     if (estadoAtual() === 'creditos') desenharCreditos();
@@ -773,6 +898,11 @@ $('btn-bloqueado-sair').addEventListener('click', sair);
 $('btn-tentar').addEventListener('click', carregarConta);
 
 $('btn-perfil').addEventListener('click', abrirPerfil);
+$('btn-arsenal').addEventListener('click', abrirArsenal);
+$('btn-arsenal-voltar').addEventListener('click', () => setState('menu'));
+$('btn-arsenal-upgrade').addEventListener('click', upgradeArsenal);
+$('btn-arsenal-rebaixar').addEventListener('click', rebaixarArsenal);
+$('form-arsenal').addEventListener('submit', salvarValorPersonalizado);
 $('btn-perfil-voltar').addEventListener('click', () => setState('menu'));
 $('form-apelido').addEventListener('submit', salvarApelido);
 $('btn-saldo').addEventListener('click', abrirSaldo);
@@ -821,7 +951,8 @@ $('creditos-valor').addEventListener('keydown', e => {
   if (e.key === 'Enter') comprarPacote();
 });
 $('btn-creditos-pagar').addEventListener('click', comprarPacote);
-$('btn-creditos-cupom').addEventListener('click', resgatarCupom);
+$('form-cupom').addEventListener('submit', resgatarCupom);
+$('creditos-cupom').addEventListener('input', () => msg('cupom-msg', ''));
 $('btn-creditos-voltar').addEventListener('click', sairDosCreditos);
 $('btn-pix-copiar').addEventListener('click', copiarPix);
 $('btn-pix-verificar').addEventListener('click', () => verificarPix());

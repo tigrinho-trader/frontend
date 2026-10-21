@@ -26,8 +26,8 @@ function apiFalsa() {
   const chamadas = [];
   const api = {
     chamadas,
-    abrirSessao: vi.fn(async (campo, flechas) => {
-      atual = sessaoBase({ campo, flechas: { ...flechas }, compradas: { ...flechas } });
+    abrirSessao: vi.fn(async (campo, flechas, mercado = []) => {
+      atual = sessaoBase({ campo, flechas: { ...flechas }, compradas: { ...flechas }, mercado: [...mercado] });
       return atual;
     }),
     registrarTiro: vi.fn(async (id, flecha, acertos) => {
@@ -41,12 +41,13 @@ function apiFalsa() {
       };
       return { ganhosTiro, sessao: atual };
     }),
-    comprarFlechas: vi.fn(async (id, flecha, quantidade) => {
+    comprarFlechas: vi.fn(async (id, flecha, quantidade, valor) => {
       atual = {
         ...atual,
-        custo: atual.custo + quantidade,
-        flechas: { ...atual.flechas, [flecha]: atual.flechas[flecha] + quantidade },
-        compradas: { ...atual.compradas, [flecha]: atual.compradas[flecha] + quantidade },
+        custo: atual.custo + quantidade * (valor ?? 1),
+        flechas: { ...atual.flechas, [flecha]: (atual.flechas[flecha] || 0) + quantidade },
+        compradas: { ...atual.compradas, [flecha]: (atual.compradas[flecha] || 0) + quantidade },
+        mercado: valor === undefined ? atual.mercado : [...(atual.mercado || []), { flecha, valor, quantidade }],
       };
       return atual;
     }),
@@ -73,7 +74,7 @@ describe("controlador de sessão", () => {
 
   it("abre a sessão e expõe o estado do servidor", async () => {
     const { api, ctl, aoAtualizar } = await aberto();
-    expect(api.abrirSessao).toHaveBeenCalledWith("vilarejo", { wood: 10 });
+    expect(api.abrirSessao).toHaveBeenCalledWith("vilarejo", { wood: 10 }, []);
     expect(ctl.aberta()).toBe(true);
     expect(ctl.sessao().id).toBe(ID);
     expect(aoAtualizar).toHaveBeenCalledTimes(1);
@@ -167,7 +168,7 @@ describe("controlador de sessão", () => {
   it("compra de flechas vai depois dos tiros na fila", async () => {
     const { api, ctl } = await aberto();
     const ordem = [];
-    api.registrarTiro.mockImplementation(async (id, flecha, acertos) => {
+    api.registrarTiro.mockImplementation(async () => {
       ordem.push("tiro");
       return { ganhosTiro: 0, sessao: sessaoBase({ flechas: { wood: 0 } }) };
     });
@@ -233,6 +234,42 @@ describe("controlador de sessão", () => {
     await ctl.registrarTiro("wood", []);
     expect(esperas).toEqual([INTERVALO_MINIMO_MS - 60]);
     expect(ctl.pendentes()).toBe(0);
+  });
+});
+
+describe("lotes de flechas de mercado", () => {
+  it("abre com os lotes (tipo + valor) e o estado expõe os lotes restantes", async () => {
+    const api = apiFalsa();
+    const ctl = criarControladorSessao({ api });
+    const mercado = [{ flecha: "btc", valor: 20, quantidade: 3 }, { flecha: "btc", valor: 10, quantidade: 1 }];
+    await ctl.abrir("bosque", { wood: 5 }, mercado);
+    expect(api.abrirSessao).toHaveBeenCalledWith("bosque", { wood: 5 }, mercado);
+    expect(ctl.estado().mercado).toEqual(mercado);
+  });
+
+  it("compra durante a rodada manda o valor só nas flechas de mercado", async () => {
+    const api = apiFalsa();
+    const ctl = criarControladorSessao({ api });
+    await ctl.abrir("vilarejo", { wood: 1 });
+    await ctl.comprar("btc", 4, 30);
+    expect(api.comprarFlechas).toHaveBeenLastCalledWith(ID, "btc", 4, 30);
+    expect(ctl.estado().mercado).toEqual([{ flecha: "btc", valor: 30, quantidade: 4 }]);
+    await ctl.comprar("wood", 5);
+    expect(api.comprarFlechas).toHaveBeenLastCalledWith(ID, "wood", 5);
+  });
+
+  it("o tiro de mercado leva o valor do lote para o servidor", async () => {
+    const api = {
+      abrirSessao: vi.fn(async () => sessaoBase({ mercado: [{ flecha: "btc", valor: 20, quantidade: 2 }] })),
+      registrarOperacaoEstudo: vi.fn(async () => ({
+        id: "op-1", moedasPagas: null, sessao: sessaoBase({ mercado: [{ flecha: "btc", valor: 20, quantidade: 1 }] }),
+      })),
+    };
+    const ctl = criarControladorSessao({ api });
+    await ctl.abrir("vilarejo", {}, [{ flecha: "btc", valor: 20, quantidade: 2 }]);
+    await ctl.registrarMercado({ direcao: "ALTA", simbolo: "BTCUSDT", tipo: "BINARIA", valor: 20 });
+    expect(api.registrarOperacaoEstudo).toHaveBeenCalledWith(expect.objectContaining({ valor: 20, sessaoId: ID }));
+    expect(ctl.estado().mercado).toEqual([{ flecha: "btc", valor: 20, quantidade: 1 }]);
   });
 });
 

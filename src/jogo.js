@@ -4,7 +4,9 @@
 // sessão no trading-service (sessao.js); o navegador só estima entre as respostas.
 import {
   DEFAULT_ARROWS, MAX_ARROWS, REFILL_QTY, BIRD_TYPES, RANGES, ARROW_TYPES, ARROW_BY_ID,
-  APOSTA_MERCADO,
+  NIVEIS_FLECHA, TAXA_DEVOLUCAO_PADRAO, VALOR_FLECHA_PADRAO, VALOR_MINIMO_FLECHA,
+  centavos, chaveLote, comunsDoPedido, espacosDaAljava, lerValorFlecha, mercadoDoPedido, nivelDoValor, nomeDoValor,
+  seloDoValor, textoDevolucao, textoValor, visualDoValor,
   clamp, formatMult, arrowCost, coinsForHit, emptyQuiver, countArrows, orderCost, minCost,
   canEnter as canEnterWith, isBroke as isBrokeWith, fitOrder, changeOrder, pickBirdType, tiposNoCampo,
   segmentHitsCircle, arrowPosition,
@@ -12,7 +14,7 @@ import {
 import { Scenery } from './cenarios.js';
 import * as api from './api.js';
 import { criarControladorSessao } from './sessao.js';
-import { formatarMoedas, mensagemErro } from './telas.js';
+import { escaparHtml, formatarMoedas, mensagemErro } from './telas.js';
 import {
   ATIVOS, BTC_MAX_VOANDO, BTC_ALTURA, FLECHA_BTC, LISTA_ATIVOS, acertaBinario, acertaNoAlvo, alturaBtc,
   alvoBinario, alvoFlechaBtc, contarNoPlacar, criarFeedPreco, direcaoDaPrevisao, linhasDoPlacar, placarVazio,
@@ -41,6 +43,14 @@ const PREVIEW_STEP = 0.05;        // segundos entre pontos da trajetória
 const rand = (a, b) => a + Math.random() * (b - a);
 const $ = id => document.getElementById(id);
 const moedas = formatarMoedas;
+/** O jogador pediu menos animação (prefers-reduced-motion): sem brilhos piscando nem faíscas extras. */
+const menosMovimento = () => {
+  try {
+    return Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches);
+  } catch {
+    return false;
+  }
+};
 
 // ---------------------------------------------------------------------------
 // Som (sintetizado com WebAudio, sem arquivos)
@@ -118,7 +128,8 @@ const game = {
   ocupado: false,           // esperando o servidor abrir a sessão ou vender flechas
   range: RANGES[0],
   quiver: emptyQuiver(),    // flechas restantes de cada tipo
-  selected: 'wood',         // tipo de flecha na mão do arqueiro
+  selected: 'wood',         // espaço da aljava na mão do arqueiro: "wood" ou o lote de mercado ("btc@20")
+  lotes: [],                // flechas de mercado da rodada, em lotes: [{ flecha, valor, quantidade }]
   shotsFired: 0,
   totalShots: 0,            // tiros em todas as rodadas (para a dica do primeiro tiro)
   hits: 0,
@@ -126,7 +137,13 @@ const game = {
   spent: 0,                 // entrada + flechas compradas na rodada atual
   bought: emptyQuiver(),    // flechas compradas na rodada, por tipo
   order: { ...emptyQuiver(), wood: DEFAULT_ARROWS },   // escolha na loja
-  arrowMarketPrice: APOSTA_MERCADO,
+  valorPadrao: VALOR_FLECHA_PADRAO,   // valor padrão das flechas de mercado (Arsenal, preferência do perfil)
+  valores: {},              // valor escolhido na loja para cada tipo de flecha de mercado
+  personalizado: {},        // tipos com o campo de valor personalizado aberto na loja
+  textoValor: {},           // o que o jogador está digitando no valor personalizado
+  valoresInvalidos: {},     // erro do valor personalizado digitado, por tipo
+  refillQtd: {},            // quantidade escolhida na compra durante a rodada, por tipo
+  regras: { niveis: NIVEIS_FLECHA, minimo: VALOR_MINIMO_FLECHA, taxaDevolucao: TAXA_DEVOLUCAO_PADRAO },
   birds: [],
   arrows: [],
   particles: [],
@@ -135,9 +152,9 @@ const game = {
   mercadoTimers: {},        // por ativo: segundos até o próximo pássaro de mercado avulso
   estudo: null,             // último resultado do estudo mostrado no HUD: { texto, detalhe, cor }
   guardadas: null,          // flechas guardadas do jogador (GET /jogos/flecha/aljava): { campos, mercado }
-  placarPartida: placarVazio(),   // acertos nas apostas de mercado desta partida, por ativo
-  reaisPartida: 0,          // soma, em reais, do resultado das operações feitas com as apostas desta partida
-  apostasPartida: 0,        // moedas que as apostas desta partida renderam (pago pelo servidor − 100 de cada)
+  placarPartida: placarVazio(),   // acertos nas flechas de mercado desta partida, por ativo
+  reaisPartida: 0,          // soma, em reais, do resultado das operações feitas com as flechas desta partida
+  apostasPartida: 0,        // moedas que as flechas de mercado renderam (pago pelo servidor − valor de cada flecha)
   passarosComuns: lerPassarosComuns(),   // false: só os pássaros de criptomoeda aparecem na rodada
   pending: null,            // 'win' | 'lose' enquanto espera a animação terminar
   endTimer: 0,
@@ -150,6 +167,7 @@ const game = {
 const OVERLAYS = {
   menu: 'menu', ranges: 'ranges', buy: 'buy', refill: 'refill', paused: 'pause', result: 'result',
   perfil: 'perfil', admin: 'admin', bloqueado: 'bloqueado', creditos: 'creditos', saldo: 'saldo', saque: 'saque',
+  arsenal: 'arsenal',
 };
 
 export function setState(s) {
@@ -164,6 +182,44 @@ export function setState(s) {
 
 export const estadoAtual = () => game.state;
 export const saldoAtual = () => game.wallet;
+
+// ---------------------------------------------------------------------------
+// Valor das flechas de mercado: padrão do Arsenal e regras do servidor
+// ---------------------------------------------------------------------------
+/** Valor padrão das flechas de mercado (vem de `preferencias.valorFlechaPadrao` do perfil). */
+export function definirValorPadrao(valor) {
+  const v = centavos(valor);
+  game.valorPadrao = v >= game.regras.minimo ? v : VALOR_FLECHA_PADRAO;
+}
+export const valorPadraoAtual = () => game.valorPadrao;
+export const regrasAtuais = () => game.regras;
+
+const fmtPercentual = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 });
+/** Taxa de devolução das flechas não usadas, ex.: "0,2%". */
+const textoTaxaDevolucao = () => `${fmtPercentual.format(game.regras.taxaDevolucao * 100)}%`;
+
+function mostrarTaxaDevolucao() {
+  $('pausa-nota').textContent = `Se sair agora, as flechas de mercado que sobraram voltam em moedas para a carteira, `
+    + `com uma taxa de ${textoTaxaDevolucao()}.`;
+}
+
+/** Lê as regras públicas do jogo (níveis, valor mínimo e taxa de devolução). Sem resposta, fica com o padrão. */
+export async function carregarRegras() {
+  try {
+    const r = await api.regrasFlecha();
+    const niveis = Array.isArray(r?.niveisFlecha) && r.niveisFlecha.length >= 3
+      ? r.niveisFlecha.slice(0, 3).map(Number) : NIVEIS_FLECHA;
+    const minimo = Number(r?.valorMinimoFlecha);
+    const taxa = Number(r?.taxaDevolucaoFlechas);
+    game.regras = {
+      niveis: niveis.every(n => n > 0) ? niveis : NIVEIS_FLECHA,
+      minimo: minimo > 0 ? minimo : VALOR_MINIMO_FLECHA,
+      taxaDevolucao: taxa >= 0 && taxa < 1 ? taxa : TAXA_DEVOLUCAO_PADRAO,
+    };
+  } catch { /* servidor antigo ou fora do ar: valem os padrões */ }
+  mostrarTaxaDevolucao();
+  return game.regras;
+}
 
 /** Volta para a tela de onde o jogador foi comprar moedas, já com o saldo novo. */
 export function voltarDaCompra(estado) {
@@ -243,7 +299,15 @@ function reconciliar() {
   const voando = naoReportadas();
   game.spent = est.custo;
   game.earned = est.ganhos + voando.reduce((s, a) => s + a.coins, 0);
+  // lotes de mercado: os do servidor menos as flechas que saíram e ele ainda não descontou
+  game.lotes = est.mercado
+    .map(l => ({ ...l, quantidade: l.quantidade - voando.filter(a => a.type.id === l.flecha && a.valor === l.valor).length }))
+    .filter(l => l.quantidade > 0);
   for (const t of ARROW_TYPES) {
+    if (t.mercado) {
+      game.quiver[t.id] = game.lotes.filter(l => l.flecha === t.id).reduce((s, l) => s + l.quantidade, 0);
+      continue;
+    }
     const noAr = voando.filter(a => a.type.id === t.id).length;
     game.quiver[t.id] = Math.max(0, (est.flechas[t.id] || 0) - noAr);
   }
@@ -255,7 +319,7 @@ function reconciliar() {
 
 /** Informa ao servidor uma flecha que terminou o voo (cravou no chão ou saiu da tela). */
 function reportarTiro(ar) {
-  // flecha de mercado: a aposta já foi registrada no disparo e quem paga é o servidor
+  // flecha de mercado: a operação já foi registrada no disparo e quem paga é o servidor
   if (ar.reportado || !sessaoCtl || ar.type.mercado) return;
   ar.reportado = true;
   sessaoCtl.registrarTiro(ar.type.id, ar.acertos, ar.coins);
@@ -265,6 +329,15 @@ function reportarTiro(ar) {
 const canEnter = range => canEnterWith(game.wallet, range);
 const isBroke = () => isBrokeWith(game.wallet);
 const arrowsLeft = () => countArrows(game.quiver);
+
+/** Espaços da aljava (HUD e teclas): a madeira e um por lote de mercado (tipo + valor). */
+const espacos = () => espacosDaAljava(game.range, game.quiver, game.lotes);
+/** Espaço da flecha na mão do arqueiro, ou null. */
+const selecionado = () => espacos().find(e => e.chave === game.selected) || null;
+const tipoNaMao = () => ARROW_BY_ID[selecionado()?.id] || ARROW_BY_ID.wood;
+/** Aparência (1 a 3) de uma flecha pelo valor dela; a madeira é sempre 1. */
+const visualDe = (type, valor) => (type?.mercado && valor !== null && valor !== undefined
+  ? visualDoValor(valor, game.regras.niveis) : 1);
 
 function renderRanges() {
   $('ranges-wallet').textContent = moedas(game.wallet);
@@ -281,7 +354,7 @@ function renderRanges() {
       <h3>${r.name}</h3>
       <p>${r.desc}</p>
       <p>Entrada <b><span class="coin"></span>${r.fee}</b> · flechas de madeira <b>grátis</b> para treinar</p>
-      <p>Cripto: ${criptos} · aposta de <b><span class="coin"></span>${APOSTA_MERCADO}</b></p>
+      <p>Cripto: ${criptos} · valor da flecha à sua escolha</p>
       <button class="btn" data-range="${i}" ${ok ? '' : 'disabled'}>
         ${ok ? 'Escolher' : `Precisa de ${minCost(r)}`}
       </button>`;
@@ -291,8 +364,9 @@ function renderRanges() {
 
 // Ícone de cada flecha para as telas em HTML (desenhado com o mesmo código do jogo)
 const ARROW_ICONS = {};
-function arrowIcon(type) {
-  if (!ARROW_ICONS[type.id]) {
+function arrowIcon(type, visual = 1) {
+  const chave = `${type.id}:${visual}`;
+  if (!ARROW_ICONS[chave]) {
     const c = document.createElement('canvas');
     c.width = 180;
     c.height = 60;
@@ -300,17 +374,25 @@ function arrowIcon(type) {
     x.scale(2, 2);
     x.translate(82, 15);
     x.rotate(-0.25);
-    drawArrowShape(type, x);
-    ARROW_ICONS[type.id] = c.toDataURL();
+    drawArrowShape(type, x, visual);
+    ARROW_ICONS[chave] = c.toDataURL();
   }
-  return ARROW_ICONS[type.id];
+  return ARROW_ICONS[chave];
 }
 
-/** Flechas guardadas que o jogador leva para este campo: as comuns compradas nele e as de mercado. */
+/** Imagem (data URL) de uma flecha com a aparência do valor, para as telas em HTML (ex.: Arsenal). */
+export function iconeFlecha(tipoId = 'btc', valor = VALOR_FLECHA_PADRAO) {
+  const type = ARROW_BY_ID[tipoId] || ARROW_BY_ID.btc;
+  return arrowIcon(type, visualDe(type, valor));
+}
+
+/**
+ * Flechas guardadas que o jogador leva para este campo: só as comuns compradas nele. As de mercado não ficam
+ * guardadas: as que sobram voltam em moedas quando a rodada termina.
+ */
 function guardadasNoCampo(range = game.range) {
-  const g = game.guardadas;
-  const campo = g?.campos?.[range.slug] || {};
-  return Object.fromEntries(ARROW_TYPES.map(t => [t.id, Number((t.mercado ? g?.mercado?.[t.id] : campo[t.id]) || 0)]));
+  const campo = game.guardadas?.campos?.[range.slug] || {};
+  return Object.fromEntries(ARROW_TYPES.map(t => [t.id, t.mercado ? 0 : Number(campo[t.id] || 0)]));
 }
 
 async function carregarGuardadas() {
@@ -321,11 +403,15 @@ async function carregarGuardadas() {
 
 function openBuy(range) {
   if (!canEnter(range)) return;
-  const salvo = Number(localStorage.getItem('flecha-valor-padrao'));
-  game.arrowMarketPrice = [10, 20, 30].includes(salvo) ? salvo : APOSTA_MERCADO;
-  game.range = { ...range, arrowMarketPrice: game.arrowMarketPrice };
+  game.range = range;
+  // a loja começa com o valor padrão do Arsenal em todas as flechas de mercado
+  game.valores = Object.fromEntries(ARROW_TYPES.filter(t => t.mercado).map(t => [t.id, game.valorPadrao]));
+  game.personalizado = Object.fromEntries(ARROW_TYPES.filter(t => t.mercado)
+    .map(t => [t.id, !nivelDoValor(game.valorPadrao, game.regras.niveis)]));
+  game.textoValor = {};
+  game.valoresInvalidos = {};
   // Se o pedido anterior ficou caro demais, corta das flechas mais caras primeiro
-  game.order = fitOrder(game.order, range, game.wallet, countArrows(guardadasNoCampo(range)));
+  game.order = fitOrder(game.order, range, game.wallet, countArrows(guardadasNoCampo(range)), game.valores);
   mostrarErroCompra(null);
   setState('buy');
   renderBuy();
@@ -336,7 +422,7 @@ function openBuy(range) {
     if (nGuardadas > 0 && countArrows(game.order) === DEFAULT_ARROWS && game.order.wood === DEFAULT_ARROWS) {
       game.order = emptyQuiver();
     }
-    game.order = fitOrder(game.order, range, game.wallet, nGuardadas);
+    game.order = fitOrder(game.order, range, game.wallet, nGuardadas, game.valores);
     renderBuy();
   });
 }
@@ -371,30 +457,55 @@ async function encerrarRodadaAberta() {
   }
 }
 
+/**
+ * Escolha do valor de uma flecha de mercado (loja e compra durante a rodada): Nível 1, 2, 3 ou Personalizado, com
+ * o campo para digitar o valor.
+ */
+function htmlNiveis(t) {
+  const valor = game.valores[t.id] ?? game.valorPadrao;
+  const proprio = game.personalizado[t.id];
+  const erro = game.valoresInvalidos[t.id];
+  const botoes = game.regras.niveis.map((v, i) => {
+    const marcado = !proprio && centavos(valor) === centavos(v);
+    return `<button type="button" class="nivel nivel-${i + 1}${marcado ? ' sel' : ''}" data-flecha="${t.id}"
+      data-valor="${v}" aria-pressed="${marcado}">N${i + 1} · ${textoValor(v)}</button>`;
+  }).join('');
+  const texto = game.textoValor[t.id] ?? textoValor(valor);
+  return `
+    <div class="niveis" role="group" aria-label="Valor de cada flecha ${escaparHtml(t.name)}">
+      ${botoes}
+      <button type="button" class="nivel nivel-outro${proprio ? ' sel' : ''}" data-flecha="${t.id}" data-valor="outro"
+        aria-pressed="${!!proprio}">Personalizado</button>
+      ${proprio ? `<input type="text" class="valor-personalizado${erro ? ' invalido' : ''}" data-flecha="${t.id}"
+        inputmode="decimal" maxlength="10" autocomplete="off" value="${escaparHtml(texto)}"
+        aria-label="Valor personalizado de cada flecha ${escaparHtml(t.name)}" aria-invalid="${!!erro}">` : ''}
+      ${erro ? `<span class="valor-erro" role="alert">${escaparHtml(erro)}</span>` : ''}
+    </div>`;
+}
+
+/** Algum valor personalizado digitado está inválido? (não deixa pagar) */
+const temValorInvalido = () => tiposNoCampo(game.range).some(t => t.mercado && game.valoresInvalidos[t.id]);
+
 function renderBuy() {
-  const r = game.range, order = game.order;
-  const arrowsCost = orderCost(order, r), total = r.fee + arrowsCost, count = countArrows(order);
+  const r = game.range, order = game.order, valores = game.valores;
+  const arrowsCost = orderCost(order, r, valores), total = centavos(r.fee + arrowsCost), count = countArrows(order);
   const guard = guardadasNoCampo(r), nGuard = countArrows(guard);
-  const left = game.wallet - total;
+  const left = centavos(game.wallet - total);
   $('buy-title').textContent = r.name;
-  if ($('arrow-level')) {
-    $('arrow-level').value = String(game.arrowMarketPrice);
-    $('arrow-custom').value = game.arrowMarketPrice;
-  }
 
   $('arrow-shop').innerHTML = tiposNoCampo(r).map(t => {
-    const cost = arrowCost(t, r), n = order[t.id];
+    const cost = arrowCost(t, r, valores), n = order[t.id];
     const canAdd = left >= cost && count + nGuard < MAX_ARROWS;
-    const ganho = t.mercado
-      ? `volta <b class="mult">${APOSTA_MERCADO}</b> + resultado da operação`
-      : 'grátis · treino';
     const tem = guard[t.id] ? ` · <b class="guardadas">+${guard[t.id]} guardada${guard[t.id] === 1 ? '' : 's'}</b>` : '';
+    const info = t.mercado
+      ? `valor da flecha <span class="coin"></span><b class="mult">${textoValor(cost)}</b> · previsão em 5 s${htmlNiveis(t)}`
+      : `grátis · treino${tem}`;
     return `
-      <div class="arrow-row${n ? ' active' : ''}" title="${t.desc}">
-        <img src="${arrowIcon(t)}" alt="">
+      <div class="arrow-row${n ? ' active' : ''}${t.mercado ? ' mercado' : ''}" title="${escaparHtml(t.desc)}">
+        <img src="${arrowIcon(t, visualDe(t, cost))}" alt="">
         <div class="arrow-info">
           <b class="arrow-name">${t.name}</b>
-          <span>${ganho} · <span class="coin"></span>${cost} cada${tem}</span>
+          <span>${info}</span>
         </div>
         <div class="arrow-qty">
           <button class="chip" data-type="${t.id}" data-d="-5" ${n ? '' : 'disabled'}>−5</button>
@@ -406,32 +517,81 @@ function renderBuy() {
       </div>`;
   }).join('');
 
-  $('buy-fee').textContent = r.fee;
+  $('buy-fee').textContent = textoValor(r.fee);
   $('buy-arrows-label').textContent = `${count} flecha${count === 1 ? '' : 's'}${nGuard ? ` (+${nGuard} guardada${nGuard === 1 ? '' : 's'})` : ''}`;
-  $('buy-arrows').textContent = arrowsCost;
-  $('buy-total').textContent = total;
+  $('buy-arrows').textContent = textoValor(arrowsCost);
+  $('buy-total').textContent = textoValor(total);
   $('buy-after').textContent = moedas(left);
-  $('btn-enter').disabled = count + nGuard === 0 || left < 0 || game.ocupado;
+  $('btn-enter').disabled = count + nGuard === 0 || left < 0 || game.ocupado || temValorInvalido();
   $('btn-enter').textContent = game.ocupado ? 'Entrando...' : 'Pagar e entrar';
 }
 
 function updateOrder(typeId, delta) {
-  game.order = changeOrder(game.order, game.range, game.wallet, typeId, delta, countArrows(guardadasNoCampo()));
+  game.order = changeOrder(game.order, game.range, game.wallet, typeId, delta, countArrows(guardadasNoCampo()),
+    game.valores);
   renderBuy();
 }
 
-function definirValorFlecha(valor, salvar = false) {
-  const n = Number(valor);
-  if (!Number.isFinite(n) || n < 1 || n > 10000) return;
-  game.arrowMarketPrice = Math.round(n * 100) / 100;
-  game.range = { ...game.range, arrowMarketPrice: game.arrowMarketPrice };
-  if (salvar) localStorage.setItem('flecha-valor-padrao', String(game.arrowMarketPrice));
-  renderBuy();
+/** Moedas que o jogador pode pôr nas flechas agora: na loja, o saldo menos a entrada; na rodada, o disponível. */
+const limiteDoValor = () => centavos(game.state === 'refill' ? availableToBuy() : game.wallet - game.range.fee);
+
+/** Redesenha a tela de compra aberta (loja ou compra durante a rodada). */
+function redesenharCompra() {
+  if (game.state === 'refill') fillRefill();
+  else renderBuy();
 }
 
-function selectArrow(id) {
-  if (game.quiver[id] > 0) game.selected = id;
-  if (ARROW_BY_ID[game.selected]?.mercado) avisarEstudo();
+/** Botão de nível (N1/N2/N3) ou "Personalizado" de uma flecha de mercado. */
+function escolherNivel(typeId, escolha) {
+  if (!ARROW_BY_ID[typeId]?.mercado) return;
+  if (escolha === 'outro') {
+    game.personalizado[typeId] = true;
+    game.textoValor[typeId] = textoValor(game.valores[typeId] ?? game.valorPadrao);
+  } else {
+    game.personalizado[typeId] = false;
+    game.valores[typeId] = centavos(escolha);
+    delete game.textoValor[typeId];
+    delete game.valoresInvalidos[typeId];
+  }
+  ajustarAoValor();
+  redesenharCompra();
+  if (escolha === 'outro') focarValorPersonalizado(typeId);
+}
+
+/** O jogador digitou um valor personalizado: valida (mínimo, 2 casas, até o saldo) e atualiza o total. */
+function digitarValor(typeId, texto) {
+  game.textoValor[typeId] = texto;
+  const r = lerValorFlecha(texto, { minimo: game.regras.minimo, maximo: limiteDoValor() });
+  if (r.erro) {
+    game.valoresInvalidos[typeId] = r.erro;
+  } else {
+    delete game.valoresInvalidos[typeId];
+    game.valores[typeId] = r.valor;
+    ajustarAoValor();
+  }
+  redesenharCompra();
+  focarValorPersonalizado(typeId);
+}
+
+/** Com o valor novo, o pedido da loja pode ter ficado caro demais: corta as flechas mais caras primeiro. */
+function ajustarAoValor() {
+  if (game.state !== 'buy') return;
+  game.order = fitOrder(game.order, game.range, game.wallet, countArrows(guardadasNoCampo()), game.valores);
+}
+
+/** Depois de redesenhar a loja, devolve o foco (e o cursor no fim) ao campo do valor personalizado. */
+function focarValorPersonalizado(typeId) {
+  const campo = document.querySelector(`.overlay.show input.valor-personalizado[data-flecha="${typeId}"]`);
+  if (!campo) return;
+  campo.focus();
+  try { campo.setSelectionRange(campo.value.length, campo.value.length); } catch { /* sem cursor */ }
+}
+
+/** Pega a flecha de um espaço da aljava (a madeira ou um lote de mercado). */
+function selectArrow(chave) {
+  const espaco = espacos().find(e => e.chave === chave);
+  if (espaco?.n > 0) game.selected = chave;
+  if (tipoNaMao().mercado) avisarEstudo();
 }
 
 /** Na primeira vez que o jogador pega a flecha bitcoin, explica o estudo (uma vez por navegador). */
@@ -441,23 +601,23 @@ function avisarEstudo() {
     localStorage.setItem('flecha-estudo-aviso', '1');
   } catch { /* sem armazenamento: avisa toda vez */ }
   avisar('Estudo: cada flecha de mercado (bitcoin, ethereum, ouro) vira uma operação na direção que você previu '
-    + '(alta ou queda), com o dinheiro do criador do jogo, não o seu. Quando a flecha chega, você vê se ela ganhou '
-    + 'ou perdeu.',
+    + '(alta ou queda). Quando a flecha chega, você vê o resultado: previsão certa devolve o valor da flecha mais o '
+    + 'lucro da operação; errada, perde o valor.',
   'info', 12000);
 }
 
 // Se a flecha escolhida acabou, pega a próxima que ainda tiver
 function ensureSelection() {
-  if (game.quiver[game.selected] > 0) return;
-  const next = tiposNoCampo(game.range).find(t => game.quiver[t.id] > 0);
-  if (next) game.selected = next.id;
+  if (selecionado()?.n > 0) return;
+  const next = espacos().find(e => e.n > 0);
+  if (next) game.selected = next.chave;
 }
 
 async function enterRange() {
-  const range = game.range, order = game.order;
-  const total = range.fee + orderCost(order, range);
+  const range = game.range, order = game.order, valores = { ...game.valores };
+  const total = centavos(range.fee + orderCost(order, range, valores));
   if (total > game.wallet || countArrows(order) + countArrows(guardadasNoCampo(range)) === 0
-    || game.ocupado || sessaoCtl) return;
+    || game.ocupado || sessaoCtl || temValorInvalido()) return;
   audio();
 
   // Abre a sessão no servidor: ele confere o saldo e guarda o custo da rodada
@@ -466,7 +626,7 @@ async function enterRange() {
   mostrarErroCompra(null);
   renderBuy();
   try {
-    await ctl.abrir(range.slug, { ...order }, game.arrowMarketPrice);
+    await ctl.abrir(range.slug, comunsDoPedido(order), mercadoDoPedido(order, valores));
   } catch (e) {
     if (!tratadoPeloApp(e)) mostrarErroCompra(e);
     return;
@@ -483,6 +643,7 @@ async function enterRange() {
   game.spent = total;
   game.quiver = { ...order };
   game.bought = { ...order };
+  game.lotes = mercadoDoPedido(order, valores);
   game.selected = 'wood';
   ensureSelection();
   game.shotsFired = 0;
@@ -507,7 +668,7 @@ async function enterRange() {
   setState('playing');
 }
 
-/** Resultado da rodada para o jogador: a entrada mais o que as apostas renderam (pago − 100 de cada). */
+/** Resultado da rodada para o jogador: a entrada mais o que as flechas de mercado renderam (pago − valor). */
 const resultadoDaRodada = () => Math.round((game.apostasPartida - (game.range?.fee || 0)) * 100) / 100;
 
 // O servidor só deixa comprar com o saldo da carteira menos o custo da rodada:
@@ -515,8 +676,15 @@ const resultadoDaRodada = () => Math.round((game.apostasPartida - (game.range?.f
 const availableToBuy = () => game.saldoBase - game.spent;
 const canRefill = () => availableToBuy() >= REFILL_QTY * game.range.arrowPrice;
 
+/** Quantidade escolhida para comprar de um tipo durante a rodada. */
+const qtdRefill = typeId => game.refillQtd[typeId] ?? REFILL_QTY;
+
+/** Tela de compra durante a rodada: escolhe o valor (mercado) e a quantidade de cada flecha. */
 function fillRefill() {
   const r = game.range, net = resultadoDaRodada(), livre = availableToBuy();
+  const vazia = arrowsLeft() === 0;
+  $('refill-titulo').textContent = vazia ? 'Acabaram as flechas!' : 'Mais flechas';
+  $('btn-refill-voltar').hidden = vazia;
   $('ref-spent').textContent = `−${moedas(r.fee)}`;
   $('ref-earned').textContent = moedasComSinal(game.apostasPartida);
   const netEl = $('ref-net');
@@ -524,32 +692,69 @@ function fillRefill() {
   netEl.className = net > 0 ? 'pos' : net < 0 ? 'neg' : '';
   $('ref-wallet').textContent = moedas(livre);
   $('refill-options').innerHTML = tiposNoCampo(r).map(t => {
-    const cost = REFILL_QTY * arrowCost(t, r);
-    const ok = livre >= cost && arrowsLeft() + REFILL_QTY <= MAX_ARROWS && !game.ocupado && !game.encerrando;
+    const qtd = qtdRefill(t.id);
+    const unidade = arrowCost(t, r, game.valores);
+    const cost = centavos(qtd * unidade);
+    const cabe = arrowsLeft() + qtd <= MAX_ARROWS;
+    const ok = qtd > 0 && livre >= cost && cabe && !game.ocupado && !game.encerrando
+      && !(t.mercado && game.valoresInvalidos[t.id]);
+    const info = t.mercado
+      ? `valor da flecha <span class="coin"></span><b class="mult">${textoValor(unidade)}</b>${htmlNiveis(t)}`
+      : 'grátis · treino';
     return `
-      <button class="refill-opt" data-type="${t.id}" ${ok ? '' : 'disabled'}>
-        <img src="${arrowIcon(t)}" alt="">
-        <b>+${REFILL_QTY} ${t.name}</b>
-        <span>${t.mercado ? `volta ${APOSTA_MERCADO} + resultado` : 'treino'} · <span class="coin"></span>${cost}</span>
-      </button>`;
+      <div class="arrow-row${t.mercado ? ' mercado' : ''}" title="${escaparHtml(t.desc)}">
+        <img src="${arrowIcon(t, visualDe(t, unidade))}" alt="">
+        <div class="arrow-info">
+          <b class="arrow-name">${t.name}</b>
+          <span>${info}</span>
+        </div>
+        <div class="arrow-qty">
+          <button class="step sm" data-qtd="${t.id}" data-d="-1" ${qtd > 1 ? '' : 'disabled'}>−</button>
+          <span class="n">${qtd}</span>
+          <button class="step sm" data-qtd="${t.id}" data-d="1" ${arrowsLeft() + qtd < MAX_ARROWS ? '' : 'disabled'}>+</button>
+        </div>
+        <button class="btn small comprar-flechas" data-type="${t.id}" ${ok ? '' : 'disabled'}>
+          Comprar <span class="coin"></span>${textoValor(cost)}</button>
+      </div>`;
   }).join('');
 }
 
+/** Abre a compra de flechas sem sair do campo (o jogo fica parado enquanto ela está aberta). */
 function openRefill() {
   $('refill-erro').textContent = '';
+  game.refillQtd = {};
+  for (const t of ARROW_TYPES.filter(x => x.mercado)) game.valores[t.id] ??= game.valorPadrao;
   fillRefill();
   game.aim.active = false;
   setState('refill');
 }
 
+/** Botão "+ Flechas" do HUD: compra mais flechas a qualquer momento da rodada. */
+function abrirCompraNoJogo() {
+  if (game.state !== 'playing' || game.encerrando || !sessaoCtl) return;
+  openRefill();
+}
+
+function mudarQtdRefill(typeId, delta) {
+  const max = Math.max(1, MAX_ARROWS - arrowsLeft());
+  game.refillQtd[typeId] = clamp(qtdRefill(typeId) + delta, 1, max);
+  fillRefill();
+}
+
 async function buyMoreArrows(typeId) {
-  const cost = REFILL_QTY * arrowCost(ARROW_BY_ID[typeId], game.range);
+  const t = ARROW_BY_ID[typeId];
+  const qtd = qtdRefill(typeId);
+  const valor = t.mercado ? centavos(game.valores[typeId] ?? game.valorPadrao) : null;
+  const cost = centavos(qtd * arrowCost(t, game.range, game.valores));
   if (cost > availableToBuy() || game.ocupado || game.encerrando || !sessaoCtl) return;
+  if (t.mercado && game.valoresInvalidos[typeId]) return;
   game.ocupado = true;
   $('refill-erro').textContent = '';
   fillRefill();
   try {
-    await sessaoCtl.comprar(typeId, REFILL_QTY);   // o servidor desconta e devolve a aljava nova
+    // o servidor desconta e devolve a aljava nova (com o lote novo, nas de mercado)
+    if (t.mercado) await sessaoCtl.comprar(typeId, qtd, valor);
+    else await sessaoCtl.comprar(typeId, qtd);
   } catch (e) {
     if (!tratadoPeloApp(e)) $('refill-erro').textContent = mensagemErro(e);
     return;
@@ -559,9 +764,11 @@ async function buyMoreArrows(typeId) {
   }
   if (game.state !== 'refill') return;
   reconciliar();
-  if (game.quiver[typeId] > 0) game.selected = typeId;
+  selectArrow(chaveLote(typeId, valor));
   game.pending = null;
   sfx.pay();
+  avisar(`+${qtd} flecha${qtd === 1 ? '' : 's'} ${t.name}${t.mercado ? ` · ${nomeDoValor(valor, game.regras.niveis)}` : ''}`,
+    'info', 2500);
   setState('playing');
 }
 
@@ -595,12 +802,13 @@ async function endSession() {
   // Resultado oficial do servidor (ou a estimativa local, se ele não respondeu)
   const custo = final ? Number(final.custo) || 0 : game.spent;
   const ganhos = final ? Number(final.ganhos) || 0 : game.earned;
-  // o que muda na carteira (as flechas compradas e não usadas ficam guardadas, já pagas)
+  // o que muda na carteira (já com as flechas de mercado não usadas devolvidas em moedas, menos a taxa)
   const netCarteira = final ? Number(final.resultado) || 0 : ganhos - custo;
-  // o que o jogador ganhou ou perdeu na rodada: entrada + apostas
-  const net = resultadoDaRodada();
+  // o que o jogador ganhou ou perdeu na rodada: entrada + flechas de mercado + taxa da devolução
+  const devolucao = final?.devolucaoFlechas || null;
+  const net = centavos(resultadoDaRodada() - (Number(devolucao?.taxa) || 0));
   const compradas = final?.compradas || game.bought;
-  const sobraram = final?.flechas || game.quiver;
+  const usadas = final?.disparadas || null;
   const disparadas = final?.disparadas
     ? ARROW_TYPES.reduce((s, t) => s + (Number(final.disparadas[t.id]) || 0), 0)
     : game.shotsFired;
@@ -616,10 +824,12 @@ async function endSession() {
   netEl.innerHTML = `<span class="coin"></span>${moedasComSinal(net)}`;
   netEl.className = 'net ' + (net > 0 ? 'pos' : net < 0 ? 'neg' : '');
   $('res-range').textContent = game.range.name;
-  $('res-fee').textContent = `−${game.range.fee}`;
-  const deAposta = ARROW_TYPES.filter(t => t.mercado);
-  const somar = q => deAposta.reduce((s, t) => s + (Number(q?.[t.id]) || 0), 0);
-  $('res-arrows').textContent = `${somar(compradas)} compradas · ${somar(sobraram)} guardadas`;
+  $('res-fee').textContent = `−${textoValor(game.range.fee)}`;
+  const deMercado = ARROW_TYPES.filter(t => t.mercado);
+  const somar = q => deMercado.reduce((s, t) => s + (Number(q?.[t.id]) || 0), 0);
+  $('res-arrows').textContent = `${somar(compradas)} compradas · ${usadas ? somar(usadas) : '—'} usadas`;
+  $('res-devolucao-linha').hidden = !(Number(devolucao?.quantidade) > 0);
+  $('res-devolucao').textContent = textoDevolucao(devolucao);
   $('res-hits').textContent = `${acertos} com ${disparadas} flecha${disparadas === 1 ? '' : 's'}`;
   const placar = linhasDoPlacar(game.placarPartida);
   $('res-mercado-linha').hidden = !placar.length;
@@ -826,7 +1036,7 @@ function hitBird(arrow, bird) {
   arrow.hits++;
   game.hits++;
   if (arrow.type.mercado) {
-    // aposta de mercado: as moedas vêm do servidor, pelo preço real, quando ele liquidar a aposta
+    // flecha de mercado: as moedas vêm do servidor, pelo preço real, quando ele liquidar a operação
     arrow.acertos.push(bird.typeId);
     addText(bird.x, bird.y - 34, 'acertou o lado!', '#b9f6ca', 26);
     impact(bird);
@@ -879,7 +1089,7 @@ function launchVelocity() {
 
 /** Como a flecha na mão vai voar: velocidade, gravidade e, na flecha de mercado, o ponto onde ela chega em 5 s. */
 function planoDoTiro() {
-  const ativo = ARROW_BY_ID[game.selected]?.mercado;
+  const ativo = tipoNaMao().mercado;
   if (ativo) {
     const mirado = alvoFlechaBtc(LAUNCH, game.aim.angle, BTC_ALTURA);
     // sobe ou desce: a mira só escolhe o lado da linha de agora
@@ -905,7 +1115,8 @@ function previsaoMercado(alvo) {
 
 function shoot() {
   ensureSelection();
-  if (game.quiver[game.selected] <= 0) return;
+  const espaco = selecionado();
+  if (!espaco || espaco.n <= 0) return;
   const v = planoDoTiro();
   if (v.alvo && feeds[v.alvo.ativo].preco() === null) {
     addText(LAUNCH.x + 160, LAUNCH.y - 120, `esperando a cotação do ${ATIVOS[v.alvo.ativo].nome}...`, '#ffe0b2', 24);
@@ -915,7 +1126,9 @@ function shoot() {
     x0: LAUNCH.x, y0: LAUNCH.y, vx0: v.vx, vy0: v.vy, g: v.g, alvo: v.alvo, t: 0,
     x: LAUNCH.x, y: LAUNCH.y, px: LAUNCH.x, py: LAUNCH.y,
     angle: Math.atan2(v.vy, v.vx),
-    type: ARROW_BY_ID[game.selected],
+    type: ARROW_BY_ID[espaco.id],
+    valor: espaco.valor,  // valor de cada flecha do lote (só nas de mercado)
+    visual: visualDe(ARROW_BY_ID[espaco.id], espaco.valor),
     trail: [],
     state: 'flying',
     life: 0,
@@ -931,7 +1144,12 @@ function shoot() {
     ar.passaro = spawnPassaroMercado(v.alvo.ativo, { daFlecha: true });
     registrarNoEstudo(ar);
   }
-  game.quiver[game.selected]--;
+  game.quiver[espaco.id]--;
+  if (espaco.valor !== null) {
+    const lote = game.lotes.find(l => l.flecha === espaco.id && l.valor === espaco.valor);
+    if (lote) lote.quantidade--;
+    game.lotes = game.lotes.filter(l => l.quantidade > 0);
+  }
   ensureSelection();
   game.shotsFired++;
   game.totalShots++;
@@ -949,6 +1167,10 @@ function updateArrows(dt) {
       ar.angle = Math.atan2(ar.vy0 + ar.g * ar.t, ar.vx0);
       ar.trail.push({ x: ar.x, y: ar.y });
       if (ar.trail.length > 12) ar.trail.shift();
+      if (ar.visual >= 3 && !menosMovimento() && Math.random() < dt * 24) {
+        spark(ar.x - Math.cos(ar.angle) * rand(10, ARROW_LEN), ar.y - Math.sin(ar.angle) * rand(10, ARROW_LEN),
+          Math.random() < 0.5 ? '#ffffff' : '#ffe57f');
+      }
 
       if (ar.alvo) {
         // flecha bitcoin: não esbarra em nada no caminho, só vale quando chega no alvo
@@ -1009,8 +1231,8 @@ function chegarNoAlvo(ar) {
 }
 
 /**
- * No disparo: registra a aposta de 100 moedas (o servidor desconta a flecha e abre a operação na hora). Até a
- * resposta, o HUD conta a flecha como "no ar"; depois, vale o número do servidor.
+ * No disparo: registra a flecha de mercado com o valor do lote dela (o servidor desconta a flecha desse lote e abre a
+ * operação na hora). Até a resposta, o HUD conta a flecha como "no ar"; depois, vale o número do servidor.
  */
 function registrarNoEstudo(ar) {
   if (!sessaoCtl) {
@@ -1023,16 +1245,17 @@ function registrarNoEstudo(ar) {
       simbolo: ATIVOS[ar.alvo.ativo].simbolo,
       tipo: 'BINARIA',
       precoAgora: Math.round(ar.previsao.agora * 100) / 100,
+      valor: ar.valor,
     }, op => {
       ar.reportado = true;
-      const resultado = textoResultadoEstudo(op);
+      const resultado = textoResultadoEstudo(op, ar.valor);
       mostrarEstudo(resultado || {
-        texto: 'Aposta registrada',
+        texto: 'Flecha registrada',
         detalhe: 'Aguardando o resultado da operação…',
         cor: 'neutro',
       });
     }).catch(erro => {
-      ar.reportado = true;      // a aposta não entrou: a flecha continua com o jogador no servidor
+      ar.reportado = true;      // a operação não entrou: a flecha continua com o jogador no servidor
       reconciliar();
       return { erro };
     }),
@@ -1043,13 +1266,13 @@ function registrarNoEstudo(ar) {
 // Não deixe a interface silenciosa enquanto o backend ainda está liquidando.
 const ESPERA_RESULTADO_MS = 1000, TENTATIVAS_RESULTADO = 30;
 
-/** Quando a flecha chega: espera o servidor liquidar a aposta e mostra quantas moedas ela rendeu. */
+/** Quando a flecha chega: espera o servidor liquidar a operação e mostra quantas moedas ela rendeu. */
 async function acompanharEstudo(ar) {
   if (!ar.estudo?.pedido) return;
   const registro = await ar.estudo.pedido;
   if (registro?.erro) {
     if (!tratadoPeloApp(registro.erro)) {
-      mostrarEstudo({ texto: 'Aposta não registrada', detalhe: mensagemErro(registro.erro), cor: 'neutro' });
+      mostrarEstudo({ texto: 'Flecha não registrada', detalhe: mensagemErro(registro.erro), cor: 'neutro' });
     }
     return;
   }
@@ -1061,11 +1284,11 @@ async function acompanharEstudo(ar) {
         ultimoErro = erro;
         return null;
       });
-    const resultado = textoResultadoEstudo(op);
+    const resultado = textoResultadoEstudo(op, ar.valor);
     if (resultado) {
       contarNoPlacar(game.placarPartida, ar.alvo.ativo, op);
       game.reaisPartida = somarResultadoReais(game.reaisPartida, op);
-      game.apostasPartida = Math.round((game.apostasPartida + lucroDaAposta(op)) * 100) / 100;
+      game.apostasPartida = Math.round((game.apostasPartida + lucroDaAposta(op, ar.valor)) * 100) / 100;
       mostrarEstudo(resultado);
       // as moedas entram pelo servidor: durante a rodada, na sessão; depois dela, direto na carteira
       if (sessaoCtl) sessaoCtl.atualizar().catch(() => {});
@@ -1207,7 +1430,7 @@ const scene = () => Scenery.get(game.range.theme);
 // Loop de atualização
 // ---------------------------------------------------------------------------
 // Telas fora do campo de tiro (menu, loja e conta): só o cenário aparece ao fundo
-const TELAS_FORA_DO_CAMPO = ['menu', 'ranges', 'buy', 'creditos', 'perfil', 'admin', 'bloqueado', 'saldo'];
+const TELAS_FORA_DO_CAMPO = ['menu', 'ranges', 'buy', 'creditos', 'perfil', 'admin', 'bloqueado', 'saldo', 'arsenal'];
 const inLobby = () => TELAS_FORA_DO_CAMPO.includes(game.state);
 
 function update(dt) {
@@ -1560,8 +1783,35 @@ function drawTickerMercado() {
   }
 }
 
-// Flecha com a ponta em (0,0) apontando para +x, nas cores do seu tipo
-function drawArrowShape(type = ARROW_TYPES[0], c = ctx) {
+/** Estrela de 4 pontas (brilho) centrada em (x, y). */
+function brilho(c, x, y, r, cor) {
+  c.save();
+  c.fillStyle = cor;
+  c.beginPath();
+  c.moveTo(x, y - r);
+  c.quadraticCurveTo(x, y, x + r, y);
+  c.quadraticCurveTo(x, y, x, y + r);
+  c.quadraticCurveTo(x, y, x - r, y);
+  c.quadraticCurveTo(x, y, x, y - r);
+  c.fill();
+  c.restore();
+}
+
+// Flecha com a ponta em (0,0) apontando para +x, nas cores do seu tipo. `visual` (1 a 3): o nível do valor das
+// flechas de mercado; quanto maior, mais forte o brilho (o 3 ganha uma aura e brilhos na ponta).
+function drawArrowShape(type = ARROW_TYPES[0], c = ctx, visual = 1) {
+  const forte = type.glow ? visual : 1;
+  if (forte >= 2) {
+    // aura ao longo da haste
+    c.save();
+    c.lineCap = 'round';
+    c.shadowColor = type.glow;
+    c.shadowBlur = forte >= 3 ? 26 : 16;
+    c.strokeStyle = `rgba(${type.trail},${forte >= 3 ? 0.6 : 0.4})`;
+    c.lineWidth = forte >= 3 ? 9 : 6;
+    c.beginPath(); c.moveTo(-ARROW_LEN + 4, 0); c.lineTo(-6, 0); c.stroke();
+    c.restore();
+  }
   c.lineCap = 'round';
   c.strokeStyle = type.shaft[0];
   c.lineWidth = 4;
@@ -1570,15 +1820,15 @@ function drawArrowShape(type = ARROW_TYPES[0], c = ctx) {
   c.lineWidth = 2;
   c.beginPath(); c.moveTo(-ARROW_LEN, -0.5); c.lineTo(-10, -0.5); c.stroke();
 
-  const k = type.headSize;
-  if (type.glow) { c.shadowColor = type.glow; c.shadowBlur = 12; }
+  const k = type.headSize * (1 + 0.1 * (forte - 1));
+  if (type.glow) { c.shadowColor = type.glow; c.shadowBlur = 12 + 8 * (forte - 1); }
   const head = c.createLinearGradient(0, -6 * k, 0, 6 * k);
   head.addColorStop(0, type.head[0]);
   head.addColorStop(0.5, type.head[1]);
   head.addColorStop(1, type.head[2]);
   c.fillStyle = head;
-  c.strokeStyle = type.headStroke;
-  c.lineWidth = 1;
+  c.strokeStyle = forte >= 3 ? '#fff8e1' : type.headStroke;
+  c.lineWidth = forte >= 3 ? 1.6 : 1;
   c.beginPath();
   c.moveTo(1, 0); c.lineTo(-15 * k, -6.5 * k); c.lineTo(-11 * k, 0); c.lineTo(-15 * k, 6.5 * k);
   c.closePath();
@@ -1600,6 +1850,12 @@ function drawArrowShape(type = ARROW_TYPES[0], c = ctx) {
   c.beginPath(); c.moveTo(-ARROW_LEN + 10, -2.5); c.lineTo(-ARROW_LEN + 6, -5); c.moveTo(-ARROW_LEN + 10, 2.5); c.lineTo(-ARROW_LEN + 6, 5); c.stroke();
   c.fillStyle = '#3e2723';
   c.fillRect(-ARROW_LEN - 2, -1.5, 3, 3);
+
+  if (forte >= 3) {
+    // brilhos na ponta: a flecha mais forte "cintila"
+    brilho(c, -9 * k, -7 * k, 4.5, 'rgba(255,255,255,0.95)');
+    brilho(c, -16 * k, 6 * k, 3, 'rgba(255,236,150,0.95)');
+  }
 }
 
 /**
@@ -1707,13 +1963,14 @@ function drawArrows() {
       const falta = FLECHA_BTC.tempo - ar.t;
       drawAlvoMercado(ar.alvo, falta / FLECHA_BTC.tempo, Math.max(1, Math.ceil(falta)), ar.previsao);
     }
-    // Rastro
+    // Rastro (mais largo e mais forte nas flechas de nível maior)
     if (ar.trail.length > 1) {
       ctx.lineCap = 'round';
+      const forca = 1 + 0.4 * ((ar.visual || 1) - 1);
       for (let i = 1; i < ar.trail.length; i++) {
         const k = i / ar.trail.length;
-        ctx.strokeStyle = `rgba(${ar.type.trail},${k * (ar.type.glow ? 0.7 : 0.45)})`;
-        ctx.lineWidth = k * (ar.type.glow ? 5 : 3.5);
+        ctx.strokeStyle = `rgba(${ar.type.trail},${Math.min(1, k * (ar.type.glow ? 0.7 : 0.45) * forca)})`;
+        ctx.lineWidth = k * (ar.type.glow ? 5 : 3.5) * forca;
         ctx.beginPath();
         ctx.moveTo(ar.trail[i - 1].x - Math.cos(ar.angle) * ARROW_LEN, ar.trail[i - 1].y - Math.sin(ar.angle) * ARROW_LEN);
         ctx.lineTo(ar.trail[i].x - Math.cos(ar.angle) * ARROW_LEN, ar.trail[i].y - Math.sin(ar.angle) * ARROW_LEN);
@@ -1725,7 +1982,7 @@ function drawArrows() {
     if (ar.state === 'stuck') ctx.globalAlpha = clamp(3 - ar.life, 0, 1);
     ctx.translate(ar.x, ar.y);
     ctx.rotate(ar.angle);
-    drawArrowShape(ar.type);
+    drawArrowShape(ar.type, ctx, ar.visual || 1);
     ctx.restore();
 
     // Indicador quando a flecha sobe acima da tela
@@ -1890,10 +2147,11 @@ function drawArcher() {
   ctx.lineWidth = 1.4;
   ctx.beginPath(); ctx.moveTo(tipX, -tipY); ctx.lineTo(stringBack, 0); ctx.lineTo(tipX, tipY); ctx.stroke();
 
-  if (game.quiver[game.selected] > 0 && game.state === 'playing' && !game.pending) {
+  const naMao = selecionado();
+  if (naMao?.n > 0 && game.state === 'playing' && !game.pending) {
     ctx.save();
     ctx.translate(stringBack + ARROW_LEN, 0);
-    drawArrowShape(ARROW_BY_ID[game.selected]);
+    drawArrowShape(ARROW_BY_ID[naMao.id], ctx, visualDe(ARROW_BY_ID[naMao.id], naMao.valor));
     ctx.restore();
   }
 
@@ -2157,41 +2415,79 @@ function drawCoin(x, y, r) {
 }
 
 // Espaços da aljava no HUD (clicáveis para trocar de flecha)
-/** Espaços do HUD para as flechas deste campo (a madeira e as de mercado das criptos dele). */
-const slotsHud = () => tiposNoCampo(game.range).map((t, i) => ({ id: t.id, x: 24 + i * 47, y: 58, w: 44, h: 52 }));
+const COR_SELO = { 1: ['#eceff1', '#37474f'], 2: ['#ffd54f', '#5d4037'], 3: ['#ff80ab', '#4a0e2a'] };
+
+/**
+ * Espaços do HUD: a madeira e um por lote de mercado (tipo + valor). Com muitos lotes os espaços encolhem para não
+ * invadir a placa da carteira.
+ */
+function slotsHud() {
+  const lista = espacos();
+  const limite = W / 2 - 200 - 28;
+  const w = Math.max(30, Math.min(44, Math.floor((limite - 24) / Math.max(1, lista.length)) - 3));
+  return lista.map((e, i) => ({ ...e, x: 24 + i * (w + 3), y: 58, w, h: 52 }));
+}
 
 function drawHUD() {
   const r = game.range;
+  const slots = slotsHud();
 
   // Placa esquerda: campo e aljava com os tipos de flecha
-  plaque(16, 14, 340, 106, 16);
+  const fim = slots.length ? slots[slots.length - 1].x + slots[slots.length - 1].w : 0;
+  plaque(16, 14, Math.max(340, fim - 16 + 12), 106, 16);
   ctx.textAlign = 'left';
   outlinedText(r.name, 32, 46, "24px 'Lilita One', sans-serif", '#ffffff', '#4a2a10', 5);
 
-  slotsHud().forEach((s, i) => {
-    const type = ARROW_BY_ID[s.id], n = game.quiver[s.id], sel = game.selected === s.id && n > 0;
+  const parado = menosMovimento();
+  slots.forEach((s, i) => {
+    const type = ARROW_BY_ID[s.id], n = s.n, sel = game.selected === s.chave && n > 0;
+    const visual = visualDe(type, s.valor);
     ctx.save();
     ctx.globalAlpha = n > 0 ? 1 : 0.35;
+    if (visual >= 2 && n > 0) {
+      // espaço das flechas de nível maior brilha na cor do ativo
+      ctx.shadowColor = type.glow;
+      ctx.shadowBlur = visual >= 3 ? 16 : 9;
+    }
     ctx.fillStyle = sel ? 'rgba(255,213,79,0.3)' : 'rgba(40,20,5,0.4)';
     roundRect(ctx, s.x, s.y, s.w, s.h, 10);
     ctx.fill();
+    ctx.shadowBlur = 0;
     if (sel) {
       ctx.strokeStyle = '#ffd54f';
       ctx.lineWidth = 3;
       ctx.stroke();
     }
     ctx.save();
-    ctx.translate(s.x + 26, s.y + 13);
+    ctx.translate(s.x + s.w * 0.59, s.y + 15);
     ctx.rotate(-0.8);
-    ctx.scale(0.42, 0.42);
-    drawArrowShape(type);
+    ctx.scale(0.42 * s.w / 44, 0.42 * s.w / 44);
+    drawArrowShape(type, ctx, visual);
     ctx.restore();
     ctx.textAlign = 'right';
     outlinedText(`${n}`, s.x + s.w - 4, s.y + s.h - 6, "19px 'Lilita One', sans-serif", n > 0 && n <= 2 ? '#ff8a80' : '#ffffff', '#4a2a10', 4);
     ctx.textAlign = 'left';
     ctx.font = '900 11px Nunito, sans-serif';
     ctx.fillStyle = 'rgba(255,240,215,0.85)';
-    ctx.fillText(String(i + 1), s.x + 5, s.y + 13);
+    if (i < 9) ctx.fillText(String(i + 1), s.x + 5, s.y + 13);
+    if (s.valor !== null) {
+      // selo do valor: N1, N2, N3 ou o valor personalizado
+      const selo = seloDoValor(s.valor, game.regras.niveis);
+      const [fundo, letra] = COR_SELO[visual];
+      ctx.font = '900 10px Nunito, sans-serif';
+      const lw = Math.min(s.w - 4, ctx.measureText(selo).width + 8);
+      ctx.fillStyle = fundo;
+      roundRect(ctx, s.x + s.w - lw - 2, s.y + 2, lw, 13, 6);
+      ctx.fill();
+      ctx.fillStyle = letra;
+      ctx.textAlign = 'center';
+      ctx.fillText(selo, s.x + s.w - 2 - lw / 2, s.y + 12, lw - 2);
+      if (visual >= 3 && n > 0) {
+        // nível 3: um brilho que pisca no canto do espaço
+        const a = parado ? 0.9 : 0.45 + 0.45 * Math.sin(game.time * 5 + i);
+        brilho(ctx, s.x + 7, s.y + s.h - 9, 5, `rgba(255,255,255,${a})`);
+      }
+    }
     ctx.restore();
   });
 
@@ -2202,7 +2498,7 @@ function drawHUD() {
   ctx.textAlign = 'left';
   outlinedText(moedas(game.wallet), WALLET_POS.x + 24, WALLET_POS.y + 11, "32px 'Lilita One', sans-serif", '#ffe57f', '#4a2a10', 5);
 
-  // resultado = entrada + o que as apostas renderam (as flechas que sobram ficam guardadas, não são perda)
+  // resultado = entrada + o que as flechas de mercado renderam (as que sobram voltam em moedas no fim)
   const net = resultadoDaRodada();
   ctx.textAlign = 'right';
   ctx.font = '900 13px Nunito, sans-serif';
@@ -2220,7 +2516,7 @@ function drawHUD() {
   ctx.font = '900 14px Nunito, sans-serif';
   ctx.lineWidth = 3;
   ctx.strokeStyle = 'rgba(40,20,5,0.8)';
-  const barLabel = `entrada −${moedas(game.range.fee)} · apostas ${moedasComSinal(game.apostasPartida)}`;
+  const barLabel = `entrada −${moedas(game.range.fee)} · mercado ${moedasComSinal(game.apostasPartida)}`;
   ctx.strokeText(barLabel, W / 2, barY + 16);
   ctx.fillStyle = '#fff';
   ctx.fillText(barLabel, W / 2, barY + 16);
@@ -2288,7 +2584,7 @@ function drawBanner() {
   outlinedText(game.range.name, 0, 18, "50px 'Lilita One', sans-serif", '#ffeb3b', '#5a0f08', 9);
 
   ctx.font = '900 22px Nunito, sans-serif';
-  const sub = `${arrowsLeft()} flechas · pássaros valem ×${game.range.mult} · você investiu ${game.spent} moedas`;
+  const sub = `${arrowsLeft()} flechas · pássaros valem ×${game.range.mult} · você investiu ${moedas(game.spent)} moedas`;
   const tw = ctx.measureText(sub).width;
   ctx.fillStyle = 'rgba(40,20,5,0.7)';
   roundRect(ctx, -tw / 2 - 18, h / 2 + 34, tw + 36, 38, 19);
@@ -2355,7 +2651,7 @@ canvas.addEventListener('pointerdown', e => {
 
   // Clique na aljava do HUD troca de flecha em vez de mirar
   const slot = slotsHud().find(s => p.x >= s.x && p.x <= s.x + s.w && p.y >= s.y && p.y <= s.y + s.h);
-  if (slot) { selectArrow(slot.id); return; }
+  if (slot) { selectArrow(slot.chave); return; }
 
   const a = game.aim;
   a.active = true;
@@ -2400,9 +2696,11 @@ window.addEventListener('keydown', e => {
   if (k === 'p' || k === 'escape') togglePause();
   else if (k === 'm') toggleMute();
   else if (k === 'b' && game.state === 'playing') togglePassarosComuns();
+  else if (k === 'f' && game.state === 'playing') abrirCompraNoJogo();
   else if (game.state === 'playing' && /^[1-9]$/.test(k)) {
-    const tipo = tiposNoCampo(game.range)[Number(k) - 1];
-    if (tipo) selectArrow(tipo.id);
+    // as teclas seguem os espaços visíveis da aljava (a madeira e cada lote de mercado)
+    const espaco = espacos()[Number(k) - 1];
+    if (espaco) selectArrow(espaco.chave);
   }
 });
 
@@ -2423,24 +2721,34 @@ $('range-grid').addEventListener('click', e => {
 });
 
 $('arrow-shop').addEventListener('click', e => {
+  const nivel = e.target.closest('button[data-valor]');
+  if (nivel) { escolherNivel(nivel.dataset.flecha, nivel.dataset.valor); return; }
   const btn = e.target.closest('button[data-type]');
   if (btn && !btn.disabled) updateOrder(btn.dataset.type, Number(btn.dataset.d));
 });
-if ($('arrow-level')) $('arrow-level').addEventListener('change', e => definirValorFlecha(e.target.value));
-if ($('btn-arrow-custom')) $('btn-arrow-custom').addEventListener('click', () => definirValorFlecha($('arrow-custom').value));
-if ($('btn-arrow-default')) $('btn-arrow-default').addEventListener('click', () => {
-  definirValorFlecha($('arrow-custom').value, true);
-  avisar('Valor padrão das flechas salvo neste dispositivo.', 'info');
-});
+// valor personalizado das flechas de mercado (loja e compra durante a rodada)
+for (const id of ['arrow-shop', 'refill-options']) {
+  $(id).addEventListener('input', e => {
+    const campo = e.target.closest('input.valor-personalizado');
+    if (campo) digitarValor(campo.dataset.flecha, campo.value);
+  });
+}
 $('btn-enter').addEventListener('click', enterRange);
 $('btn-buy-back').addEventListener('click', () => setState('ranges'));
 $('btn-buy-fechar-aberta').addEventListener('click', encerrarRodadaAberta);
 
 $('refill-options').addEventListener('click', e => {
+  const nivel = e.target.closest('button[data-valor]');
+  if (nivel) { escolherNivel(nivel.dataset.flecha, nivel.dataset.valor); return; }
+  const qtd = e.target.closest('button[data-qtd]');
+  if (qtd && !qtd.disabled) { mudarQtdRefill(qtd.dataset.qtd, Number(qtd.dataset.d)); return; }
   const btn = e.target.closest('button[data-type]');
   if (btn && !btn.disabled) buyMoreArrows(btn.dataset.type);
 });
 $('btn-refill-end').addEventListener('click', endSession);
+$('btn-refill-voltar').addEventListener('click', () => {
+  if (game.state === 'refill' && arrowsLeft() > 0) setState('playing');
+});
 
 $('btn-quit').addEventListener('click', endSession);
 $('btn-again').addEventListener('click', () => openBuy(game.range));
@@ -2448,12 +2756,11 @@ $('btn-change-range').addEventListener('click', () => setState('ranges'));
 $('btn-restart').addEventListener('click', () => setState('menu'));
 $('btn-resume').addEventListener('click', togglePause);
 $('btn-pause').addEventListener('click', togglePause);
-$('btn-comprar-flechas').addEventListener('click', () => {
-  if (game.state === 'playing' && !game.pending) openRefill();
-});
+$('btn-comprar-flechas').addEventListener('click', abrirCompraNoJogo);
 $('btn-mute').addEventListener('click', toggleMute);
 $('btn-passaros').addEventListener('click', togglePassarosComuns);
 mostrarBotaoPassaros();
+mostrarTaxaDevolucao();
 
 // ---------------------------------------------------------------------------
 // Loop principal

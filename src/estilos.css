@@ -49,6 +49,17 @@ canvas {
   box-shadow: 0 calc(var(--s) * 4px) 0 #6d4c2f;
 }
 .icon-btn:active { transform: translateY(calc(var(--s) * 3px)); box-shadow: 0 calc(var(--s) * 1px) 0 #6d4c2f; }
+/* "+ Flechas": botão com texto, mais largo que os ícones */
+.icon-btn.largo {
+  width: auto;
+  padding: 0 calc(var(--s) * 14px);
+  font-family: 'Lilita One', 'Nunito', sans-serif;
+  font-size: calc(var(--s) * 21px);
+  color: #4a2a10;
+  background: linear-gradient(#ffe082, #f9a825);
+  border-color: #8a5200;
+  box-shadow: 0 calc(var(--s) * 4px) 0 #8a5200;
+}
 
 /* Telas sobrepostas */
 .overlay {
@@ -342,34 +353,9 @@ h2 { font-size: calc(var(--s) * 44px); margin-bottom: calc(var(--s) * 10px); }
 }
 .arrow-qty .chip { margin: 0; padding: calc(var(--s) * 4px) calc(var(--s) * 8px); font-size: calc(var(--s) * 15px); }
 
-.refill-options {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: calc(var(--s) * 10px);
-  margin-bottom: calc(var(--s) * 10px);
-}
-.refill-opt {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: calc(var(--s) * 2px);
-  padding: calc(var(--s) * 8px);
-  font-family: 'Nunito', sans-serif;
-  font-size: calc(var(--s) * 15px);
-  color: #4a2f17;
-  background: linear-gradient(#fffaf0, #f6e6c8);
-  border: calc(var(--s) * 3px) solid #c9a77c;
-  border-radius: calc(var(--s) * 14px);
-  box-shadow: 0 calc(var(--s) * 4px) 0 #a8875c;
-  cursor: pointer;
-}
-.refill-opt:hover { filter: brightness(1.05); }
-.refill-opt:active { transform: translateY(calc(var(--s) * 3px)); box-shadow: 0 calc(var(--s) * 1px) 0 #a8875c; }
-.refill-opt:disabled { opacity: 0.45; cursor: not-allowed; filter: grayscale(0.6); }
-.refill-opt img { width: calc(var(--s) * 90px); height: calc(var(--s) * 30px); }
-/* número ímpar de opções: a última ocupa a linha toda */
-.refill-opt:last-child:nth-child(odd) { grid-column: 1 / -1; }
-.refill-opt b { font-family: 'Lilita One', 'Nunito', sans-serif; font-weight: 400; font-size: calc(var(--s) * 22px); }
+/* Compra durante a rodada: mesma lista da loja, com o botão de comprar em cada linha */
+.refill-options { max-height: calc(var(--s) * 360px); overflow-y: auto; }
+.refill-options .comprar-flechas { flex: none; white-space: nowrap; }
 
 .note {
   margin-top: calc(var(--s) * 10px);
@@ -1032,3 +1018,130 @@ h3.secao {
 
 /* Perfil: legenda das colunas de acerto */
 .nota-acertos { margin: calc(var(--s) * 6px) 0 0; font-size: calc(var(--s) * 13px); color: #8a6d4b; text-align: left; line-height: 1.35; }
+
+/* ---------------------------------------------------------------------------
+   Valor das flechas de mercado: Nível 1, 2, 3 ou Personalizado (loja e compra durante a rodada)
+   --------------------------------------------------------------------------- */
+.arrow-row.mercado { align-items: flex-start; padding-top: calc(var(--s) * 6px); padding-bottom: calc(var(--s) * 6px); }
+.arrow-row.mercado img { margin-top: calc(var(--s) * 4px); }
+.niveis { display: flex; flex-wrap: wrap; align-items: center; gap: calc(var(--s) * 5px); margin-top: calc(var(--s) * 4px); }
+.nivel {
+  padding: calc(var(--s) * 3px) calc(var(--s) * 9px);
+  font-family: 'Nunito', sans-serif;
+  font-weight: 900;
+  font-size: calc(var(--s) * 13px);
+  color: #4a2f17;
+  background: #f6e6c8;
+  border: calc(var(--s) * 2px) solid #c9a77c;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.nivel:hover { background: #ffecc0; }
+.nivel.sel { color: #fff; background: #8b5a2b; border-color: #4e2f12; }
+.nivel-2.sel { background: linear-gradient(#ffca28, #c77c00); border-color: #8a5200; color: #4a2a10; }
+.nivel-3.sel { background: linear-gradient(#ff80ab, #ad1457); border-color: #6a0d34; box-shadow: 0 0 calc(var(--s) * 8px) rgba(255, 128, 171, 0.8); }
+.card input.valor-personalizado {
+  flex: none;
+  width: calc(var(--s) * 90px);
+  padding: calc(var(--s) * 3px) calc(var(--s) * 8px);
+  font-size: calc(var(--s) * 15px);
+  text-align: right;
+}
+.card input.valor-personalizado.invalido { border-color: #e57373; background: #fff1ee; }
+.valor-erro { flex-basis: 100%; font-size: calc(var(--s) * 13px); font-weight: 900; color: #c62828; }
+
+/* Resultado: devolução das flechas de mercado não usadas */
+.stats td.devolucao { text-align: left; font-weight: 900; color: #2e7d32; white-space: normal; }
+
+/* Comprar moedas: cupom */
+.cupom-creditos { margin: 0 auto calc(var(--s) * 10px); max-width: calc(var(--s) * 520px); }
+.cupom-creditos label { display: block; font-weight: 900; font-size: calc(var(--s) * 17px); margin-bottom: calc(var(--s) * 4px); }
+#creditos .cupom-creditos .msg { min-height: 0; }
+
+/* ---------------------------------------------------------------------------
+   Arsenal: a flecha de mercado com o nível do valor padrão, Upgrade e Rebaixar
+   --------------------------------------------------------------------------- */
+.card.arsenal { width: calc(var(--s) * 640px); }
+.arsenal-palco {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: calc(var(--s) * 150px);
+  margin: calc(var(--s) * 4px) auto;
+  border-radius: calc(var(--s) * 20px);
+  background: radial-gradient(circle at 50% 55%, #fff8e1 0%, #f6e6c8 60%, #ead2a6 100%);
+  border: calc(var(--s) * 3px) solid #c9a77c;
+  overflow: hidden;
+}
+.arsenal-flecha { width: calc(var(--s) * 330px); height: calc(var(--s) * 110px); transition: filter 0.3s; }
+.arsenal-palco[data-visual="2"] .arsenal-flecha { filter: drop-shadow(0 0 calc(var(--s) * 8px) rgba(255, 193, 7, 0.9)); }
+.arsenal-palco[data-visual="3"] .arsenal-flecha {
+  filter: drop-shadow(0 0 calc(var(--s) * 10px) rgba(255, 128, 171, 0.95)) drop-shadow(0 0 calc(var(--s) * 18px) rgba(255, 235, 59, 0.8));
+}
+.arsenal-palco[data-visual="3"] { background: radial-gradient(circle at 50% 55%, #fff 0%, #ffe0ec 45%, #f3c6d8 100%); }
+.arsenal-up {
+  position: absolute;
+  top: calc(var(--s) * 8px);
+  right: calc(var(--s) * 22px);
+  font-family: 'Lilita One', 'Nunito', sans-serif;
+  font-size: calc(var(--s) * 40px);
+  color: #ffeb3b;
+  text-shadow: 0 calc(var(--s) * 3px) 0 #b71c1c, 0 0 calc(var(--s) * 12px) rgba(255, 235, 59, 0.9);
+  opacity: 0;
+  pointer-events: none;
+}
+.arsenal-faiscas { position: absolute; left: 50%; top: 50%; pointer-events: none; }
+.arsenal-faiscas i {
+  position: absolute;
+  width: calc(var(--s) * 12px);
+  height: calc(var(--s) * 12px);
+  margin: calc(var(--s) * -6px);
+  background: radial-gradient(circle, #fff 0%, #ffeb3b 45%, rgba(255, 235, 59, 0) 70%);
+  border-radius: 50%;
+  opacity: 0;
+}
+.arsenal-nivel { margin: calc(var(--s) * 4px) 0 0; font-family: 'Lilita One', 'Nunito', sans-serif; font-size: calc(var(--s) * 30px); color: #8b5a2b; }
+.arsenal-estrelas { margin: 0 0 calc(var(--s) * 6px); font-size: calc(var(--s) * 30px); letter-spacing: calc(var(--s) * 6px); }
+.arsenal-estrelas .estrela { color: #d7c4a8; display: inline-block; }
+.arsenal-estrelas .estrela.on { color: #ffb300; text-shadow: 0 calc(var(--s) * 2px) 0 #8a5200; }
+.arsenal-botoes { display: flex; justify-content: center; gap: calc(var(--s) * 10px); margin-bottom: calc(var(--s) * 8px); }
+.arsenal-personalizado { justify-content: center; flex-wrap: wrap; }
+.card .arsenal-personalizado input[type="text"] { flex: none; width: calc(var(--s) * 150px); text-align: right; }
+#arsenal .msg { text-align: center; }
+
+/* Animação do upgrade: a flecha cresce e brilha, faíscas saem dela, "UP!" aparece e a estrela nova acende */
+@media (prefers-reduced-motion: no-preference) {
+  .arsenal-palco.subiu .arsenal-flecha { animation: arsenalSobe 0.9s cubic-bezier(.2, 1.6, .4, 1); }
+  .arsenal-palco.subiu .arsenal-up { animation: arsenalUp 1.2s ease-out; }
+  .arsenal-palco.subiu .arsenal-faiscas i { animation: arsenalFaisca 0.9s ease-out backwards; }
+  .arsenal-faiscas i:nth-child(1) { --dx: -150px; --dy: -50px; }
+  .arsenal-faiscas i:nth-child(2) { --dx: 150px; --dy: -45px; animation-delay: 0.05s; }
+  .arsenal-faiscas i:nth-child(3) { --dx: -110px; --dy: 55px; animation-delay: 0.1s; }
+  .arsenal-faiscas i:nth-child(4) { --dx: 120px; --dy: 60px; animation-delay: 0.08s; }
+  .arsenal-faiscas i:nth-child(5) { --dx: -40px; --dy: -70px; animation-delay: 0.12s; }
+  .arsenal-faiscas i:nth-child(6) { --dx: 45px; --dy: 70px; animation-delay: 0.15s; }
+  .arsenal-faiscas i:nth-child(7) { --dx: -190px; --dy: 5px; animation-delay: 0.18s; }
+  .arsenal-faiscas i:nth-child(8) { --dx: 190px; --dy: 0px; animation-delay: 0.2s; }
+  .arsenal-estrelas .estrela.nova { animation: starPop 0.5s cubic-bezier(.2, 1.6, .4, 1) 0.25s backwards; }
+}
+/* Sem animação: só um destaque estático no palco */
+@media (prefers-reduced-motion: reduce) {
+  .arsenal-palco.subiu { box-shadow: 0 0 0 calc(var(--s) * 4px) #ffd54f; }
+  .arsenal-palco.subiu .arsenal-up { opacity: 1; }
+}
+@keyframes arsenalSobe {
+  0% { transform: scale(1); filter: brightness(1); }
+  35% { transform: scale(1.35) rotate(-4deg); filter: brightness(1.6) drop-shadow(0 0 calc(var(--s) * 22px) #fff59d); }
+  100% { transform: scale(1); }
+}
+@keyframes arsenalUp {
+  0% { opacity: 0; transform: translateY(calc(var(--s) * 20px)) scale(0.5); }
+  25% { opacity: 1; transform: translateY(0) scale(1.2); }
+  70% { opacity: 1; transform: translateY(calc(var(--s) * -6px)) scale(1); }
+  100% { opacity: 0; transform: translateY(calc(var(--s) * -24px)) scale(1); }
+}
+@keyframes arsenalFaisca {
+  0% { opacity: 1; transform: translate(0, 0) scale(0.4); }
+  100% { opacity: 0; transform: translate(calc(var(--s) * var(--dx, 0px)), calc(var(--s) * var(--dy, 0px))) scale(1.4); }
+}

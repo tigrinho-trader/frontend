@@ -3,7 +3,9 @@
 // INTERVALO_MINIMO_MS entre eles (o servidor recusa com 429 abaixo de 150 ms).
 // O servidor manda no dinheiro: ganhos e flechas de cada resposta substituem os valores
 // locais; entre uma resposta e outra o HUD usa as estimativas dos tiros ainda na fila.
+// Flechas de mercado vêm em lotes (tipo + valor de cada flecha): `sessao.mercado` = [{ flecha, valor, quantidade }].
 // Sem DOM: a API e o relógio são injetados, para testar com objetos falsos.
+import { lotesDaSessao } from './regras.js';
 
 export const INTERVALO_MINIMO_MS = 160;
 const TENTATIVAS_429 = 2;
@@ -71,9 +73,12 @@ export function criarControladorSessao({
   }
 
   return {
-    /** Abre a sessão no servidor (POST /sessoes). Lança o ErroApi em caso de 409/422. */
-    async abrir(campo, flechas, valorFlecha) {
-      const nova = await api.abrirSessao(campo, flechas, valorFlecha);
+    /**
+     * Abre a sessão no servidor (POST /sessoes): `flechas` = comuns ({ wood: n }), `mercado` = lotes
+     * [{ flecha, valor, quantidade }]. Lança o ErroApi em caso de 409/422.
+     */
+    async abrir(campo, flechas, mercado = []) {
+      const nova = await api.abrirSessao(campo, flechas, mercado);
       ultimoTiro = null;
       aplicar(nova);
       return nova;
@@ -109,8 +114,9 @@ export function criarControladorSessao({
     },
 
     /**
-     * Flecha de mercado: o servidor registra a aposta e já desconta a flecha. `aoConsumir` roda antes de aplicar a
-     * sessão nova (o HUD para de contar a flecha como "no ar"). Devolve a operação; lança o ErroApi.
+     * Flecha de mercado: o servidor registra a operação e já desconta a flecha do lote `dados.valor`. `aoConsumir`
+     * roda antes de aplicar a sessão nova (o HUD para de contar a flecha como "no ar"). Devolve a operação; lança o
+     * ErroApi.
      */
     registrarMercado(dados, aoConsumir = () => {}) {
       return enfileirar(async () => {
@@ -121,7 +127,7 @@ export function criarControladorSessao({
       });
     },
 
-    /** Relê a sessão no servidor (ex.: depois que uma aposta de mercado foi paga). Devolve a sessão ou null. */
+    /** Relê a sessão no servidor (ex.: depois que uma flecha de mercado foi paga). Devolve a sessão ou null. */
     atualizar() {
       return enfileirar(async () => {
         const atual = await api.sessaoAtual();
@@ -130,10 +136,12 @@ export function criarControladorSessao({
       });
     },
 
-    /** Compra mais flechas (depois dos tiros que estão na fila). Lança o ErroApi. */
-    comprar(flecha, quantidade) {
+    /** Compra mais flechas (depois dos tiros que estão na fila); `valor` nas de mercado. Lança o ErroApi. */
+    comprar(flecha, quantidade, valor) {
       return enfileirar(async () => {
-        const nova = await api.comprarFlechas(exigirSessao().id, flecha, quantidade);
+        const nova = valor === undefined || valor === null
+          ? await api.comprarFlechas(exigirSessao().id, flecha, quantidade)
+          : await api.comprarFlechas(exigirSessao().id, flecha, quantidade, valor);
         aplicar(nova);
         return nova;
       });
@@ -159,7 +167,7 @@ export function criarControladorSessao({
 
     /**
      * Números para o HUD: os do servidor mais as estimativas dos tiros ainda na fila
-     * (cada tiro na fila já gastou uma flecha que o servidor ainda não descontou).
+     * (cada tiro na fila já gastou uma flecha que o servidor ainda não descontou). `mercado` = lotes restantes.
      */
     estado() {
       if (!sessao) return null;
@@ -175,6 +183,7 @@ export function criarControladorSessao({
         ganhosServidor,
         ganhos: ganhosServidor + pendentes.reduce((s, p) => s + p.estimativa, 0),
         flechas,
+        mercado: lotesDaSessao(sessao),
         compradas: { ...(sessao.compradas || {}) },
         acertos: numero(sessao.acertos),
         pendentes: pendentes.length,

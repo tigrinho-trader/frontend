@@ -29,15 +29,15 @@ export function pacotesDoServidor(quantidades) {
   }));
 }
 
-/** Preço em reais, ex.: 500 moedas a 1 centavo = "R$ 5,00". */
+/** Preço em reais, ex.: 25 moedas a 100 centavos (R$ 1 = 1 moeda) = "R$ 25,00". */
 export function precoEmReais(moedas, centavosPorMoeda) {
   const centavos = Math.round(Number(moedas) * Number(centavosPorMoeda));
   return (centavos / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
-/** Limites quando a carteira não informa: Pix de R$ 1 a R$ 1.000; pagamento de teste até 5.000 moedas. */
+/** Limites quando a carteira não informa (R$ 1 = 1 moeda): Pix de 5 a 2.000 moedas; pagamento de teste até 5.000. */
 export const LIMITES_PADRAO = {
-  pix: { minimoMoedas: 10, maximoMoedas: 10000 },
+  pix: { minimoMoedas: 5, maximoMoedas: 2000 },
   sandbox: { minimoMoedas: 1, maximoMoedas: 5000 },
 };
 

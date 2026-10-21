@@ -288,16 +288,16 @@ describe("perfil", () => {
     rotas["POST /carteira/saques"] = [200, { usuarioId: EU.id, saldo: 900, atualizadaEm: null }];
     $("btn-sacar").click();
     expect($("saque").classList.contains("show")).toBe(true);
-    $("saque-valor").value = "10";
+    $("saque-valor").value = "10,50";
     $("form-saque").dispatchEvent(new Event("submit", { cancelable: true }));
     await estabilizar();
-    expect(chamadas.find((c) => c.chave === "POST /carteira/saques").corpo).toEqual({ valor: 100 });
+    expect(chamadas.find((c) => c.chave === "POST /carteira/saques").corpo).toEqual({ valor: 10.5 });   // R$ 1 = 1 moeda
     expect($("saque-msg").textContent).toContain("Saque enviado");
     $("btn-saldo").click();
     await estabilizar();
     expect($("saldo").classList.contains("show")).toBe(true);
     expect($("saldo-moedas").textContent).toBe("900");
-    expect($("saldo-referencia").textContent.replace(/\s/g, " ")).toContain("R$ 90,00");
+    expect($("saldo-referencia").textContent.replace(/\s/g, " ")).toBe("Valor de referência: R$ 900,00 (1 moeda = R$ 1)");
     const aljava = $("saldo-aljava").textContent;
     expect(aljava).toContain("Mercado (qualquer campo): 2 bitcoin, 1 ouro paxg");
     expect(aljava).toContain("Campo do Vilarejo: 3 madeira");
@@ -398,7 +398,7 @@ describe("jogo com o servidor", () => {
     $("btn-enter").click();
     await estabilizar();
     const post = chamadas.find((c) => c.chave === "POST /jogos/flecha/sessoes");
-    expect(post.corpo).toEqual({ campo: "vilarejo", flechas: { wood: 10, btc: 0, eth: 0, ouro: 0, v100: 0 } });
+    expect(post.corpo).toEqual({ campo: "vilarejo", flechas: { wood: 10 }, mercado: [] });
     expect(document.getElementById("wrap").dataset.state).toBe("playing");
   });
 
@@ -458,7 +458,8 @@ describe("jogo com o servidor", () => {
     expect($("res-title").textContent).toBe("Prejuízo...");
     expect($("res-net").textContent).toBe("−5");
     expect($("res-hits").textContent).toBe("3 com 4 flechas");
-    expect($("res-arrows").textContent).toBe("0 compradas · 0 guardadas");
+    expect($("res-arrows").textContent).toBe("0 compradas · 0 usadas");
+    expect($("res-devolucao-linha").hidden).toBe(true);
     expect($("res-wallet").textContent).toBe("1.025");
   });
 });
@@ -495,24 +496,25 @@ describe("comprar moedas", () => {
   });
 
   it("no pagamento de teste também dá para digitar o valor", async () => {
-    rotas["POST /carteira/depositos"] = [200, { usuarioId: EU.id, saldo: 1120, atualizadaEm: null }];
+    rotas["POST /carteira/depositos"] = [200, { usuarioId: EU.id, saldo: 1012, atualizadaEm: null }];
     await iniciarApp();
     $("btn-comprar").click();
     await estabilizar();
     const campo = $("creditos-valor");
+    expect($("creditos-valor-moedas").textContent).toBe("R$ 1 = 1 moeda");
     campo.value = "12";
     campo.dispatchEvent(new Event("input"));
-    expect($("creditos-qtd").textContent).toBe("120");
+    expect($("creditos-qtd").textContent).toBe("12");
     expect($("creditos-preco").textContent).toBe(" na sua carteira");
-    campo.value = "501";
+    campo.value = "5001";
     campo.dispatchEvent(new Event("input"));
-    expect($("creditos-valor-dica").textContent.replace(/\s/g, " ")).toBe("Escolha um valor de R$ 1 a R$ 500.");
+    expect($("creditos-valor-dica").textContent.replace(/\s/g, " ")).toBe("Escolha um valor de R$ 1 a R$ 5.000.");
     campo.value = "12";
     campo.dispatchEvent(new Event("input"));
     $("btn-creditos-pagar").click();
     await estabilizar();
-    expect(chamadas.find((c) => c.chave === "POST /carteira/depositos").corpo).toEqual({ valor: 120 });
-    expect($("creditos-msg").textContent).toContain("120 moedas entraram");
+    expect(chamadas.find((c) => c.chave === "POST /carteira/depositos").corpo).toEqual({ valor: 12 });
+    expect($("creditos-msg").textContent).toContain("12 moedas entraram");
     expect($("creditos-valor").value).toBe("");
   });
 
@@ -571,14 +573,17 @@ describe("comprar moedas por Pix", () => {
   const QR = "data:image/png;base64,iVBORw0KGgo=";
   function compra(extra = {}) {
     return {
-      id: "c-1", moedas: 1000, centavos: 10000, status: "PENDENTE", brCode: "00020126pix-copia-e-cola",
+      id: "c-1", moedas: 50, centavos: 5000, status: "PENDENTE", brCode: "00020126pix-copia-e-cola",
       brCodeBase64: QR, expiraEm: new Date(Date.now() + 30 * 60_000).toISOString(), devMode: true,
       criadaEm: null, pagaEm: null, saldo: null, ...extra,
     };
   }
 
   beforeEach(() => {
-    rotas["GET /carteira/compras/config"] = [200, { pixHabilitado: true, sandboxHabilitado: true, pacotes: [100, 500, 1000, 5000], centavosPorMoeda: 10 }];
+    rotas["GET /carteira/compras/config"] = [200, {
+      pixHabilitado: true, sandboxHabilitado: true, pacotes: [10, 25, 50, 100], centavosPorMoeda: 100,
+      minimoMoedas: 5, maximoMoedas: 2000,
+    }];
     rotas["POST /carteira/compras"] = [201, compra()];
   });
 
@@ -587,9 +592,9 @@ describe("comprar moedas por Pix", () => {
     $("btn-comprar").click();
     await estabilizar();
     expect($("creditos-pacotes").textContent.replace(/\s/g, " ")).toContain("R$ 10,00");
-    $("creditos-pacotes").querySelector('[data-pacote="p1000"]').click();
+    $("creditos-pacotes").querySelector('[data-pacote="p50"]').click();
     expect($("btn-creditos-pagar").textContent).toBe("Gerar Pix");
-    expect($("creditos-preco").textContent.replace(/\s/g, " ")).toBe(" por R$ 100,00");
+    expect($("creditos-preco").textContent.replace(/\s/g, " ")).toBe(" por R$ 50,00");
     expect($("creditos-aviso-sandbox").hidden).toBe(true);
     $("btn-creditos-pagar").click();
     await estabilizar();
@@ -599,12 +604,12 @@ describe("comprar moedas por Pix", () => {
     let saldo = 1000;
     rotas["GET /carteira"] = () => [200, { usuarioId: EU.id, saldo, atualizadaEm: null }];
     rotas["POST /carteira/compras/c-1/simular-pagamento"] = () => {
-      saldo = 2000;
-      return [200, compra({ status: "PAGA", saldo: 2000 })];
+      saldo = 1050;
+      return [200, compra({ status: "PAGA", saldo: 1050 })];
     };
     await abrirEGerarPix();
 
-    expect(chamadas.find((c) => c.chave === "POST /carteira/compras").corpo).toEqual({ moedas: 1000 });
+    expect(chamadas.find((c) => c.chave === "POST /carteira/compras").corpo).toEqual({ moedas: 50 });
     expect($("creditos-pix").hidden).toBe(false);
     expect($("creditos-pacotes").hidden).toBe(true);
     expect($("pix-qr").getAttribute("src")).toBe(QR);
@@ -616,42 +621,38 @@ describe("comprar moedas por Pix", () => {
     $("btn-pix-simular").click();
     await estabilizar();
     expect($("creditos-pix").hidden).toBe(true);
-    expect($("creditos-msg").textContent).toContain("Pagamento confirmado! 1.000 moedas");
-    expect($("creditos-saldo").textContent).toBe("2.000");
+    expect($("creditos-msg").textContent).toContain("Pagamento confirmado! 50 moedas");
+    expect($("creditos-saldo").textContent).toBe("1.050");
     $("btn-creditos-voltar").click();
-    expect($("menu-wallet").textContent).toBe("2.000");
+    expect($("menu-wallet").textContent).toBe("1.050");
   });
 
   it("o jogador digita quanto quer colocar e o Pix sai com essa quantidade", async () => {
-    rotas["GET /carteira/compras/config"] = [200, {
-      pixHabilitado: true, sandboxHabilitado: true, pacotes: [100, 500, 1000, 5000], centavosPorMoeda: 10,
-      minimoMoedas: 10, maximoMoedas: 10000,
-    }];
     await iniciarApp();
     $("btn-comprar").click();
     await estabilizar();
     const campo = $("creditos-valor");
     const digitar = (texto) => { campo.value = texto; campo.dispatchEvent(new Event("input")); };
     expect($("creditos-valor-livre").hidden).toBe(false);
-    expect($("creditos-valor-moedas").textContent).toBe("R$ 1 = 10 moedas");
-    expect($("creditos-valor-dica").textContent.replace(/\s/g, " ")).toBe("Valores de R$ 1 a R$ 1.000.");
+    expect($("creditos-valor-moedas").textContent).toBe("R$ 1 = 1 moeda");
+    expect($("creditos-valor-dica").textContent.replace(/\s/g, " ")).toBe("Valores de R$ 5 a R$ 2.000.");
 
     digitar("2,50");
     expect($("creditos-valor-dica").className).toContain("erro");
     expect($("creditos-confirmar").hidden).toBe(true);
 
     digitar("50");
-    expect($("creditos-pacotes").querySelector(".selecionado").dataset.pacote).toBe("p500");
+    expect($("creditos-pacotes").querySelector(".selecionado").dataset.pacote).toBe("p50");
     digitar("37");
     expect($("creditos-pacotes").querySelector(".selecionado")).toBeNull();
     expect($("creditos-valor-dica").className).not.toContain("erro");
     expect($("creditos-confirmar").hidden).toBe(false);
-    expect($("creditos-qtd").textContent).toBe("370");
+    expect($("creditos-qtd").textContent).toBe("37");
     expect($("creditos-preco").textContent.replace(/\s/g, " ")).toBe(" por R$ 37,00");
 
     campo.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
     await estabilizar();
-    expect(chamadas.find((c) => c.chave === "POST /carteira/compras").corpo).toEqual({ moedas: 370 });
+    expect(chamadas.find((c) => c.chave === "POST /carteira/compras").corpo).toEqual({ moedas: 37 });
     expect($("creditos-valor-livre").hidden).toBe(true);
   });
 
@@ -659,9 +660,9 @@ describe("comprar moedas por Pix", () => {
     await iniciarApp();
     $("btn-comprar").click();
     await estabilizar();
-    $("creditos-pacotes").querySelector('[data-pacote="p5000"]').click();
-    expect($("creditos-valor").value).toBe("500");
-    expect($("creditos-qtd").textContent).toBe("5.000");
+    $("creditos-pacotes").querySelector('[data-pacote="p100"]').click();
+    expect($("creditos-valor").value).toBe("100");
+    expect($("creditos-qtd").textContent).toBe("100");
   });
 
   it("'Já paguei' com o Pix ainda pendente avisa e continua esperando", async () => {
@@ -704,5 +705,288 @@ describe("comprar moedas por Pix", () => {
     await estabilizar();
     expect($("creditos-indisponivel").hidden).toBe(false);
     expect($("creditos-pacotes").hidden).toBe(true);
+  });
+});
+
+describe("cupom", () => {
+  it("resgata o cupom, mostra as moedas ganhas e atualiza o saldo", async () => {
+    let saldo = 1000;
+    rotas["GET /carteira"] = () => [200, { usuarioId: EU.id, saldo, atualizadaEm: null }];
+    rotas["POST /carteira/cupons"] = () => {
+      saldo = 1030;
+      return [200, { moedas: 30, saldo: 1030 }];
+    };
+    await iniciarApp();
+    $("btn-comprar").click();
+    await estabilizar();
+    expect($("form-cupom").querySelector("label").textContent).toBe("Tem um cupom?");
+    $("creditos-cupom").value = "  BEMVINDO30 ";
+    $("form-cupom").dispatchEvent(new Event("submit", { cancelable: true }));
+    await estabilizar();
+    expect(chamadas.find((c) => c.chave === "POST /carteira/cupons").corpo).toEqual({ codigo: "BEMVINDO30" });
+    expect($("cupom-msg").textContent).toBe("Cupom resgatado: +30 moedas!");
+    expect($("cupom-msg").className).toContain("ok");
+    expect($("creditos-saldo").textContent).toBe("1.030");
+    expect($("creditos-cupom").value).toBe("");
+    $("btn-creditos-voltar").click();
+    expect($("menu-wallet").textContent).toBe("1.030");
+  });
+
+  it("cupom inválido (422), já usado (409) e código vazio mostram o erro em português", async () => {
+    rotas["POST /carteira/cupons"] = [422, { detail: "Cupom invalido" }];
+    await iniciarApp();
+    $("btn-comprar").click();
+    await estabilizar();
+    const resgatar = async (codigo) => {
+      $("creditos-cupom").value = codigo;
+      $("btn-creditos-cupom").click();
+      await estabilizar();
+    };
+    await resgatar("NAOEXISTE");
+    expect($("cupom-msg").textContent).toBe("Cupom inválido.");
+    expect($("cupom-msg").className).toContain("erro");
+
+    rotas["POST /carteira/cupons"] = [409, { detail: "Cupom ja usado nesta conta" }];
+    await resgatar("BEMVINDO30");
+    expect($("cupom-msg").textContent).toBe("Você já usou este cupom.");
+
+    const antes = chamadas.filter((c) => c.chave === "POST /carteira/cupons").length;
+    await resgatar("   ");
+    expect($("cupom-msg").textContent).toBe("Digite o código do cupom.");
+    expect(chamadas.filter((c) => c.chave === "POST /carteira/cupons")).toHaveLength(antes);
+    expect($("creditos-saldo").textContent).toBe("1.000");
+  });
+});
+
+describe("arsenal", () => {
+  function perfilCom(valor) {
+    return { ...EU, preferencias: { valorFlechaPadrao: valor } };
+  }
+
+  it("upgrade sobe o nível com animação e salva no perfil; rebaixar e valor personalizado também", async () => {
+    rotas["GET /usuarios/me"] = [200, perfilCom(10)];
+    rotas["PATCH /usuarios/me/preferencias"] = (init) => [200, perfilCom(JSON.parse(init.body).valorFlechaPadrao)];
+    await iniciarApp();
+    $("btn-arsenal").click();
+    expect($("wrap").dataset.state).toBe("arsenal");
+    expect($("arsenal-nivel").textContent).toBe("Nível 1 · 10 moedas");
+    expect($("arsenal-estrelas").querySelectorAll(".estrela.on")).toHaveLength(1);
+    expect($("btn-arsenal-rebaixar").disabled).toBe(true);
+
+    $("btn-arsenal-upgrade").click();
+    await estabilizar();
+    const patch = chamadas.filter((c) => c.chave === "PATCH /usuarios/me/preferencias");
+    expect(patch.at(-1).corpo).toEqual({ valorFlechaPadrao: 20 });
+    expect($("arsenal-nivel").textContent).toBe("Nível 2 · 20 moedas");
+    expect($("arsenal-palco").dataset.visual).toBe("2");
+    expect($("arsenal-palco").classList.contains("subiu")).toBe(true);        // animação do upgrade
+    expect($("arsenal-estrelas").querySelector(".estrela.nova")).not.toBeNull();
+    expect($("arsenal-msg").textContent).toContain("Subiu de nível!");
+
+    $("btn-arsenal-upgrade").click();
+    await estabilizar();
+    expect($("arsenal-nivel").textContent).toBe("Nível 3 · 30 moedas");
+    expect($("btn-arsenal-upgrade").disabled).toBe(true);                    // nível máximo
+
+    $("btn-arsenal-rebaixar").click();
+    await estabilizar();
+    expect(chamadas.filter((c) => c.chave === "PATCH /usuarios/me/preferencias").at(-1).corpo)
+      .toEqual({ valorFlechaPadrao: 20 });
+    expect($("arsenal-msg").textContent).toBe("Salvo: Nível 2 · 20 moedas.");
+
+    $("arsenal-valor").value = "12,5";
+    $("form-arsenal").dispatchEvent(new Event("submit", { cancelable: true }));
+    await estabilizar();
+    expect(chamadas.filter((c) => c.chave === "PATCH /usuarios/me/preferencias").at(-1).corpo)
+      .toEqual({ valorFlechaPadrao: 12.5 });
+    expect($("arsenal-nivel").textContent).toBe("Personalizado · 12,5 moedas");
+
+    // valor inválido não vai para o servidor
+    const total = chamadas.filter((c) => c.chave === "PATCH /usuarios/me/preferencias").length;
+    $("arsenal-valor").value = "0,5";
+    $("form-arsenal").dispatchEvent(new Event("submit", { cancelable: true }));
+    await estabilizar();
+    expect($("arsenal-msg").textContent).toBe("O valor mínimo é 1 moeda.");
+    expect(chamadas.filter((c) => c.chave === "PATCH /usuarios/me/preferencias")).toHaveLength(total);
+
+    $("btn-arsenal-voltar").click();
+    expect($("wrap").dataset.state).toBe("menu");
+  });
+
+  it("erro ao salvar mantém o nível e avisa", async () => {
+    rotas["PATCH /usuarios/me/preferencias"] = [503, { detail: "user-service fora" }];
+    await iniciarApp();
+    $("btn-arsenal").click();
+    $("btn-arsenal-upgrade").click();
+    await estabilizar();
+    expect($("arsenal-nivel").textContent).toBe("Nível 1 · 10 moedas");
+    expect($("arsenal-msg").textContent).toBe("Não foi possível salvar: user-service fora");
+    expect($("btn-arsenal-upgrade").disabled).toBe(false);
+  });
+});
+
+describe("loja com o valor das flechas de mercado", () => {
+  it("começa no padrão do Arsenal, troca de nível, aceita valor personalizado e manda os lotes", async () => {
+    rotas["GET /usuarios/me"] = [200, { ...EU, preferencias: { valorFlechaPadrao: 20 } }];
+    rotas["POST /jogos/flecha/sessoes"] = [201, sessao()];
+    await iniciarApp();
+    $("btn-play").click();
+    $("range-grid").querySelector('button[data-range="1"]').click();   // Bosque: bitcoin e ethereum
+    const shop = $("arrow-shop");
+    const nivelSel = (flecha) => shop.querySelector(`.nivel.sel[data-flecha="${flecha}"]`).textContent.trim();
+    expect(nivelSel("btc")).toBe("N2 · 20");
+    expect(nivelSel("eth")).toBe("N2 · 20");
+
+    shop.querySelector('button[data-type="btc"][data-d="1"]').click();
+    shop.querySelector('button[data-type="btc"][data-d="1"]').click();
+    expect($("buy-arrows").textContent).toBe("40");
+    expect($("buy-total").textContent).toBe("55");                         // entrada 15 + 2 × 20
+
+    shop.querySelector('button[data-flecha="btc"][data-valor="30"]').click();
+    expect(nivelSel("btc")).toBe("N3 · 30");
+    expect($("buy-arrows").textContent).toBe("60");
+
+    shop.querySelector('button[data-flecha="eth"][data-valor="outro"]').click();
+    const campo = () => shop.querySelector('input.valor-personalizado[data-flecha="eth"]');
+    expect(campo().value).toBe("20");
+    campo().value = "0,5";
+    campo().dispatchEvent(new Event("input", { bubbles: true }));
+    expect(shop.querySelector(".valor-erro").textContent).toBe("O valor mínimo é 1 moeda.");
+    expect($("btn-enter").disabled).toBe(true);
+    campo().value = "5000";
+    campo().dispatchEvent(new Event("input", { bubbles: true }));
+    expect(shop.querySelector(".valor-erro").textContent).toBe("Acima do seu saldo (985 moedas).");
+    campo().value = "12,50";
+    campo().dispatchEvent(new Event("input", { bubbles: true }));
+    expect(shop.querySelector(".valor-erro")).toBeNull();
+    expect(document.activeElement).toBe(campo());                            // continua digitando
+    shop.querySelector('button[data-type="eth"][data-d="1"]').click();
+    expect($("buy-arrows").textContent).toBe("72,5");
+    expect($("btn-enter").disabled).toBe(false);
+
+    $("btn-enter").click();
+    await estabilizar();
+    expect(chamadas.find((c) => c.chave === "POST /jogos/flecha/sessoes").corpo).toEqual({
+      campo: "bosque",
+      flechas: { wood: 10 },
+      mercado: [{ flecha: "btc", valor: 30, quantidade: 2 }, { flecha: "eth", valor: 12.5, quantidade: 1 }],
+    });
+  });
+});
+
+describe("rodada com lotes de flechas de mercado", () => {
+  let quadro = null;
+  let fonteCotacoes = null;
+
+  /** EventSource falso: o teste manda a cotação do bitcoin para o feed do jogo. */
+  class EventSourceFalso {
+    constructor() { this.ouvintes = {}; fonteCotacoes = this; }
+    addEventListener(tipo, fn) { this.ouvintes[tipo] = fn; }
+    close() {}
+    emitir(cotacao) { this.ouvintes.cotacao?.({ data: JSON.stringify(cotacao) }); }
+  }
+
+  /** Roda alguns quadros do jogo (o requestAnimationFrame é controlado pelo teste). */
+  function quadros(n = 3) {
+    for (let i = 0; i < n; i++) {
+      const proximo = quadro;
+      quadro = null;
+      proximo?.(performance.now() + 16 * (i + 1));
+    }
+  }
+
+  function apontar(tipo, x, y) {
+    const e = new MouseEvent(tipo, { clientX: x, clientY: y, bubbles: true });
+    Object.defineProperty(e, "pointerId", { value: 1 });
+    $("game").dispatchEvent(e);
+  }
+
+  async function entrarComLotes(mercado) {
+    rotas["POST /jogos/flecha/sessoes"] = [201, sessao({ campo: "bosque", flechas: { wood: 10, btc: 3 }, mercado })];
+    vi.stubGlobal("requestAnimationFrame", (fn) => { quadro = fn; return 1; });
+    vi.stubGlobal("EventSource", EventSourceFalso);
+    HTMLCanvasElement.prototype.setPointerCapture = () => {};
+    HTMLCanvasElement.prototype.getBoundingClientRect = () => ({ left: 0, top: 0, width: 1280, height: 720 });
+    await iniciarApp();
+    $("btn-play").click();
+    $("range-grid").querySelector('button[data-range="1"]').click();
+    $("btn-enter").click();
+    await estabilizar();
+    expect($("wrap").dataset.state).toBe("playing");
+    quadros();
+    fonteCotacoes.emitir({ simbolo: "BTCUSDT", preco: 100000 });
+    quadros();
+  }
+
+  afterEach(() => {
+    delete HTMLCanvasElement.prototype.setPointerCapture;
+    delete HTMLCanvasElement.prototype.getBoundingClientRect;
+  });
+
+  it("a tecla escolhe o lote na aljava e o tiro manda o valor desse lote", async () => {
+    await entrarComLotes([{ flecha: "btc", valor: 10, quantidade: 2 }, { flecha: "btc", valor: 30, quantidade: 1 }]);
+    rotas["POST /jogos/flecha/estudo/operacoes"] = [201, {
+      id: "op-1", moedasPagas: null,
+      sessao: sessao({ campo: "bosque", flechas: { wood: 10, btc: 2 }, mercado: [{ flecha: "btc", valor: 10, quantidade: 2 }] }),
+    }];
+    // espaços: 1 madeira, 2 bitcoin N1 (10), 3 bitcoin N3 (30), 4 ethereum (vazio)
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "3" }));
+    apontar("pointerdown", 600, 400);
+    apontar("pointermove", 500, 450);
+    apontar("pointerup", 500, 450);
+    await estabilizar();
+    const op = chamadas.find((c) => c.chave === "POST /jogos/flecha/estudo/operacoes");
+    expect(op.corpo).toMatchObject({ simbolo: "BTCUSDT", tipo: "BINARIA", valor: 30, sessaoId: "s-1" });
+    expect(op.corpo.direcao).toMatch(/^(ALTA|QUEDA)$/);
+  });
+
+  it("'+ Flechas' abre a compra sem sair do campo e compra o lote com o valor escolhido", async () => {
+    await entrarComLotes([{ flecha: "btc", valor: 10, quantidade: 3 }]);
+    rotas["POST /jogos/flecha/sessoes/s-1/flechas"] = [200, sessao({
+      campo: "bosque", custo: 75, flechas: { wood: 10, btc: 9 },
+      mercado: [{ flecha: "btc", valor: 10, quantidade: 3 }, { flecha: "btc", valor: 20, quantidade: 6 }],
+    })];
+    expect($("btn-comprar-flechas").textContent).toBe("+ Flechas");
+    $("btn-comprar-flechas").click();
+    expect($("wrap").dataset.state).toBe("refill");                         // o jogo fica parado
+    expect($("refill-titulo").textContent).toBe("Mais flechas");
+    expect($("btn-refill-voltar").hidden).toBe(false);
+
+    const opcoes = $("refill-options");
+    opcoes.querySelector('button[data-flecha="btc"][data-valor="20"]').click();
+    opcoes.querySelector('button[data-qtd="btc"][data-d="1"]').click();     // 5 → 6
+    const comprar = opcoes.querySelector('button.comprar-flechas[data-type="btc"]');
+    expect(comprar.textContent.replace(/\s+/g, " ").trim()).toBe("Comprar 120");
+    comprar.click();
+    await estabilizar();
+    expect(chamadas.find((c) => c.chave === "POST /jogos/flecha/sessoes/s-1/flechas").corpo)
+      .toEqual({ flecha: "btc", quantidade: 6, valor: 20 });
+    expect($("wrap").dataset.state).toBe("playing");
+  });
+
+  it("'Voltar ao jogo' fecha a compra sem comprar", async () => {
+    await entrarComLotes([{ flecha: "btc", valor: 10, quantidade: 3 }]);
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "f" }));
+    expect($("wrap").dataset.state).toBe("refill");
+    $("btn-refill-voltar").click();
+    expect($("wrap").dataset.state).toBe("playing");
+    expect(chamadas.some((c) => c.chave === "POST /jogos/flecha/sessoes/s-1/flechas")).toBe(false);
+  });
+
+  it("ao sair, o resultado mostra a devolução das flechas de mercado que sobraram", async () => {
+    await entrarComLotes([{ flecha: "btc", valor: 20, quantidade: 2 }]);
+    rotas["POST /jogos/flecha/sessoes/s-1/encerrar"] = [200, sessao({
+      campo: "bosque", status: "ENCERRADA", compradas: { wood: 10, btc: 2 }, disparadas: { wood: 0, btc: 0 },
+      devolucaoFlechas: { quantidade: 2, valorBruto: 40, taxa: 0.08, valorDevolvido: 39.92 },
+    })];
+    $("btn-pause").click();
+    expect($("pausa-nota").textContent).toContain("voltam em moedas");
+    $("btn-quit").click();
+    await estabilizar();
+    expect($("result").classList.contains("show")).toBe(true);
+    expect($("res-arrows").textContent).toBe("2 compradas · 0 usadas");
+    expect($("res-devolucao-linha").hidden).toBe(false);
+    expect($("res-devolucao").textContent).toBe("Flechas devolvidas: 2 · +39,92 moedas (taxa 0,08)");
+    expect($("res-net").textContent).toBe("−15,08");                       // entrada do Bosque + taxa
   });
 });

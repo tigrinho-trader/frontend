@@ -8,7 +8,7 @@ import {
   velocidadePassaroDaFlecha,
 } from "./bitcoin.js";
 import {
-  APOSTA_MERCADO, ARROW_BY_ID, BIRD_TYPES, RANGES, arrowCost, arrowPosition, coinsForHit, pickBirdType,
+  VALOR_FLECHA_PADRAO, ARROW_BY_ID, BIRD_TYPES, RANGES, arrowCost, arrowPosition, coinsForHit, pickBirdType,
 } from "./regras.js";
 
 const esperar = () => new Promise((r) => setTimeout(r, 0));
@@ -298,10 +298,11 @@ describe("flecha bitcoin: previsão do preço em 5 s", () => {
     expect(acertaNoAlvo({ ...alvo, ativo: "eth" }, eth)).toBe(true);
   });
 
-  it("custa a aposta e não tira moedas do pássaro: o prêmio vem da aposta", () => {
+  it("custa o valor escolhido para a flecha e não tira moedas do pássaro: o prêmio vem da operação", () => {
     const flecha = ARROW_BY_ID.btc;
-    expect(flecha).toMatchObject({ precoFixo: APOSTA_MERCADO, especial: "btc" });
-    expect(arrowCost(flecha, RANGES[0])).toBe(APOSTA_MERCADO);
+    expect(flecha).toMatchObject({ precoFixo: null, especial: "btc" });
+    expect(arrowCost(flecha, RANGES[0])).toBe(VALOR_FLECHA_PADRAO);
+    expect(arrowCost(flecha, RANGES[0], { btc: 30 })).toBe(30);
     expect(coinsForHit(BIRD_TYPES.btc, RANGES[0], flecha)).toBe(0);
   });
 });
@@ -317,36 +318,47 @@ describe("estudo da sabedoria das massas", () => {
     expect(direcaoDaPrevisao({ agora: NaN, previsto: 1 })).toBeNull();
   });
 
-  it("mostra as moedas da aposta liquidada pelo servidor e o resultado da operação", () => {
-    const ganhou = textoResultadoEstudo({ status: "FECHADA", modo: "REAL", moedasPagas: 101.2,
+  it("acertou: +lucro; errou: −valor da flecha; empate: moedas devolvidas (R$ 1 = 1 moeda)", () => {
+    const ganhou = textoResultadoEstudo({ status: "FECHADA", modo: "REAL", valor: 10, moedasPagas: 10.12,
       resultadoBinarioBrl: 10, resultadoLiquidoBrl: 0.12 });
-    expect(ganhou.texto).toBe("+1,2 moedas");                              // R$ 0,12 × 10
+    expect(ganhou.texto).toBe("+0,12 moedas");                             // valor + lucro de R$ 0,12
     expect(sem(ganhou.detalhe)).toBe("acertou · operação real +R$ 0,12");
     expect(ganhou.cor).toBe("ganho");
 
-    const perdeu = textoResultadoEstudo({ status: "FECHADA", modo: "SIMULADO", moedasPagas: 99.96,
+    const perdeu = textoResultadoEstudo({ status: "FECHADA", modo: "SIMULADO", valor: 20, moedasPagas: 0,
       resultadoBinarioBrl: -10, resultadoLiquidoBrl: -0.0042 });
-    expect(perdeu.texto).toBe("−0,04 moedas");
+    expect(perdeu.texto).toBe("−20 moedas");                               // perde o valor da flecha
     expect(sem(perdeu.detalhe)).toBe("errou · simulação −R$ 0,0042");     // centavos de centavo aparecem
     expect(perdeu.cor).toBe("perda");
 
-    const empate = textoResultadoEstudo({ status: "FECHADA", modo: "REAL", moedasPagas: 100,
+    const empate = textoResultadoEstudo({ status: "FECHADA", modo: "REAL", valor: 30, moedasPagas: 30,
       resultadoBinarioBrl: 0, resultadoLiquidoBrl: 0 });
-    expect(empate.texto).toBe("0 moedas");
+    expect(empate.texto).toBe("Empate · moedas devolvidas");
     expect(empate.detalhe.startsWith("empatou")).toBe(true);
     expect(empate.cor).toBe("neutro");
   });
 
-  it("aposta que não aconteceu volta e explica o motivo; sem liquidação ainda não há texto", () => {
-    expect(textoResultadoEstudo({ status: "RECUSADA", moedasPagas: 100, motivo: "Perda maxima do dia atingida" }))
-      .toEqual({ texto: "Aposta devolvida", detalhe: "Perda maxima do dia atingida", cor: "neutro" });
-    expect(textoResultadoEstudo({ status: "FALHOU", moedasPagas: 100 }).detalhe).toBe("operação não aconteceu");
+  it("sem o valor na operação, usa o valor do lote da flecha informado por quem chamou", () => {
+    const op = { status: "FECHADA", modo: "REAL", moedasPagas: 0, resultadoBinarioBrl: -1, resultadoLiquidoBrl: 0 };
+    expect(textoResultadoEstudo(op, 12.5).texto).toBe("−12,5 moedas");
+    expect(textoResultadoEstudo({ ...op, moedasPagas: 31, resultadoBinarioBrl: 1 }, 30).texto).toBe("+1 moedas");
+    // sem o resultado binário, o lado vem do que o servidor pagou
+    const semBinario = { status: "FECHADA", modo: "REAL", moedasPagas: 20 };
+    expect(textoResultadoEstudo(semBinario, 20).texto).toBe("Empate · moedas devolvidas");
+    expect(textoResultadoEstudo(semBinario, 30).cor).toBe("perda");
+  });
+
+  it("operação que não aconteceu devolve as moedas e explica o motivo; sem liquidação ainda não há texto", () => {
+    expect(textoResultadoEstudo({ status: "RECUSADA", valor: 10, moedasPagas: 10, motivo: "Perda maxima do dia atingida" }))
+      .toEqual({ texto: "Moedas devolvidas", detalhe: "Perda maxima do dia atingida", cor: "neutro" });
+    expect(textoResultadoEstudo({ status: "FALHOU", moedasPagas: 10 }).detalhe).toBe("operação não aconteceu");
     expect(textoResultadoEstudo({ status: "ABERTA", moedasPagas: null })).toBeNull();
     expect(textoResultadoEstudo({ status: "FECHADA" })).toBeNull();          // fechou, mas ainda não pagou
     expect(textoResultadoEstudo(null)).toBeNull();
-    // apostas antigas (200 / 0) e a soma da partida
-    expect(lucroDaAposta({ moedasPagas: 200 })).toBe(100);
-    expect(lucroDaAposta({ moedasPagas: 99.4 })).toBe(-0.6);
+    // lucro = o que o servidor pagou − o valor da flecha (da operação, de quem chamou ou o padrão 10)
+    expect(lucroDaAposta({ moedasPagas: 20.3, valor: 20 })).toBe(0.3);
+    expect(lucroDaAposta({ moedasPagas: 0 }, 30)).toBe(-30);
+    expect(lucroDaAposta({ moedasPagas: 9.4 })).toBe(-0.6);
     expect(lucroDaAposta({ moedasPagas: null })).toBe(0);
     expect(moedasComSinal(-0.6)).toBe("−0,6");
     expect(moedasComSinal(0)).toBe("0");
@@ -355,8 +367,6 @@ describe("estudo da sabedoria das massas", () => {
 });
 
 describe("modo sobe ou desce (binário)", () => {
-  const sem = (t) => t.replace(/\s/g, " ");
-
   it("acima da linha de agora é sobe, abaixo é desce; a flecha vai para o meio da faixa", () => {
     const sobe = alvoBinario(FLECHA_BTC.nivel - 1);
     expect(sobe).toEqual({ x: FLECHA_BTC.xAlvo, y: (BTC_ALTURA.min + FLECHA_BTC.nivel) / 2, binaria: "ALTA" });
@@ -376,9 +386,12 @@ describe("modo sobe ou desce (binário)", () => {
     expect(acertaBinario("ALTA", { y: 0 })).toBe(false);                     // só pássaro bitcoin
   });
 
-  it("a aposta custa 100 moedas e paga o dobro no acerto", () => {
-    expect(APOSTA_MERCADO).toBe(100);
-    for (const r of RANGES) expect(arrowCost(ARROW_BY_ID.btc, r)).toBe(100);   // o mesmo em todo campo
+  it("a flecha de mercado custa o valor escolhido, o mesmo em todo campo", () => {
+    expect(VALOR_FLECHA_PADRAO).toBe(10);
+    for (const r of RANGES) {
+      expect(arrowCost(ARROW_BY_ID.btc, r)).toBe(10);
+      expect(arrowCost(ARROW_BY_ID.btc, r, { btc: 20 })).toBe(20);
+    }
   });
 
 });
@@ -391,7 +404,7 @@ describe("ativos de mercado: bitcoin, ethereum e ouro", () => {
     for (const a of LISTA_ATIVOS) {
       expect(ATIVO_POR_SIMBOLO[a.simbolo]).toBe(a);
       expect(BIRD_TYPES[a.id]).toMatchObject({ coins: 0, mercado: a.id });
-      expect(ARROW_BY_ID[a.id]).toMatchObject({ precoFixo: 100, mercado: a.id });
+      expect(ARROW_BY_ID[a.id]).toMatchObject({ precoFixo: null, mercado: a.id });
       for (const r of RANGES) expect(r.pool[a.id]).toBeUndefined();   // fora do sorteio dos campos
     }
     expect(ARROW_BY_ID.ouro.name).toBe("Ouro PAXG");                    // não confunde com a flecha de ouro
@@ -428,11 +441,11 @@ describe("ativos de mercado: bitcoin, ethereum e ouro", () => {
   });
 
   it("o resultado diz de qual ativo era a aposta", () => {
-    const op = { status: "FECHADA", modo: "SIMULADO", simbolo: "PAXGUSDT", moedasPagas: 200,
+    const op = { status: "FECHADA", modo: "SIMULADO", simbolo: "PAXGUSDT", valor: 10, moedasPagas: 9.94,
       resultadoBinarioBrl: 10, resultadoLiquidoBrl: -0.06 };
     expect(sem(textoResultadoEstudo(op).detalhe)).toBe("Ouro · acertou · simulação −R$ 0,06");
-    expect(textoResultadoEstudo({ status: "RECUSADA", simbolo: "ETHUSDT", moedasPagas: 100, motivo: "x" }).detalhe)
-      .toBe("Ethereum · x");
+    expect(textoResultadoEstudo({ status: "RECUSADA", simbolo: "ETHUSDT", moedasPagas: 10, motivo: "x" }).detalhe)
+      .toBe("x · Ethereum");
   });
 
 });

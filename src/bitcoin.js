@@ -3,7 +3,7 @@
 // sobe; quando cai, desce. Reserva: sem mensagens da Binance, consulta a cotação do market-data-service
 // (GET /api/cotacoes/{simbolo}); sem nenhuma das duas, o preço vira um passeio aleatório marcado como
 // "simulado", para o jogo não parar.
-import { APOSTA_MERCADO, clamp } from './regras.js';
+import { VALOR_FLECHA_PADRAO, clamp } from './regras.js';
 
 /**
  * Ativos com pássaro e flecha próprios. `casas`: casas decimais do preço na tela. `nasceACada`: segundos entre um
@@ -316,30 +316,42 @@ const fmtMoedasAposta = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 
 /** Moedas com sinal e centavos: "+0,3", "−0,6", "0". */
 export const moedasComSinal = v => `${v > 0 ? '+' : v < 0 ? '−' : ''}${fmtMoedasAposta.format(Math.abs(Number(v) || 0))}`;
 
+/** Valor (em moedas) da flecha de mercado da operação: o que veio do servidor, o informado ou o padrão. */
+const valorDaFlecha = (op, valor) => Number(op?.valor ?? valor ?? VALOR_FLECHA_PADRAO) || 0;
+
 /**
- * Quanto a aposta liquidada rendeu em moedas: o que o servidor pagou menos as 100 apostadas (0 enquanto não pagou).
- * O servidor paga 100 + 10 × o resultado da operação em reais (R$ 1 = 10 moedas); se a operação não aconteceu, 100.
+ * Quanto a flecha de mercado liquidada rendeu em moedas: o que o servidor pagou menos o valor da flecha (0 enquanto
+ * não pagou). R$ 1 = 1 moeda: previsão certa paga valor + lucro da operação; errada, 0; empate ou operação que não
+ * aconteceu, o valor de volta.
  */
-export function lucroDaAposta(op) {
+export function lucroDaAposta(op, valor) {
   if (!op || op.moedasPagas === null || op.moedasPagas === undefined) return 0;
-  return Math.round((Number(op.moedasPagas) - APOSTA_MERCADO) * 100) / 100;
+  return Math.round((Number(op.moedasPagas) - valorDaFlecha(op, valor)) * 100) / 100;
 }
 
 /**
- * Texto curto para o jogador sobre a aposta da flecha de mercado, ou null enquanto o servidor não liquidou.
- * `cor`: 'ganho' | 'perda' | 'neutro'.
+ * Texto curto para o jogador sobre a flecha de mercado, ou null enquanto o servidor não liquidou. `valor` = valor da
+ * flecha (se a operação não trouxer). `cor`: 'ganho' | 'perda' | 'neutro'.
+ * Acertou: "+X moedas" (o lucro); errou: "−X moedas" (o valor da flecha); empate: "Empate · moedas devolvidas";
+ * recusada ou com falha: "Moedas devolvidas" com o motivo.
  */
-export function textoResultadoEstudo(op) {
+export function textoResultadoEstudo(op, valor) {
   if (!op || op.moedasPagas === null || op.moedasPagas === undefined) return null;
-  const lucro = lucroDaAposta(op);
+  const lucro = lucroDaAposta(op, valor);
   const nome = ATIVO_POR_SIMBOLO[op.simbolo]?.nome;
   const ativo = nome ? `${nome} · ` : '';
-  const cor = lucro > 0 ? 'ganho' : lucro < 0 ? 'perda' : 'neutro';
   if (op.status !== 'FECHADA') {
-    return { texto: 'Aposta devolvida', detalhe: `${ativo}${op.motivo || 'operação não aconteceu'}`, cor };
+    return {
+      texto: 'Moedas devolvidas',
+      detalhe: `${op.motivo || 'operação não aconteceu'}${nome ? ` · ${nome}` : ''}`,
+      cor: 'neutro',
+    };
   }
-  const texto = `${moedasComSinal(lucro)} moedas`;
-  const binario = Number(op.resultadoBinarioBrl) || 0;
+  // lado da previsão: pelo resultado binário da operação; sem ele, pelo que o servidor pagou
+  const temBinario = op.resultadoBinarioBrl !== null && op.resultadoBinarioBrl !== undefined;
+  const binario = temBinario ? Number(op.resultadoBinarioBrl) || 0 : lucro;
+  const cor = binario > 0 ? 'ganho' : binario < 0 ? 'perda' : 'neutro';
+  const texto = binario === 0 ? 'Empate · moedas devolvidas' : `${moedasComSinal(lucro)} moedas`;
   const tipo = op.modo === 'REAL' ? 'operação real' : 'simulação';
   const percentual = Number(op.resultadoPercentual);
   const pct = Number.isFinite(percentual) ? ` · ${percentual >= 0 ? '+' : ''}${percentual.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%` : '';
@@ -351,7 +363,7 @@ export function textoResultadoEstudo(op) {
 }
 
 // ---------------------------------------------------------------------------
-// Acertos do jogador nas apostas de mercado
+// Acertos do jogador nas flechas de mercado
 // ---------------------------------------------------------------------------
 /** Placar de uma partida por ativo: { btc: { acertos, erros, empates }, eth: ..., ouro: ... }. */
 export const placarVazio = () => Object.fromEntries(LISTA_ATIVOS.map(a => [a.id, { acertos: 0, erros: 0, empates: 0 }]));

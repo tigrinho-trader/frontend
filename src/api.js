@@ -42,7 +42,8 @@ export function configurarApi(opcoes) {
   config = opcoes ? { ...config, ...opcoes } : configuracaoInicial();
 }
 
-const ROTAS_ADMIN = /^\/usuarios(?!\/me(?:$|\?))/;
+// /usuarios/me e /usuarios/me/preferencias são do próprio jogador; o resto de /usuarios é da administração
+const ROTAS_ADMIN = /^\/usuarios(?!\/me(?:$|[?/]))/;
 
 /** 403 que significa conta bloqueada/excluída (e não "você não é admin"). */
 export function ehContaBloqueada(erro, caminho = '') {
@@ -130,6 +131,9 @@ function consulta(parametros) {
 export const meuPerfil = () => requisitar('GET', '/usuarios/me');
 export const atualizarApelido = apelido => requisitar('PATCH', '/usuarios/me', { corpo: { apelido } });
 export const excluirConta = () => requisitar('DELETE', '/usuarios/me');
+/** Preferências do jogador (tela Arsenal): valor padrão da flecha de mercado. Devolve o perfil inteiro. */
+export const atualizarPreferencias = preferencias =>
+  requisitar('PATCH', '/usuarios/me/preferencias', { corpo: preferencias });
 
 export const listarUsuarios = ({ busca, status, papel, pagina = 0, tamanho = 20 } = {}) =>
   requisitar('GET', '/usuarios' + consulta({ busca: busca?.trim(), status, papel, pagina, tamanho }));
@@ -146,7 +150,8 @@ export const extrato = () => requisitar('GET', '/carteira/extrato');
 export const sacarMoedas = moedas => requisitar('POST', '/carteira/saques', { corpo: { valor: moedas } });
 /** Compra de moedas. Hoje é o pagamento de teste (sandbox) da carteira; depois, Pix. */
 export const comprarMoedas = valor => requisitar('POST', '/carteira/depositos', { corpo: { valor } });
-export const resgatarCupom = codigo => requisitar('POST', '/carteira/cupons/resgatar', { corpo: { codigo } });
+/** Resgata um cupom: 200 { moedas, saldo }; 422 cupom inválido; 409 cupom já usado nesta conta. */
+export const resgatarCupom = codigo => requisitar('POST', '/carteira/cupons', { corpo: { codigo } });
 /** Compra por Pix (AbacatePay): configuração da loja, nova cobrança, status e simulação (só em modo de teste). */
 export const configCompras = () => requisitar('GET', '/carteira/compras/config');
 export const iniciarCompraPix = moedas => requisitar('POST', '/carteira/compras', { corpo: { moedas } });
@@ -202,11 +207,15 @@ export const operacaoEstudo = idOperacao => requisitar('GET', `/jogos/flecha/est
 export const regrasFlecha = () => requisitar('GET', '/jogos/flecha/regras', { publico: true });
 /** Sessão ABERTA do usuário, ou null (204). */
 export const sessaoAtual = () => requisitar('GET', '/jogos/flecha/sessoes/atual');
-export const abrirSessao = (campo, flechas, valorFlecha) => requisitar('POST', '/jogos/flecha/sessoes', {
-  corpo: { campo, flechas, valorFlecha },
+/** Abre a sessão: `flechas` = comuns ({ wood: n }); `mercado` = lotes [{ flecha, valor, quantidade }]. */
+export const abrirSessao = (campo, flechas, mercado = []) => requisitar('POST', '/jogos/flecha/sessoes', {
+  corpo: { campo, flechas, mercado },
 });
 export const registrarTiro = (sessaoId, flecha, acertos) =>
   requisitar('POST', `/jogos/flecha/sessoes/${id(sessaoId)}/tiros`, { corpo: { flecha, acertos } });
-export const comprarFlechas = (sessaoId, flecha, quantidade) =>
-  requisitar('POST', `/jogos/flecha/sessoes/${id(sessaoId)}/flechas`, { corpo: { flecha, quantidade } });
+/** Compra flechas durante a rodada; `valor` só nas de mercado (o valor de cada flecha do lote). */
+export const comprarFlechas = (sessaoId, flecha, quantidade, valor) =>
+  requisitar('POST', `/jogos/flecha/sessoes/${id(sessaoId)}/flechas`, {
+    corpo: valor === undefined || valor === null ? { flecha, quantidade } : { flecha, quantidade, valor },
+  });
 export const encerrarSessao = sessaoId => requisitar('POST', `/jogos/flecha/sessoes/${id(sessaoId)}/encerrar`);

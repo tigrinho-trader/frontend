@@ -14,7 +14,7 @@
     <canvas id="game"></canvas>
 
     <div id="hud-buttons">
-      <button id="btn-comprar-flechas" class="icon-btn" title="Comprar mais flechas">+</button>
+      <button id="btn-comprar-flechas" class="icon-btn largo" title="Comprar mais flechas sem sair do campo (F)">+ Flechas</button>
       <button id="btn-pause" class="icon-btn" title="Pausar (P)">⏸</button>
       <button id="btn-mute" class="icon-btn" title="Som (M)">🔊</button>
       <button id="btn-passaros" class="icon-btn" title="Esconder os pássaros comuns (B)">🐦</button>
@@ -33,6 +33,7 @@
             <button type="button" class="pilula pilula-moedas" id="btn-saldo" title="Ver saldo e flechas guardadas">
               <span class="coin"></span><b id="menu-wallet">0</b><small>saldo</small>
             </button>
+            <button type="button" class="pilula" id="btn-arsenal" title="Arsenal: o valor padrão das flechas de mercado">➶ Arsenal</button>
             <button type="button" class="pilula ouro" id="btn-comprar">+ Comprar moedas</button>
             <button type="button" class="pilula" id="btn-sacar" title="Sacar bônus em BTC">Sacar BTC</button>
             <button type="button" class="botao-redondo" id="btn-admin" hidden title="Administração" aria-label="Administração">⚙</button>
@@ -41,15 +42,16 @@
         </header>
         <div class="lobby-titulo">
           <h1>Flecha Certeira</h1>
-          <p>Treine a mira com flechas grátis<br>e aposte se o bitcoin, o ethereum e o ouro sobem ou descem.</p>
+          <p>Treine a mira com flechas grátis<br>e preveja se o bitcoin, o ethereum e o ouro sobem ou descem.</p>
         </div>
         <aside class="lobby-como" aria-label="Como jogar">
           <h2>Como jogar</h2>
           <ul>
             <li>A flecha de <b>madeira</b> é grátis: treine a mira à vontade.</li>
             <li><b>Arraste para trás e solte</b>; mire onde o pássaro <b>vai estar</b>.</li>
-            <li>Flechas de <b>bitcoin, ethereum e ouro</b> (<b>100 moedas</b>): preveja se o preço sobe ou desce em 5 s. Voltam 100 mais o resultado da operação (R$ 1 = 10 moedas).</li>
-            <li>Campos mais caros têm <b>mais criptomoedas</b>.</li>
+            <li>Flechas de <b>mercado</b> (bitcoin, ethereum, ouro e Volatilidade 100): você escolhe o <b>valor da flecha</b> (Nível 1 = 10, Nível 2 = 20, Nível 3 = 30 moedas ou outro valor) e prevê se o preço sobe ou desce em 5 s.</li>
+            <li>Previsão certa: volta o valor da flecha <b>mais o lucro</b> da operação. Errada: perde o valor. Empate: o valor volta.</li>
+            <li>Flechas de mercado que sobrarem voltam em moedas ao sair do campo, com uma pequena taxa. R$ 1 = 1 moeda.</li>
           </ul>
         </aside>
         <button type="button" class="btn-jogar" id="btn-play">Jogar <span aria-hidden="true">▶</span></button>
@@ -57,11 +59,11 @@
 
       <div class="card">
         <h1>Flecha Certeira</h1>
-        <p class="sub">Treine a mira de graça e aposte se as criptomoedas sobem ou descem!</p>
+        <p class="sub">Treine a mira de graça e preveja se as criptomoedas sobem ou descem!</p>
         <ul class="howto">
-          <li>A flecha de <b>madeira</b> é grátis: treine a mira à vontade. Flechas que sobram ficam <b>guardadas</b>.</li>
+          <li>A flecha de <b>madeira</b> é grátis: treine a mira à vontade.</li>
           <li><b>Arraste para trás e solte</b> e mire onde o pássaro <b>VAI estar</b>.</li>
-          <li>Flechas de <b>bitcoin, ethereum e ouro</b> (<b>100 moedas</b>): preveja se o preço sobe ou desce em 5 s. Voltam 100 mais o resultado da operação (R$ 1 = 10 moedas).</li>
+          <li>Flechas de <b>mercado</b>: você escolhe o <b>valor da flecha</b> e prevê se o preço sobe ou desce em 5 s. Certa: volta o valor mais o lucro da operação; errada: perde o valor. R$ 1 = 1 moeda.</li>
         </ul>
         <p class="aviso-menu" id="menu-aviso" hidden></p>
 
@@ -113,7 +115,7 @@
           </table>
         </div>
         <p class="nota-acertos">Saldo: quanto as suas apostas ganharam menos quanto perderam, já descontadas as taxas da
-          corretora (~0,1% para abrir e para fechar). Cada R$ 1 vale 10 moedas.</p>
+          corretora (~0,1% para abrir e para fechar). Cada R$ 1 vale 1 moeda.</p>
 
         <h3 class="secao">Últimas movimentações</h3>
         <div class="tabela-rolagem curta">
@@ -146,7 +148,7 @@
       <div class="card conta">
         <h2>Seu saldo</h2>
         <p class="saldo-grande"><span class="coin"></span><b id="saldo-moedas">0</b> moedas</p>
-        <p class="sub" id="saldo-referencia">Valor de referência: R$ 0,00 (10 moedas = R$ 1)</p>
+        <p class="sub" id="saldo-referencia">Valor de referência: R$ 0,00 (1 moeda = R$ 1)</p>
 
         <h3 class="secao">Flechas guardadas</h3>
         <div id="saldo-aljava"><p class="vazio">Carregando…</p></div>
@@ -180,13 +182,40 @@
             </div>
             <button type="button" class="mini saque-tudo" id="btn-saque-tudo">Usar saldo máximo</button>
           </div>
-          <p class="note" id="saque-dica">Conversão: 10 moedas = R$ 1. A cotação BTC/BRL é consultada no momento do saque.</p>
+          <p class="note" id="saque-dica">Conversão: 1 moeda = R$ 1. A cotação BTC/BRL é consultada no momento do saque.</p>
           <p class="msg" id="saque-msg" aria-live="polite"></p>
           <div class="saldo-botoes">
             <button class="btn ouro small" type="submit" id="btn-saque-confirmar">Solicitar saque</button>
             <button class="btn secondary" type="button" id="btn-saque-cancelar">Voltar</button>
           </div>
         </form>
+      </div>
+    </div>
+
+    <!-- Arsenal: valor padrão das flechas de mercado (preferência do perfil) -->
+    <div class="overlay" id="arsenal">
+      <div class="card conta arsenal">
+        <h2>Arsenal</h2>
+        <p class="sub">O valor padrão das suas flechas de mercado. Ele já vem escolhido na loja de cada campo.</p>
+        <div class="arsenal-palco" id="arsenal-palco" data-visual="1">
+          <img class="arsenal-flecha" id="arsenal-flecha" alt="Flecha de mercado">
+          <span class="arsenal-up" aria-hidden="true">UP!</span>
+          <span class="arsenal-faiscas" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+        </div>
+        <p class="arsenal-nivel" id="arsenal-nivel">Nível 1 · 10 moedas</p>
+        <p class="arsenal-estrelas" id="arsenal-estrelas" role="img" aria-label="Nível 1 de 3"></p>
+        <div class="arsenal-botoes">
+          <button type="button" class="btn small secondary" id="btn-arsenal-rebaixar">▼ Rebaixar</button>
+          <button type="button" class="btn small ouro" id="btn-arsenal-upgrade">▲ Upgrade</button>
+        </div>
+        <form class="linha-form arsenal-personalizado" id="form-arsenal" novalidate>
+          <label for="arsenal-valor">Valor personalizado</label>
+          <input type="text" id="arsenal-valor" inputmode="decimal" maxlength="10" autocomplete="off" placeholder="ex.: 15 ou 12,50">
+          <button type="submit" class="btn small" id="btn-arsenal-salvar">Usar este valor</button>
+        </form>
+        <p class="msg" id="arsenal-msg" role="status"></p>
+        <p class="note">Vale para todas as flechas de mercado (bitcoin, ethereum, ouro e Volatilidade 100). Na loja você ainda pode trocar o valor antes de comprar.</p>
+        <button class="btn secondary" id="btn-arsenal-voltar">Voltar</button>
       </div>
     </div>
 
@@ -205,13 +234,14 @@
           <span class="valor-moedas" id="creditos-valor-moedas"></span>
           <p class="valor-dica" id="creditos-valor-dica"></p>
         </div>
-        <div class="cupom-creditos">
+        <form class="cupom-creditos" id="form-cupom" novalidate>
           <label for="creditos-cupom">Tem um cupom?</label>
           <div class="linha-form">
-            <input type="text" id="creditos-cupom" maxlength="40" placeholder="Digite o código" autocomplete="off">
-            <button type="button" class="btn small" id="btn-creditos-cupom">Resgatar</button>
+            <input type="text" id="creditos-cupom" maxlength="40" placeholder="Digite o código" autocomplete="off" spellcheck="false">
+            <button type="submit" class="btn small" id="btn-creditos-cupom">Resgatar</button>
           </div>
-        </div>
+          <p class="msg" id="cupom-msg" role="status"></p>
+        </form>
         <p class="aviso-config" id="creditos-indisponivel" hidden>A compra de moedas está desligada no momento.</p>
         <div class="creditos-confirmar" id="creditos-confirmar" hidden>
           <p class="creditos-resumo">Você vai receber <span class="coin"></span><b id="creditos-qtd">0</b> moedas<span id="creditos-preco"></span>.</p>
@@ -300,19 +330,7 @@
     <div class="overlay" id="buy">
       <div class="card shop">
         <h2 id="buy-title">Campo</h2>
-        <div class="arrow-levels">
-          <label for="arrow-level">Nível das flechas de mercado</label>
-          <select id="arrow-level">
-            <option value="10">Nível 1 — 10 moedas</option>
-            <option value="20">Nível 2 — 20 moedas</option>
-            <option value="30">Nível 3 — 30 moedas</option>
-          </select>
-          <label for="arrow-custom">Valor personalizado</label>
-          <input id="arrow-custom" type="number" min="1" max="10000" step="1" value="10">
-          <button type="button" class="btn small" id="btn-arrow-custom">Usar valor personalizado</button>
-          <button type="button" class="btn small secondary" id="btn-arrow-default">Salvar como padrão</button>
-        </div>
-        <p class="sub">Monte sua aljava: a madeira é grátis para treinar; escolha o nível e o valor das flechas de mercado.</p>
+        <p class="sub">Monte sua aljava: a madeira é grátis para treinar. Nas flechas de mercado, escolha o valor de cada flecha: Nível 1, 2, 3 ou Personalizado.</p>
         <div class="arrow-shop" id="arrow-shop"></div>
         <p class="buy-summary">
           Entrada <b id="buy-fee">0</b> + <span id="buy-arrows-label">flechas</span> <b id="buy-arrows">0</b> =
@@ -329,15 +347,16 @@
       </div>
     </div>
 
-    <!-- Acabaram as flechas: comprar mais ou encerrar -->
+    <!-- Comprar mais flechas sem sair do campo (o jogo fica parado); abre sozinha quando as flechas acabam -->
     <div class="overlay" id="refill">
       <div class="card shop">
-        <h2>Acabaram as flechas!</h2>
-        <p class="sub">Até agora: entrada <b id="ref-spent">0</b>, apostas <b id="ref-earned">0</b> → <b id="ref-net">0</b></p>
-        <p class="sub">Disponível para comprar: <span class="coin"></span><b id="ref-wallet">0</b> · comprar mais flechas?</p>
+        <h2 id="refill-titulo">Acabaram as flechas!</h2>
+        <p class="sub">Até agora: entrada <b id="ref-spent">0</b>, mercado <b id="ref-earned">0</b> → <b id="ref-net">0</b></p>
+        <p class="sub">Disponível para comprar: <span class="coin"></span><b id="ref-wallet">0</b> · escolha o valor e a quantidade</p>
         <p class="note dica">As moedas ganhas entram na carteira quando a rodada termina.</p>
-        <div class="refill-options" id="refill-options"></div>
+        <div class="arrow-shop refill-options" id="refill-options"></div>
         <p class="msg erro" id="refill-erro"></p>
+        <button class="btn" id="btn-refill-voltar" hidden>Voltar ao jogo</button>
         <button class="btn secondary" id="btn-refill-end">Encerrar rodada</button>
       </div>
     </div>
@@ -348,7 +367,7 @@
         <h2>Pausado</h2>
         <button class="btn" id="btn-resume">Continuar</button>
         <button class="btn secondary" id="btn-quit">Sair do campo</button>
-        <p class="note">Se sair agora, as flechas que sobraram são perdidas (não há reembolso).</p>
+        <p class="note" id="pausa-nota">Se sair agora, as flechas de mercado que sobraram voltam em moedas para a carteira, com uma pequena taxa.</p>
       </div>
     </div>
 
@@ -360,10 +379,11 @@
         <table class="stats">
           <tr><td>Campo</td><td id="res-range">-</td></tr>
           <tr><td>Entrada</td><td id="res-fee" class="neg">-0</td></tr>
-          <tr><td>Flechas de aposta</td><td id="res-arrows">0</td></tr>
+          <tr><td>Flechas de mercado</td><td id="res-arrows">0</td></tr>
+          <tr id="res-devolucao-linha" hidden><td colspan="2" id="res-devolucao" class="devolucao"></td></tr>
           <tr><td>Pássaros acertados</td><td id="res-hits">0</td></tr>
-          <tr id="res-mercado-linha" hidden><td>Apostas de mercado</td><td id="res-mercado">—</td></tr>
-          <tr id="res-reais-linha" hidden><td>Saldo das apostas</td><td id="res-reais">—</td></tr>
+          <tr id="res-mercado-linha" hidden><td>Previsões de mercado</td><td id="res-mercado">—</td></tr>
+          <tr id="res-reais-linha" hidden><td>Saldo do mercado</td><td id="res-reais">—</td></tr>
           <tr class="total"><td>Saldo atual</td><td><span class="coin"></span><span id="res-wallet">0</span></td></tr>
         </table>
         <p class="note" id="res-aviso"></p>

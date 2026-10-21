@@ -112,6 +112,20 @@ describe("rotas", () => {
     expect(ultimaChamada()).toMatchObject({ url: "/api/usuarios/me", method: "DELETE" });
   });
 
+  it("cupom e preferências do Arsenal", async () => {
+    await api.resgatarCupom("BEMVINDO30");
+    expect(ultimaChamada()).toMatchObject({ url: "/api/carteira/cupons", method: "POST", corpo: { codigo: "BEMVINDO30" } });
+    await api.atualizarPreferencias({ valorFlechaPadrao: 20 });
+    expect(ultimaChamada()).toMatchObject({
+      url: "/api/usuarios/me/preferencias", method: "PATCH", corpo: { valorFlechaPadrao: 20 },
+    });
+  });
+
+  it("403 nas preferências do próprio perfil é conta bloqueada (não é rota de administração)", () => {
+    expect(ehContaBloqueada(new ErroApi(403, "Acesso negado"), "/usuarios/me/preferencias")).toBe(true);
+    expect(ehContaBloqueada(new ErroApi(403, "Acesso negado"), "/usuarios/auth0%7C1/papel")).toBe(false);
+  });
+
   it("compra de moedas vira um depósito na carteira", async () => {
     await api.comprarMoedas(500);
     expect(ultimaChamada()).toMatchObject({ url: "/api/carteira/depositos", method: "POST", corpo: { valor: 500 } });
@@ -131,17 +145,23 @@ describe("rotas", () => {
 
   it("sessões do Flecha Certeira", async () => {
     const id = "6f1c2a3b-0000-4000-8000-000000000001";
-    await api.abrirSessao("bosque", { wood: 10, btc: 1 });
+    await api.abrirSessao("bosque", { wood: 10 }, [{ flecha: "btc", valor: 20, quantidade: 3 }]);
     expect(ultimaChamada()).toMatchObject({ url: "/api/jogos/flecha/sessoes", method: "POST" });
-    expect(ultimaChamada().corpo).toEqual({ campo: "bosque", flechas: { wood: 10, btc: 1 } });
+    expect(ultimaChamada().corpo).toEqual({
+      campo: "bosque", flechas: { wood: 10 }, mercado: [{ flecha: "btc", valor: 20, quantidade: 3 }],
+    });
+    await api.abrirSessao("vilarejo", { wood: 5 });
+    expect(ultimaChamada().corpo).toEqual({ campo: "vilarejo", flechas: { wood: 5 }, mercado: [] });
 
     await api.registrarTiro(id, "gold", ["red", "big"]);
     expect(ultimaChamada().url).toBe(`/api/jogos/flecha/sessoes/${id}/tiros`);
     expect(ultimaChamada().corpo).toEqual({ flecha: "gold", acertos: ["red", "big"] });
 
-    await api.comprarFlechas(id, "btc", 1);
+    await api.comprarFlechas(id, "btc", 1, 12.5);
     expect(ultimaChamada().url).toBe(`/api/jogos/flecha/sessoes/${id}/flechas`);
-    expect(ultimaChamada().corpo).toEqual({ flecha: "btc", quantidade: 1 });
+    expect(ultimaChamada().corpo).toEqual({ flecha: "btc", quantidade: 1, valor: 12.5 });
+    await api.comprarFlechas(id, "wood", 5);
+    expect(ultimaChamada().corpo).toEqual({ flecha: "wood", quantidade: 5 });
 
     await api.encerrarSessao(id);
     expect(ultimaChamada()).toMatchObject({ url: `/api/jogos/flecha/sessoes/${id}/encerrar`, method: "POST", body: undefined });
