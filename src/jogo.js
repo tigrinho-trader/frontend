@@ -1007,7 +1007,15 @@ function registrarNoEstudo(ar) {
       simbolo: ATIVOS[ar.alvo.ativo].simbolo,
       tipo: 'BINARIA',
       precoAgora: Math.round(ar.previsao.agora * 100) / 100,
-    }, () => { ar.reportado = true; }).catch(erro => {
+    }, op => {
+      ar.reportado = true;
+      const resultado = textoResultadoEstudo(op);
+      mostrarEstudo(resultado || {
+        texto: 'Aposta registrada',
+        detalhe: 'Aguardando o resultado da operação…',
+        cor: 'neutro',
+      });
+    }).catch(erro => {
       ar.reportado = true;      // a aposta não entrou: a flecha continua com o jogador no servidor
       reconciliar();
       return { erro };
@@ -1015,7 +1023,9 @@ function registrarNoEstudo(ar) {
   };
 }
 
-const ESPERA_RESULTADO_MS = 1000, TENTATIVAS_RESULTADO = 10;
+// A Deriv pode levar alguns segundos além dos 5 ticks para confirmar o contrato.
+// Não deixe a interface silenciosa enquanto o backend ainda está liquidando.
+const ESPERA_RESULTADO_MS = 1000, TENTATIVAS_RESULTADO = 30;
 
 /** Quando a flecha chega: espera o servidor liquidar a aposta e mostra quantas moedas ela rendeu. */
 async function acompanharEstudo(ar) {
@@ -1027,10 +1037,14 @@ async function acompanharEstudo(ar) {
     }
     return;
   }
+  let ultimoErro = null;
   for (let i = 0; i < TENTATIVAS_RESULTADO; i++) {
     const op = i === 0 && registro.moedasPagas !== null && registro.moedasPagas !== undefined
       ? registro
-      : await esperar(ESPERA_RESULTADO_MS).then(() => api.operacaoEstudo(registro.id)).catch(() => null);
+      : await esperar(ESPERA_RESULTADO_MS).then(() => api.operacaoEstudo(registro.id)).catch(erro => {
+        ultimoErro = erro;
+        return null;
+      });
     const resultado = textoResultadoEstudo(op);
     if (resultado) {
       contarNoPlacar(game.placarPartida, ar.alvo.ativo, op);
@@ -1043,6 +1057,13 @@ async function acompanharEstudo(ar) {
       return;
     }
   }
+  mostrarEstudo({
+    texto: 'Resultado pendente',
+    detalhe: ultimoErro
+      ? `Não foi possível consultar a operação: ${mensagemErro(ultimoErro)}`
+      : 'A operação foi registrada, mas ainda não foi liquidada. Consulte o histórico em instantes.',
+    cor: 'neutro',
+  });
 }
 
 const esperar = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -1050,6 +1071,8 @@ const COR_ESTUDO = { ganho: '#b9f6ca', perda: '#ff8a80', neutro: '#ffe0b2' };
 
 function mostrarEstudo(resultado) {
   game.estudo = resultado;
+  const tipoAviso = resultado.cor === 'perda' ? 'erro' : 'info';
+  avisar(`${resultado.texto} · ${resultado.detalhe}`, tipoAviso, resultado.cor === 'neutro' ? 9000 : 7000);
   if (game.state === 'playing') {
     addText(FLECHA_BTC.xAlvo - 150, FLECHA_BTC.nivel - 120, resultado.texto, COR_ESTUDO[resultado.cor], 26, false, 3.5);
   }
@@ -2403,6 +2426,9 @@ $('btn-change-range').addEventListener('click', () => setState('ranges'));
 $('btn-restart').addEventListener('click', () => setState('menu'));
 $('btn-resume').addEventListener('click', togglePause);
 $('btn-pause').addEventListener('click', togglePause);
+$('btn-comprar-flechas').addEventListener('click', () => {
+  if (game.state === 'playing' && !game.pending) openRefill();
+});
 $('btn-mute').addEventListener('click', toggleMute);
 $('btn-passaros').addEventListener('click', togglePassarosComuns);
 mostrarBotaoPassaros();

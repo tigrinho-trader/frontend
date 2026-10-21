@@ -1,7 +1,7 @@
 // Regras do Flecha Certeira: pássaros, campos de tiro, flechas e economia.
 // Tudo aqui é puro (sem DOM), para poder ser testado.
 
-export const START_COINS = 100;
+export const START_COINS = 1000;
 export const DEFAULT_ARROWS = 10;
 export const MAX_ARROWS = 40;        // máximo de flechas na aljava, somando todos os tipos
 export const REFILL_QTY = 5;         // flechas por compra quando a aljava esvazia
@@ -82,7 +82,7 @@ export const RANGE_BY_SLUG = Object.fromEntries(RANGES.map(r => [r.slug, r]));
  * Flechas de mercado (bitcoin, ethereum, ouro) custam sempre isto: R$ 10 do estudo (10 moedas = R$ 1). Quando a
  * operação fecha, o servidor devolve 100 + 10 × o resultado dela em reais (ou 100, se ela não aconteceu).
  */
-export const APOSTA_MERCADO = 100;
+export const APOSTA_MERCADO = 10;
 
 export const ARROW_TYPES = [
   {

@@ -14,6 +14,7 @@
     <canvas id="game"></canvas>
 
     <div id="hud-buttons">
+      <button id="btn-comprar-flechas" class="icon-btn" title="Comprar mais flechas">+</button>
       <button id="btn-pause" class="icon-btn" title="Pausar (P)">⏸</button>
       <button id="btn-mute" class="icon-btn" title="Som (M)">🔊</button>
       <button id="btn-passaros" class="icon-btn" title="Esconder os pássaros comuns (B)">🐦</button>
@@ -203,6 +204,13 @@
           </div>
           <span class="valor-moedas" id="creditos-valor-moedas"></span>
           <p class="valor-dica" id="creditos-valor-dica"></p>
+        </div>
+        <div class="cupom-creditos">
+          <label for="creditos-cupom">Tem um cupom?</label>
+          <div class="linha-form">
+            <input type="text" id="creditos-cupom" maxlength="40" placeholder="Digite o código" autocomplete="off">
+            <button type="button" class="btn small" id="btn-creditos-cupom">Resgatar</button>
+          </div>
         </div>
         <p class="aviso-config" id="creditos-indisponivel" hidden>A compra de moedas está desligada no momento.</p>
         <div class="creditos-confirmar" id="creditos-confirmar" hidden>

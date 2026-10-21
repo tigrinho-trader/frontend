@@ -235,7 +235,7 @@ export function htmlAcertos(dados) {
 // ---------------------------------------------------------------------------
 // Saldo: moedas, flechas guardadas e últimas movimentações
 // ---------------------------------------------------------------------------
-const MOEDAS_POR_REAL = 10;
+const MOEDAS_POR_REAL = 1;
 const reaisDeMoedas = m => (m / MOEDAS_POR_REAL).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
 /** Flechas guardadas: as de mercado servem em qualquer campo; as comuns, só no campo onde foram compradas. */
@@ -445,7 +445,10 @@ function desenharCreditos() {
   const erroValor = creditos.livre?.erro;
   $('creditos-valor-dica').textContent = erroValor || `Valores ${textoFaixa(limitesCreditos())}.`;
   $('creditos-valor-dica').classList.toggle('erro', !!erroValor);
-  $('creditos-valor-moedas').textContent = `R$ 1 = ${formatarMoedas(100 / creditos.centavosPorMoeda)} moedas`;
+  const moedasPorReal = 100 / creditos.centavosPorMoeda;
+  $('creditos-valor-moedas').textContent = `R$ 1 = ${formatarMoedas(moedasPorReal)} moeda${moedasPorReal === 1 ? '' : 's'}`;
+  $('creditos-cupom').disabled = creditos.comprando;
+  $('btn-creditos-cupom').disabled = creditos.comprando;
 
   const moedas = moedasEscolhidas();
   $('creditos-confirmar').hidden = !moedas || !!pix || indisponivel;
@@ -607,6 +610,25 @@ async function comprarPacote() {
       desenharCreditos();
       agendarConsulta();
     }
+  }
+}
+
+async function resgatarCupom() {
+  const campo = $('creditos-cupom');
+  const codigo = campo.value.trim();
+  if (!codigo || creditos.comprando) return;
+  creditos.comprando = true;
+  desenharCreditos();
+  try {
+    const resposta = await api.resgatarCupom(codigo);
+    campo.value = '';
+    await atualizarCarteira().catch(() => {});
+    msg('creditos-msg', `Cupom aceito! Seu novo saldo é ${formatarMoedas(resposta?.saldo)} moedas.`, 'ok');
+  } catch (erro) {
+    if (erro.status !== 401 && erro.status !== 403) msg('creditos-msg', mensagemErro(erro), 'erro');
+  } finally {
+    creditos.comprando = false;
+    if (estadoAtual() === 'creditos') desenharCreditos();
   }
 }
 
@@ -799,6 +821,7 @@ $('creditos-valor').addEventListener('keydown', e => {
   if (e.key === 'Enter') comprarPacote();
 });
 $('btn-creditos-pagar').addEventListener('click', comprarPacote);
+$('btn-creditos-cupom').addEventListener('click', resgatarCupom);
 $('btn-creditos-voltar').addEventListener('click', sairDosCreditos);
 $('btn-pix-copiar').addEventListener('click', copiarPix);
 $('btn-pix-verificar').addEventListener('click', () => verificarPix());
