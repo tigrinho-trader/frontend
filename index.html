@@ -300,6 +300,18 @@
     <div class="overlay" id="buy">
       <div class="card shop">
         <h2 id="buy-title">Campo</h2>
+        <div class="arrow-levels">
+          <label for="arrow-level">Nível das flechas de mercado</label>
+          <select id="arrow-level">
+            <option value="10">Nível 1 — 10 moedas</option>
+            <option value="20">Nível 2 — 20 moedas</option>
+            <option value="30">Nível 3 — 30 moedas</option>
+          </select>
+          <label for="arrow-custom">Valor personalizado</label>
+          <input id="arrow-custom" type="number" min="1" max="10000" step="1" value="10">
+          <button type="button" class="btn small" id="btn-arrow-custom">Usar valor personalizado</button>
+          <button type="button" class="btn small secondary" id="btn-arrow-default">Salvar como padrão</button>
+        </div>
         <p class="sub">Monte sua aljava: a madeira é grátis para treinar; as de cripto custam 100 e voltam 100 mais o resultado da operação.</p>
         <div class="arrow-shop" id="arrow-shop"></div>
         <p class="buy-summary">

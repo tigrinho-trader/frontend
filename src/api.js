@@ -202,7 +202,9 @@ export const operacaoEstudo = idOperacao => requisitar('GET', `/jogos/flecha/est
 export const regrasFlecha = () => requisitar('GET', '/jogos/flecha/regras', { publico: true });
 /** Sessão ABERTA do usuário, ou null (204). */
 export const sessaoAtual = () => requisitar('GET', '/jogos/flecha/sessoes/atual');
-export const abrirSessao = (campo, flechas) => requisitar('POST', '/jogos/flecha/sessoes', { corpo: { campo, flechas } });
+export const abrirSessao = (campo, flechas, valorFlecha) => requisitar('POST', '/jogos/flecha/sessoes', {
+  corpo: { campo, flechas, valorFlecha },
+});
 export const registrarTiro = (sessaoId, flecha, acertos) =>
   requisitar('POST', `/jogos/flecha/sessoes/${id(sessaoId)}/tiros`, { corpo: { flecha, acertos } });
 export const comprarFlechas = (sessaoId, flecha, quantidade) =>

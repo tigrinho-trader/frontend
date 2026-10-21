@@ -126,6 +126,7 @@ const game = {
   spent: 0,                 // entrada + flechas compradas na rodada atual
   bought: emptyQuiver(),    // flechas compradas na rodada, por tipo
   order: { ...emptyQuiver(), wood: DEFAULT_ARROWS },   // escolha na loja
+  arrowMarketPrice: APOSTA_MERCADO,
   birds: [],
   arrows: [],
   particles: [],
@@ -320,7 +321,9 @@ async function carregarGuardadas() {
 
 function openBuy(range) {
   if (!canEnter(range)) return;
-  game.range = range;
+  const salvo = Number(localStorage.getItem('flecha-valor-padrao'));
+  game.arrowMarketPrice = [10, 20, 30].includes(salvo) ? salvo : APOSTA_MERCADO;
+  game.range = { ...range, arrowMarketPrice: game.arrowMarketPrice };
   // Se o pedido anterior ficou caro demais, corta das flechas mais caras primeiro
   game.order = fitOrder(game.order, range, game.wallet, countArrows(guardadasNoCampo(range)));
   mostrarErroCompra(null);
@@ -374,6 +377,10 @@ function renderBuy() {
   const guard = guardadasNoCampo(r), nGuard = countArrows(guard);
   const left = game.wallet - total;
   $('buy-title').textContent = r.name;
+  if ($('arrow-level')) {
+    $('arrow-level').value = String(game.arrowMarketPrice);
+    $('arrow-custom').value = game.arrowMarketPrice;
+  }
 
   $('arrow-shop').innerHTML = tiposNoCampo(r).map(t => {
     const cost = arrowCost(t, r), n = order[t.id];
@@ -410,6 +417,15 @@ function renderBuy() {
 
 function updateOrder(typeId, delta) {
   game.order = changeOrder(game.order, game.range, game.wallet, typeId, delta, countArrows(guardadasNoCampo()));
+  renderBuy();
+}
+
+function definirValorFlecha(valor, salvar = false) {
+  const n = Number(valor);
+  if (!Number.isFinite(n) || n < 1 || n > 10000) return;
+  game.arrowMarketPrice = Math.round(n * 100) / 100;
+  game.range = { ...game.range, arrowMarketPrice: game.arrowMarketPrice };
+  if (salvar) localStorage.setItem('flecha-valor-padrao', String(game.arrowMarketPrice));
   renderBuy();
 }
 
@@ -450,7 +466,7 @@ async function enterRange() {
   mostrarErroCompra(null);
   renderBuy();
   try {
-    await ctl.abrir(range.slug, { ...order });
+    await ctl.abrir(range.slug, { ...order }, game.arrowMarketPrice);
   } catch (e) {
     if (!tratadoPeloApp(e)) mostrarErroCompra(e);
     return;
@@ -2409,6 +2425,12 @@ $('range-grid').addEventListener('click', e => {
 $('arrow-shop').addEventListener('click', e => {
   const btn = e.target.closest('button[data-type]');
   if (btn && !btn.disabled) updateOrder(btn.dataset.type, Number(btn.dataset.d));
+});
+if ($('arrow-level')) $('arrow-level').addEventListener('change', e => definirValorFlecha(e.target.value));
+if ($('btn-arrow-custom')) $('btn-arrow-custom').addEventListener('click', () => definirValorFlecha($('arrow-custom').value));
+if ($('btn-arrow-default')) $('btn-arrow-default').addEventListener('click', () => {
+  definirValorFlecha($('arrow-custom').value, true);
+  avisar('Valor padrão das flechas salvo neste dispositivo.', 'info');
 });
 $('btn-enter').addEventListener('click', enterRange);
 $('btn-buy-back').addEventListener('click', () => setState('ranges'));

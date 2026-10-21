@@ -72,8 +72,8 @@ export function criarControladorSessao({
 
   return {
     /** Abre a sessão no servidor (POST /sessoes). Lança o ErroApi em caso de 409/422. */
-    async abrir(campo, flechas) {
-      const nova = await api.abrirSessao(campo, flechas);
+    async abrir(campo, flechas, valorFlecha) {
+      const nova = await api.abrirSessao(campo, flechas, valorFlecha);
       ultimoTiro = null;
       aplicar(nova);
       return nova;
