@@ -393,8 +393,12 @@ describe("jogo com o servidor", () => {
     rotas["POST /jogos/flecha/sessoes"] = [201, sessao()];
     await iniciarApp();
     $("btn-play").click();
+    const cartoes = [...$("range-grid").querySelectorAll(".range")].map((c) => c.textContent.replace(/\s+/g, " "));
+    expect(cartoes.map((t) => t.match(/Entrada (\S+)/)[1])).toEqual(["0,5", "1,5", "4", "10"]);
     $("range-grid").querySelector('button[data-range="0"]').click();
     expect($("buy").classList.contains("show")).toBe(true);
+    expect($("buy-fee").textContent).toBe("0,5");
+    expect($("buy-total").textContent).toBe("0,5");
     $("btn-enter").click();
     await estabilizar();
     const post = chamadas.find((c) => c.chave === "POST /jogos/flecha/sessoes");
@@ -456,7 +460,8 @@ describe("jogo com o servidor", () => {
     expect($("result").classList.contains("show")).toBe(true);
     // sem apostas, o resultado da rodada é só a entrada do Vilarejo; a carteira segue o servidor
     expect($("res-title").textContent).toBe("Prejuízo...");
-    expect($("res-net").textContent).toBe("−5");
+    expect($("res-net").textContent).toBe("−0,5");
+    expect($("res-fee").textContent).toBe("−0,5");
     expect($("res-hits").textContent).toBe("3 com 4 flechas");
     expect($("res-arrows").textContent).toBe("0 compradas · 0 usadas");
     expect($("res-devolucao-linha").hidden).toBe(true);
@@ -840,7 +845,8 @@ describe("loja com o valor das flechas de mercado", () => {
     shop.querySelector('button[data-type="btc"][data-d="1"]').click();
     shop.querySelector('button[data-type="btc"][data-d="1"]').click();
     expect($("buy-arrows").textContent).toBe("40");
-    expect($("buy-total").textContent).toBe("55");                         // entrada 15 + 2 × 20
+    expect($("buy-fee").textContent).toBe("1,5");
+    expect($("buy-total").textContent).toBe("41,5");                       // entrada 1,5 + 2 × 20
 
     shop.querySelector('button[data-flecha="btc"][data-valor="30"]').click();
     expect(nivelSel("btc")).toBe("N3 · 30");
@@ -855,13 +861,14 @@ describe("loja com o valor das flechas de mercado", () => {
     expect($("btn-enter").disabled).toBe(true);
     campo().value = "5000";
     campo().dispatchEvent(new Event("input", { bubbles: true }));
-    expect(shop.querySelector(".valor-erro").textContent).toBe("Acima do seu saldo (985 moedas).");
+    expect(shop.querySelector(".valor-erro").textContent).toBe("Acima do seu saldo (998,5 moedas).");
     campo().value = "12,50";
     campo().dispatchEvent(new Event("input", { bubbles: true }));
     expect(shop.querySelector(".valor-erro")).toBeNull();
     expect(document.activeElement).toBe(campo());                            // continua digitando
     shop.querySelector('button[data-type="eth"][data-d="1"]').click();
     expect($("buy-arrows").textContent).toBe("72,5");
+    expect($("buy-total").textContent).toBe("74");                         // 1,5 + 60 + 12,5
     expect($("btn-enter").disabled).toBe(false);
 
     $("btn-enter").click();
@@ -987,6 +994,6 @@ describe("rodada com lotes de flechas de mercado", () => {
     expect($("res-arrows").textContent).toBe("2 compradas · 0 usadas");
     expect($("res-devolucao-linha").hidden).toBe(false);
     expect($("res-devolucao").textContent).toBe("Flechas devolvidas: 2 · +39,92 moedas (taxa 0,08)");
-    expect($("res-net").textContent).toBe("−15,08");                       // entrada do Bosque + taxa
+    expect($("res-net").textContent).toBe("−1,58");                        // entrada do Bosque (1,5) + taxa
   });
 });

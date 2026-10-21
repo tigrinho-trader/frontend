@@ -64,7 +64,7 @@ describe("campos de tiro", () => {
   });
 
   it("espelham entrada, flecha e multiplicador do contrato do servidor", () => {
-    expect(RANGES.map((r) => [r.fee, r.arrowPrice, r.mult])).toEqual([[5, 1, 2], [15, 3, 4], [40, 8, 10], [100, 20, 25]]);
+    expect(RANGES.map((r) => [r.fee, r.arrowPrice, r.mult])).toEqual([[0.5, 1, 2], [1.5, 3, 4], [4, 8, 10], [10, 20, 25]]);
   });
 
   it("campos mais caros têm mais criptomoedas", () => {
@@ -108,21 +108,32 @@ describe("loja", () => {
   });
 
   it("para entrar no campo basta pagar a entrada", () => {
-    expect(minCost(vilarejo)).toBe(5);
-    expect(canEnter(5, vilarejo)).toBe(true);
-    expect(canEnter(4, vilarejo)).toBe(false);
-    expect(isBroke(4)).toBe(true);
-    expect(isBroke(5)).toBe(false);
+    expect(minCost(vilarejo)).toBe(0.5);
+    expect(canEnter(0.5, vilarejo)).toBe(true);
+    expect(canEnter(0.49, vilarejo)).toBe(false);
+    expect(canEnter(0.7 - 0.2, vilarejo)).toBe(true);        // 0,49999999999999994: conta em centavos
+    expect(isBroke(0.49)).toBe(true);
+    expect(isBroke(0.5)).toBe(false);
+    expect(minCost(real)).toBe(10);
+  });
+
+  it("entrada com centavos soma certo com as flechas: 0,5 + 3 × 10 = 30,5", () => {
+    const tres = pedido({ btc: 3 });
+    expect(vilarejo.fee + orderCost(tres, vilarejo)).toBe(30.5);
+    expect(changeOrder(pedido({}), vilarejo, 30.5, "btc", 5).btc).toBe(3);
+    expect(changeOrder(pedido({}), vilarejo, 30.49, "btc", 5).btc).toBe(2);
+    expect(fitOrder(tres, vilarejo, 30.5)).toEqual(tres);
+    expect(fitOrder(pedido({ btc: 3 }), bosque, 0.1 + 0.2 + 31.2)).toEqual(pedido({ btc: 3 }));   // 1,5 + 30 = 31,5
   });
 
   it("adiciona flechas só até onde o saldo deixa", () => {
-    // saldo 24 no Bosque: entrada 15, sobra 9 → a de bitcoin (10) não cabe; madeira é grátis
-    expect(changeOrder(pedido({}), bosque, 24, "btc", 1).btc).toBe(0);
-    expect(changeOrder(pedido({}), bosque, 25, "btc", 1).btc).toBe(1);
-    expect(changeOrder(pedido({}), bosque, 20, "wood", 5).wood).toBe(5);
+    // saldo 11,49 no Bosque: entrada 1,5, sobra 9,99 → a de bitcoin (10) não cabe; madeira é grátis
+    expect(changeOrder(pedido({}), bosque, 11.49, "btc", 1).btc).toBe(0);
+    expect(changeOrder(pedido({}), bosque, 11.5, "btc", 1).btc).toBe(1);
+    expect(changeOrder(pedido({}), bosque, 2, "wood", 5).wood).toBe(5);
     // com o Nível 3 (30 moedas) cada flecha pede mais saldo
-    expect(changeOrder(pedido({}), bosque, 44, "btc", 1, 0, { btc: 30 }).btc).toBe(0);
-    expect(changeOrder(pedido({}), bosque, 105, "btc", 5, 0, { btc: 30 }).btc).toBe(3);
+    expect(changeOrder(pedido({}), bosque, 31.49, "btc", 1, 0, { btc: 30 }).btc).toBe(0);
+    expect(changeOrder(pedido({}), bosque, 91.5, "btc", 5, 0, { btc: 30 }).btc).toBe(3);
   });
 
   it("respeita o limite da aljava", () => {
@@ -135,19 +146,19 @@ describe("loja", () => {
   });
 
   it("ajusta o pedido ao saldo cortando as mais caras primeiro", () => {
-    const ajustado = fitOrder(pedido({ wood: 10, btc: 1, eth: 1 }), pico, 55);
-    // entrada 40 + 10 madeira (grátis) = 40; sobra 15: cabe só uma flecha de mercado de 10
+    const ajustado = fitOrder(pedido({ wood: 10, btc: 1, eth: 1 }), pico, 18);
+    // entrada 4 + 10 madeira (grátis) = 4; sobra 14: cabe só uma flecha de mercado de 10
     expect(countArrows(ajustado)).toBe(11);
     expect(ajustado.wood).toBe(10);
     // com valores diferentes, sai primeiro a mais cara
-    expect(fitOrder(pedido({ btc: 1, eth: 1 }), pico, 65, 0, { btc: 30, eth: 20 })).toEqual(pedido({ eth: 1 }));
+    expect(fitOrder(pedido({ btc: 1, eth: 1 }), pico, 30, 0, { btc: 30, eth: 20 })).toEqual(pedido({ eth: 1 }));
   });
 
   it("corta pelo custo no campo: a flecha de mercado sai primeiro no vilarejo", () => {
-    // vilarejo: entrada 5; bitcoin 10, madeira grátis. Com 14 não cabe a de bitcoin
-    expect(fitOrder(pedido({ wood: 5, btc: 1 }), vilarejo, 14)).toEqual(pedido({ wood: 5 }));
-    expect(fitOrder(pedido({ wood: 5, btc: 1 }), vilarejo, 15)).toEqual(pedido({ wood: 5, btc: 1 }));
-    expect(fitOrder(pedido({ wood: 5, btc: 1 }), vilarejo, 34, 0, { btc: 30 })).toEqual(pedido({ wood: 5 }));
+    // vilarejo: entrada 0,5; bitcoin 10, madeira grátis. Com 10,49 não cabe a de bitcoin
+    expect(fitOrder(pedido({ wood: 5, btc: 1 }), vilarejo, 10.49)).toEqual(pedido({ wood: 5 }));
+    expect(fitOrder(pedido({ wood: 5, btc: 1 }), vilarejo, 10.5)).toEqual(pedido({ wood: 5, btc: 1 }));
+    expect(fitOrder(pedido({ wood: 5, btc: 1 }), vilarejo, 30.49, 0, { btc: 30 })).toEqual(pedido({ wood: 5 }));
   });
 
   it("com flechas guardadas não precisa comprar nenhuma, e elas contam no limite da aljava", () => {

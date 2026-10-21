@@ -41,32 +41,32 @@ for (const t of Object.values(BIRD_TYPES)) {
 }
 
 // Campos de tiro (o servidor usa as mesmas regras): quanto mais caro, mais cada pássaro vale (e mais difícil ele é).
-// Custo = entrada (fixa) + preço de cada flecha. Equilíbrio: com 10 flechas de madeira
+// Custo = entrada (fixa, em moedas com centavos: 0,5 / 1,5 / 4 / 10) + preço de cada flecha. Equilíbrio: com 10 flechas de madeira
 // é preciso acertar ~3 pássaros para recuperar o que gastou.
 export const RANGES = [
   {
-    slug: 'vilarejo', name: 'Campo do Vilarejo', theme: 'village', fee: 5, arrowPrice: 1, mult: 2, tier: 1,
+    slug: 'vilarejo', name: 'Campo do Vilarejo', theme: 'village', fee: 0.5, arrowPrice: 1, mult: 2, tier: 1,
     ativos: ['btc'],
     desc: 'Pássaros lentos e voo reto. Bom para treinar.',
     speedMul: 1.0, wobbleChance: 0, wobbleAmp: 0, spawnEvery: 1.6, maxBirds: 3,
     pool: { red: 5, big: 3, yellow: 1, blue: 0, gold: 0.3 },
   },
   {
-    slug: 'bosque', name: 'Bosque dos Arqueiros', theme: 'forest', fee: 15, arrowPrice: 3, mult: 4, tier: 2,
+    slug: 'bosque', name: 'Bosque dos Arqueiros', theme: 'forest', fee: 1.5, arrowPrice: 3, mult: 4, tier: 2,
     ativos: ['btc', 'eth'],
     desc: 'Mais pássaros rápidos e alguns que sobem e descem.',
     speedMul: 1.15, wobbleChance: 0.2, wobbleAmp: 35, spawnEvery: 1.35, maxBirds: 4,
     pool: { red: 4, big: 2, yellow: 3, blue: 1, gold: 0.5 },
   },
   {
-    slug: 'pico', name: 'Pico das Águias', theme: 'peak', fee: 40, arrowPrice: 8, mult: 10, tier: 3,
+    slug: 'pico', name: 'Pico das Águias', theme: 'peak', fee: 4, arrowPrice: 8, mult: 10, tier: 3,
     ativos: ['btc', 'eth', 'ouro', 'v100'],
     desc: 'Pássaros velozes e voo em ondas. Mais dourados.',
     speedMul: 1.3, wobbleChance: 0.4, wobbleAmp: 50, spawnEvery: 1.1, maxBirds: 5,
     pool: { red: 3, big: 1, yellow: 3, blue: 3, gold: 0.8 },
   },
   {
-    slug: 'reserva-real', name: 'Reserva Real', theme: 'royal', fee: 100, arrowPrice: 20, mult: 25, tier: 4,
+    slug: 'reserva-real', name: 'Reserva Real', theme: 'royal', fee: 10, arrowPrice: 20, mult: 25, tier: 4,
     ativos: ['btc', 'eth', 'ouro', 'v100'],
     desc: 'Só para mestres: pássaros muito rápidos e imprevisíveis.',
     speedMul: 1.45, wobbleChance: 0.6, wobbleAmp: 65, spawnEvery: 0.9, maxBirds: 6,
@@ -165,8 +165,8 @@ export const tiposNoCampo = range =>
   ARROW_TYPES.filter(t => !t.mercado || (range?.ativos || []).includes(t.mercado));
 
 /** A madeira é grátis: o mínimo para jogar num campo é a entrada. */
-export const minCost = range => range.fee + arrowCost(ARROW_BY_ID.wood, range);
-export const canEnter = (wallet, range) => wallet >= minCost(range);
+export const minCost = range => centavos(range.fee + arrowCost(ARROW_BY_ID.wood, range));
+export const canEnter = (wallet, range) => centavos(wallet) >= minCost(range);
 export const isBroke = wallet => !RANGES.some(r => canEnter(wallet, r));
 
 /**
@@ -175,7 +175,7 @@ export const isBroke = wallet => !RANGES.some(r => canEnter(wallet, r));
  */
 export function fitOrder(order, range, wallet, guardadas = 0, valores = {}) {
   const fitted = { ...emptyQuiver(), ...order };
-  const tooExpensive = () => range.fee + orderCost(fitted, range, valores) > wallet;
+  const tooExpensive = () => centavos(range.fee + orderCost(fitted, range, valores)) > centavos(wallet);
   const porCusto = [...ARROW_TYPES].sort((a, b) => arrowCost(b, range, valores) - arrowCost(a, range, valores));
   for (const { id } of porCusto) {
     while (fitted[id] > 0 && tooExpensive()) fitted[id]--;
@@ -193,7 +193,7 @@ export function changeOrder(order, range, wallet, typeId, delta, guardadas = 0, 
   }
   const cost = arrowCost(ARROW_BY_ID[typeId], range, valores);
   for (let k = 0; k < delta; k++) {
-    const left = wallet - range.fee - orderCost(next, range, valores);
+    const left = centavos(wallet - range.fee - orderCost(next, range, valores));
     if (left < cost || countArrows(next) + guardadas >= MAX_ARROWS) break;
     next[typeId]++;
   }

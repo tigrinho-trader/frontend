@@ -313,7 +313,7 @@ function reconciliar() {
   }
   for (const t of ARROW_TYPES) game.bought[t.id] = Number(est.compradas[t.id]) || 0;
   ensureSelection();
-  game.wallet = game.saldoBase - game.spent + game.earned;
+  game.wallet = centavos(game.saldoBase - game.spent + game.earned);
   if (game.state === 'refill') fillRefill();
 }
 
@@ -353,10 +353,10 @@ function renderRanges() {
       <span class="tier" title="Dificuldade">${pips}</span>
       <h3>${r.name}</h3>
       <p>${r.desc}</p>
-      <p>Entrada <b><span class="coin"></span>${r.fee}</b> · flechas de madeira <b>grátis</b> para treinar</p>
+      <p>Entrada <b><span class="coin"></span>${textoValor(r.fee)}</b> · flechas de madeira <b>grátis</b> para treinar</p>
       <p>Cripto: ${criptos} · valor da flecha à sua escolha</p>
       <button class="btn" data-range="${i}" ${ok ? '' : 'disabled'}>
-        ${ok ? 'Escolher' : `Precisa de ${minCost(r)}`}
+        ${ok ? 'Escolher' : `Precisa de ${textoValor(minCost(r))}`}
       </button>`;
     grid.appendChild(card);
   });
@@ -673,7 +673,7 @@ const resultadoDaRodada = () => Math.round((game.apostasPartida - (game.range?.f
 
 // O servidor só deixa comprar com o saldo da carteira menos o custo da rodada:
 // as moedas ganhas entram na carteira quando a rodada termina.
-const availableToBuy = () => game.saldoBase - game.spent;
+const availableToBuy = () => centavos(game.saldoBase - game.spent);
 const canRefill = () => availableToBuy() >= REFILL_QTY * game.range.arrowPrice;
 
 /** Quantidade escolhida para comprar de um tipo durante a rodada. */
@@ -815,7 +815,7 @@ async function endSession() {
   const acertos = final ? Number(final.acertos) || 0 : game.hits;
   sessaoCtl = null;
   const saldoBase = game.saldoBase;
-  game.wallet = Math.max(0, saldoBase + netCarteira);
+  game.wallet = Math.max(0, centavos(saldoBase + netCarteira));
 
   const title = $('res-title');
   title.textContent = net > 0 ? 'Lucro!' : net < 0 ? 'Prejuízo...' : 'Empatou!';
