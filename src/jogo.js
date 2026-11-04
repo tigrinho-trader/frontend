@@ -2522,9 +2522,27 @@ const COR_SELO = { 1: ['#eceff1', '#37474f'], 2: ['#ffd54f', '#5d4037'], 3: ['#f
  * Espaços do HUD: a madeira e um por lote de mercado (tipo + valor). Com muitos lotes os espaços encolhem para não
  * invadir a placa da carteira.
  */
+// Botão "+ Flechas" (HTML) na placa da aljava, logo depois da última flecha; largura igual à do CSS
+const BOTAO_FLECHAS = { w: 112, folga: 10 };
+let xBotaoFlechas = null;
+
+/** Coluna do "+ Flechas" na tela lógica: depois do último espaço da aljava (ou no início, sem espaços). */
+function colunaBotaoFlechas(slots) {
+  if (!slots.length) return 24;
+  const ultimo = slots[slots.length - 1];
+  return ultimo.x + ultimo.w + BOTAO_FLECHAS.folga;
+}
+
+function posicionarBotaoFlechas(x) {
+  if (x === xBotaoFlechas) return;   // só mexe no DOM quando a coluna muda
+  xBotaoFlechas = x;
+  $('btn-comprar-flechas').style.setProperty('--x', String(x));
+}
+
 function slotsHud() {
   const lista = espacos();
-  const limite = W / 2 - 200 - 28;
+  // reserva o espaço do "+ Flechas" para a placa não invadir a da carteira
+  const limite = W / 2 - 200 - 28 - BOTAO_FLECHAS.w - BOTAO_FLECHAS.folga;
   const w = Math.max(30, Math.min(44, Math.floor((limite - 24) / Math.max(1, lista.length)) - 3));
   return lista.map((e, i) => ({ ...e, x: 24 + i * (w + 3), y: 58, w, h: 52 }));
 }
@@ -2533,9 +2551,10 @@ function drawHUD() {
   const r = game.range;
   const slots = slotsHud();
 
-  // Placa esquerda: campo e aljava com os tipos de flecha
-  const fim = slots.length ? slots[slots.length - 1].x + slots[slots.length - 1].w : 0;
-  plaque(16, 14, Math.max(340, fim - 16 + 12), 106, 16);
+  // Placa esquerda: campo, aljava com os tipos de flecha e o "+ Flechas" logo depois delas
+  const xBotao = colunaBotaoFlechas(slots);
+  posicionarBotaoFlechas(xBotao);
+  plaque(16, 14, Math.max(340, xBotao + BOTAO_FLECHAS.w - 16 + 12), 106, 16);
   ctx.textAlign = 'left';
   outlinedText(r.name, 32, 46, "24px 'Lilita One', sans-serif", '#ffffff', '#4a2a10', 5);
 

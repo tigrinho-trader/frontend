@@ -60,6 +60,16 @@ canvas {
   border-color: #8a5200;
   box-shadow: 0 calc(var(--s) * 4px) 0 #8a5200;
 }
+/* Na placa da aljava, logo depois da última flecha: o jogo informa a coluna em --x (px da tela lógica) */
+#btn-comprar-flechas {
+  position: absolute;
+  display: none;
+  top: calc(var(--s) * 58px);
+  left: calc(var(--s) * var(--x, 270) * 1px);
+  width: calc(var(--s) * 112px);
+  padding: 0;
+}
+#wrap[data-state="playing"] #btn-comprar-flechas { display: block; }
 
 /* Telas sobrepostas */
 .overlay {
