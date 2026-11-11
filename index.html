@@ -38,6 +38,7 @@
             <button type="button" class="pilula" id="btn-arsenal" title="Arsenal: o valor padrão das flechas de mercado">➶ Arsenal</button>
             <button type="button" class="pilula ouro" id="btn-comprar">+ Comprar moedas</button>
             <button type="button" class="pilula" id="btn-sacar" title="Sacar bônus em BTC">Sacar BTC</button>
+            <button type="button" class="pilula" id="btn-saque-pix" hidden title="Sacar do caixa do Asaas por Pix">Sacar Pix</button>
             <button type="button" class="botao-redondo" id="btn-admin" hidden title="Administração" aria-label="Administração">⚙</button>
             <button type="button" class="botao-redondo" id="btn-sair" title="Sair" aria-label="Sair">⏻</button>
           </nav>
@@ -191,6 +192,53 @@
             <button class="btn secondary" type="button" id="btn-saque-cancelar">Voltar</button>
           </div>
         </form>
+      </div>
+    </div>
+
+    <!-- Saque por Pix do caixa do Asaas: só aparece para as contas liberadas no servidor (SAQUE_ADMINS) -->
+    <div class="overlay" id="saque-pix">
+      <div class="card conta">
+        <h2>Sacar por Pix</h2>
+        <p class="sub">Troca suas moedas (1 moeda = R$ 1) por um Pix do caixa do Asaas para uma chave sua.</p>
+        <p class="saque-disponivel">Disponível: <b id="saque-pix-disponivel">R$ 0,00</b> · hoje ainda cabem <b id="saque-pix-restante">R$ 0,00</b></p>
+        <p class="note">Suas moedas: <b id="saque-pix-moedas">0</b> · caixa livre no Asaas: <b id="saque-pix-caixa">R$ 0,00</b></p>
+        <form class="form-saque" id="form-saque-pix" novalidate>
+          <div class="saque-campo">
+            <label for="saque-pix-tipo">Tipo de chave</label>
+            <select id="saque-pix-tipo">
+              <option value="CPF">CPF</option>
+              <option value="PHONE">Celular</option>
+              <option value="EMAIL">E-mail</option>
+              <option value="EVP">Chave aleatória</option>
+              <option value="CNPJ">CNPJ</option>
+            </select>
+          </div>
+          <div class="saque-campo">
+            <label for="saque-pix-chave">Chave Pix</label>
+            <input type="text" id="saque-pix-chave" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="000.000.000-00" required>
+          </div>
+          <div class="saque-campo">
+            <label for="saque-pix-valor">Quanto deseja sacar?</label>
+            <div class="saque-valor-box">
+              <span class="saque-prefixo">R$</span>
+              <input type="text" id="saque-pix-valor" inputmode="decimal" autocomplete="off" placeholder="50,00" required>
+            </div>
+            <button type="button" class="mini saque-tudo" id="btn-saque-pix-tudo">Usar o disponível</button>
+          </div>
+          <p class="msg" id="saque-pix-msg" aria-live="polite"></p>
+          <div class="saldo-botoes">
+            <button class="btn ouro small" type="submit" id="btn-saque-pix-enviar">Sacar</button>
+            <button class="btn secondary" type="button" id="btn-saque-pix-voltar">Voltar</button>
+          </div>
+        </form>
+
+        <h3 class="secao">Últimos saques</h3>
+        <div class="tabela-rolagem curta">
+          <table class="tabela extrato">
+            <thead><tr><th>Valor</th><th>Para</th><th>Situação</th><th>Data</th></tr></thead>
+            <tbody id="saque-pix-lista"><tr><td colspan="4" class="vazio">Carregando…</td></tr></tbody>
+          </table>
+        </div>
       </div>
     </div>
 

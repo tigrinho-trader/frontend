@@ -1075,3 +1075,153 @@ describe("rodada com lotes de flechas de mercado", () => {
     expect($("res-net").textContent).toBe("−1,58");                        // entrada do Bosque (1,5) + taxa
   });
 });
+
+describe("sacar por Pix (caixa do Asaas)", () => {
+  const RESUMO = {
+    permitido: true, disponivel: 300, moedas: 1000, caixa: 300, restanteHoje: 1000, limiteDiario: 1000, minimo: 1,
+    saques: [{ id: "s0", valor: 40, tipoChave: "PHONE", chave: "(11) *****-4321", status: "CONCLUIDO",
+      destinatario: "OSCAR R DE S FILHO", taxa: 0, motivo: null, criadoEm: "2026-11-11T12:00:00Z" }],
+  };
+  const enviar = () => $("form-saque-pix").dispatchEvent(new Event("submit", { cancelable: true }));
+  const posts = () => chamadas.filter((c) => c.chave === "POST /carteira/saques-pix");
+
+  it("conta sem permissão (ou servidor sem a rota) não vê o botão", async () => {
+    await iniciarApp();                      // sem a rota: 404
+    expect($("btn-saque-pix").hidden).toBe(true);
+
+    rotas["GET /carteira/saques-pix"] = [200, { permitido: false, saques: [] }];
+    await iniciarApp();
+    expect($("btn-saque-pix").hidden).toBe(true);
+  });
+
+  it("mostra o caixa, pede confirmação e só depois manda o Pix", async () => {
+    rotas["GET /carteira/saques-pix"] = [200, RESUMO];
+    rotas["POST /carteira/saques-pix"] = [200, { id: "s1", valor: 25.5, tipoChave: "CPF", chave: "***.982.247-**",
+      status: "ENVIADO", destinatario: "OSCAR R DE S FILHO", taxa: 0, motivo: null, criadoEm: "2026-11-11T15:00:00Z" }];
+    await iniciarApp();
+    expect($("btn-saque-pix").hidden).toBe(false);
+
+    $("btn-saque-pix").click();
+    await estabilizar();
+    expect($("saque-pix").classList.contains("show")).toBe(true);
+    expect($("saque-pix-disponivel").textContent.replace(/\s/g, " ")).toBe("R$ 300,00");
+    expect($("saque-pix-lista").textContent).toContain("OSCAR R DE S FILHO");
+    expect($("saque-pix-lista").textContent).toContain("Concluído");
+
+    $("saque-pix-tipo").value = "CPF";
+    $("saque-pix-chave").value = "529.982.247-25";
+    $("saque-pix-valor").value = "25,50";
+    enviar();
+    await estabilizar();
+    expect(posts()).toHaveLength(0);                       // primeiro só confere
+    expect($("saque-pix-msg").textContent).toContain("Confira");
+    expect($("btn-saque-pix-enviar").textContent.replace(/\s/g, " ")).toBe("Confirmar Pix de R$ 25,50");
+
+    enviar();
+    await estabilizar();
+    expect(posts()).toHaveLength(1);
+    expect(posts()[0].corpo).toEqual({ tipoChave: "CPF", chave: "529.982.247-25", valor: 25.5 });
+    expect($("saque-pix-msg").textContent).toContain("enviado para OSCAR R DE S FILHO");
+    expect($("btn-saque-pix-enviar").textContent).toBe("Sacar");
+  });
+
+  it("mudar o valor depois de conferir pede confirmação de novo", async () => {
+    rotas["GET /carteira/saques-pix"] = [200, RESUMO];
+    rotas["POST /carteira/saques-pix"] = [200, { id: "s2", valor: 30, status: "ENVIADO", tipoChave: "EMAIL", chave: "a***@b.com" }];
+    await iniciarApp();
+    $("btn-saque-pix").click();
+    await estabilizar();
+    $("saque-pix-tipo").value = "EMAIL";
+    $("saque-pix-chave").value = "a@b.com";
+    $("saque-pix-valor").value = "20";
+    enviar();
+    await estabilizar();
+
+    $("saque-pix-valor").value = "30";
+    $("saque-pix-valor").dispatchEvent(new Event("input"));
+    expect($("btn-saque-pix-enviar").textContent).toBe("Sacar");
+    enviar();
+    await estabilizar();
+    expect(posts()).toHaveLength(0);                       // o valor novo também precisa ser conferido
+  });
+
+  it("acima do disponível nem chama o servidor; recusa do servidor aparece na tela", async () => {
+    rotas["GET /carteira/saques-pix"] = [200, RESUMO];
+    rotas["POST /carteira/saques-pix"] = [422, { detail: "CPF invalido" }];
+    await iniciarApp();
+    $("btn-saque-pix").click();
+    await estabilizar();
+
+    $("saque-pix-chave").value = "123";
+    $("saque-pix-valor").value = "350";
+    enviar();
+    await estabilizar();
+    expect($("saque-pix-msg").textContent.replace(/\s/g, " ")).toContain("O caixa do Asaas tem R$ 300,00 livres");
+
+    $("saque-pix-valor").value = "10";
+    enviar();
+    await estabilizar();
+    enviar();
+    await estabilizar();
+    expect(posts()).toHaveLength(1);
+    expect($("saque-pix-msg").textContent).toContain("CPF invalido");
+  });
+
+  it("Pix recusado pelo Asaas mostra o motivo", async () => {
+    rotas["GET /carteira/saques-pix"] = [200, RESUMO];
+    rotas["POST /carteira/saques-pix"] = [200, { id: "s3", valor: 10, status: "FALHOU", tipoChave: "CPF",
+      chave: "***.982.247-**", motivo: "O Asaas recusou o Pix: Saldo insuficiente" }];
+    await iniciarApp();
+    $("btn-saque-pix").click();
+    await estabilizar();
+    $("saque-pix-chave").value = "529.982.247-25";
+    $("saque-pix-valor").value = "10";
+    enviar();
+    await estabilizar();
+    enviar();
+    await estabilizar();
+    expect($("saque-pix-msg").textContent).toContain("O Pix não saiu");
+    expect($("saque-pix-msg").textContent).toContain("Saldo insuficiente");
+  });
+
+  it("com 15,5 moedas não deixa sacar 20, mesmo com R$ 300 no caixa do Asaas", async () => {
+    rotas["GET /carteira/saques-pix"] = [200, { ...RESUMO, moedas: 15.5, caixa: 300, disponivel: 15.5 }];
+    rotas["POST /carteira/saques-pix"] = [200, { id: "s9", valor: 20, status: "ENVIADO" }];
+    await iniciarApp();
+    $("btn-saque-pix").click();
+    await estabilizar();
+    expect($("saque-pix-moedas").textContent).toBe("15,5");
+    expect($("saque-pix-disponivel").textContent.replace(/\s/g, " ")).toBe("R$ 15,50");
+
+    $("saque-pix-chave").value = "529.982.247-25";
+    $("saque-pix-valor").value = "20";
+    enviar();
+    await estabilizar();
+    enviar();
+    await estabilizar();
+    expect(posts()).toHaveLength(0);
+    expect($("saque-pix-msg").textContent.replace(/\s/g, " ")).toContain("Você tem 15,5 moedas na plataforma (R$ 15,50)");
+
+    $("btn-saque-pix-tudo").click();                       // "Usar o disponível" respeita as moedas
+    expect($("saque-pix-valor").value).toBe("15,50");
+  });
+
+  it("depois do saque o saldo de moedas do menu é atualizado", async () => {
+    rotas["GET /carteira/saques-pix"] = [200, RESUMO];
+    rotas["POST /carteira/saques-pix"] = [200, { id: "s8", valor: 10, status: "ENVIADO", tipoChave: "CPF", chave: "***" }];
+    await iniciarApp();
+    $("btn-saque-pix").click();
+    await estabilizar();
+    rotas["GET /carteira"] = [200, { usuarioId: EU.id, saldo: 990, atualizadaEm: null }];
+    $("saque-pix-chave").value = "529.982.247-25";
+    $("saque-pix-valor").value = "10";
+    enviar();
+    await estabilizar();
+    enviar();
+    await estabilizar();
+    expect(posts()).toHaveLength(1);
+    expect(contaAtual).not.toBeNull();
+    $("btn-saque-pix-voltar").click();
+    expect($("menu-wallet").textContent).toBe("990");
+  });
+});

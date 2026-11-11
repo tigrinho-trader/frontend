@@ -169,7 +169,7 @@ const game = {
 const OVERLAYS = {
   menu: 'menu', ranges: 'ranges', buy: 'buy', refill: 'refill', paused: 'pause', result: 'result',
   perfil: 'perfil', admin: 'admin', bloqueado: 'bloqueado', creditos: 'creditos', saldo: 'saldo', saque: 'saque',
-  arsenal: 'arsenal',
+  arsenal: 'arsenal', saquepix: 'saque-pix',
 };
 
 export function setState(s) {

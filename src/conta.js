@@ -147,6 +147,7 @@ async function carregarConta() {
   mostrarPerfilNoMenu();
   modoMenu('logado');
   carregarRegras();   // níveis, valor mínimo e taxa de devolução das flechas de mercado
+  verificarSaquePix(); // o botão "Sacar Pix" só aparece para as contas liberadas no servidor
   try {
     await atualizarCarteira();
   } catch (e) {
@@ -313,6 +314,170 @@ async function solicitarSaque(e) {
     $('saque-valor').value = '';
   } catch (e) {
     msg('saque-msg', mensagemErro(e), 'erro');
+  } finally {
+    botao.disabled = false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Sacar por Pix: sai do caixa do Asaas (o saldo que não veio das compras de moedas) para uma chave Pix.
+// Só aparece para as contas liberadas no servidor (SAQUE_ADMINS); o servidor confere de novo a cada saque.
+// ---------------------------------------------------------------------------
+export const INTERVALO_CONSULTA_SAQUE = 5000;
+export const TIPOS_CHAVE = { CPF: 'CPF', CNPJ: 'CNPJ', EMAIL: 'E-mail', PHONE: 'Celular', EVP: 'Chave aleatória' };
+const EXEMPLO_CHAVE = {
+  CPF: '000.000.000-00', CNPJ: '00.000.000/0000-00', EMAIL: 'voce@exemplo.com', PHONE: '(11) 98765-4321', EVP: 'chave aleatória',
+};
+export const TEXTO_STATUS_SAQUE = {
+  ENVIANDO: 'Enviando…', ENVIADO: 'Processando', AGUARDANDO_AUTORIZACAO: 'Aprove no app do Asaas',
+  CONCLUIDO: 'Concluído', FALHOU: 'Não saiu', CONFERIR: 'Confira no Asaas',
+};
+const SAQUE_EM_ABERTO = new Set(['ENVIANDO', 'ENVIADO', 'AGUARDANDO_AUTORIZACAO']);
+const reais = v => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+const saquePix = { resumo: null, pedido: null, consulta: null };
+
+export function htmlSaquesPix(saques) {
+  if (!saques?.length) return '<tr><td colspan="4" class="vazio">Nenhum saque ainda.</td></tr>';
+  return saques.map(s => {
+    const para = `${escaparHtml(TIPOS_CHAVE[s.tipoChave] || s.tipoChave)} ${escaparHtml(s.chave)}`
+      + (s.destinatario ? `<br><small>${escaparHtml(s.destinatario)}</small>` : '');
+    const situacao = escaparHtml(TEXTO_STATUS_SAQUE[s.status] || s.status)
+      + (s.motivo ? `<br><small>${escaparHtml(s.motivo)}</small>` : '');
+    return `<tr><td>${escaparHtml(reais(s.valor))}</td><td>${para}</td><td>${situacao}</td>`
+      + `<td>${escaparHtml(formatarData(s.criadoEm))}</td></tr>`;
+  }).join('');
+}
+
+/** Pergunta ao servidor se esta conta pode sacar por Pix e mostra (ou esconde) o botão no menu. */
+async function verificarSaquePix() {
+  let resumo = null;
+  try {
+    resumo = await api.resumoSaquePix();
+  } catch {
+    resumo = null;   // servidor sem a rota ou fora do ar: o botão fica escondido
+  }
+  $('btn-saque-pix').hidden = !resumo?.permitido;
+}
+
+function pararConsultaSaque() {
+  clearTimeout(saquePix.consulta);
+  saquePix.consulta = null;
+}
+
+function cancelarConfirmacaoSaque() {
+  saquePix.pedido = null;
+  $('btn-saque-pix-enviar').textContent = 'Sacar';
+}
+
+function desenharSaquePix(resumo) {
+  saquePix.resumo = resumo;
+  $('saque-pix-disponivel').textContent = reais(resumo.disponivel);
+  $('saque-pix-restante').textContent = reais(resumo.restanteHoje);
+  $('saque-pix-moedas').textContent = formatarMoedas(Number(resumo.moedas) || 0);
+  $('saque-pix-caixa').textContent = reais(resumo.caixa);
+  $('saque-pix-lista').innerHTML = htmlSaquesPix(resumo.saques);
+  pararConsultaSaque();
+  // enquanto houver Pix em processamento e a tela estiver aberta, confere sozinho
+  if (resumo.saques?.some(s => SAQUE_EM_ABERTO.has(s.status))) {
+    saquePix.consulta = setTimeout(async () => {
+      if (estadoAtual() !== 'saquepix') return;
+      try { desenharSaquePix(await api.resumoSaquePix()); } catch { /* tenta na próxima vez que abrir */ }
+    }, INTERVALO_CONSULTA_SAQUE);
+  }
+}
+
+async function abrirSaquePix() {
+  pararConsultaSaque();
+  cancelarConfirmacaoSaque();
+  msg('saque-pix-msg', '');
+  $('saque-pix-lista').innerHTML = '<tr><td colspan="4" class="vazio">Carregando…</td></tr>';
+  setState('saquepix');
+  try {
+    const resumo = await api.resumoSaquePix();
+    if (!resumo?.permitido) {
+      $('btn-saque-pix').hidden = true;
+      setState('menu');
+      return;
+    }
+    desenharSaquePix(resumo);
+  } catch (e) {
+    msg('saque-pix-msg', mensagemErro(e), 'erro');
+  }
+}
+
+function sairDoSaquePix() {
+  pararConsultaSaque();
+  cancelarConfirmacaoSaque();
+  setState('menu');
+}
+
+function trocarTipoChave() {
+  $('saque-pix-chave').placeholder = EXEMPLO_CHAVE[$('saque-pix-tipo').value] || '';
+  editouSaquePix();
+}
+
+function editouSaquePix() {
+  if (saquePix.pedido) {
+    cancelarConfirmacaoSaque();
+    msg('saque-pix-msg', '');
+  }
+}
+
+function preencherSaquePixMaximo() {
+  const r = saquePix.resumo;
+  if (!r) return;
+  const maximo = Math.min(Number(r.disponivel) || 0, Number(r.restanteHoje) || 0);
+  $('saque-pix-valor').value = maximo.toFixed(2).replace('.', ',');
+  editouSaquePix();
+}
+
+/** 1º envio: confere e pede confirmação mostrando valor e chave. 2º envio (sem mudar nada): manda o Pix. */
+async function enviarSaquePix(e) {
+  e.preventDefault();
+  const tipoChave = $('saque-pix-tipo').value;
+  const chave = $('saque-pix-chave').value.trim();
+  const valor = Math.round(Number(String($('saque-pix-valor').value).replace(',', '.')) * 100) / 100;
+  if (!chave) return msg('saque-pix-msg', 'Informe a chave Pix.', 'erro');
+  if (!Number.isFinite(valor) || valor <= 0) return msg('saque-pix-msg', 'Informe quanto deseja sacar.', 'erro');
+  const r = saquePix.resumo;
+  if (r && valor < Number(r.minimo)) return msg('saque-pix-msg', `O saque mínimo é ${reais(r.minimo)}.`, 'erro');
+  // a mesma conta do servidor (que confere de novo): nunca mais que as moedas, o caixa livre e o limite do dia
+  if (r && valor > Number(r.moedas) / MOEDAS_POR_REAL) {
+    return msg('saque-pix-msg', `Você tem ${formatarMoedas(Number(r.moedas) || 0)} moedas na plataforma (${reais(Number(r.moedas) / MOEDAS_POR_REAL)}).`, 'erro');
+  }
+  if (r && valor > Number(r.caixa)) return msg('saque-pix-msg', `O caixa do Asaas tem ${reais(r.caixa)} livres agora.`, 'erro');
+  if (r && valor > Number(r.disponivel)) return msg('saque-pix-msg', `Disponível para saque: ${reais(r.disponivel)}.`, 'erro');
+  if (r && valor > Number(r.restanteHoje)) return msg('saque-pix-msg', `Hoje ainda cabem ${reais(r.restanteHoje)}.`, 'erro');
+
+  const pedido = { tipoChave, chave, valor };
+  const assinatura = JSON.stringify(pedido);
+  if (saquePix.pedido !== assinatura) {
+    saquePix.pedido = assinatura;
+    $('btn-saque-pix-enviar').textContent = `Confirmar Pix de ${reais(valor)}`;
+    return msg('saque-pix-msg', `Confira: ${reais(valor)} para ${TIPOS_CHAVE[tipoChave]} ${chave}. Toque de novo para confirmar.`);
+  }
+
+  const botao = $('btn-saque-pix-enviar');
+  botao.disabled = true;
+  msg('saque-pix-msg', 'Enviando o Pix…');
+  try {
+    const saque = await api.sacarPix(pedido);
+    cancelarConfirmacaoSaque();
+    if (saque.status === 'FALHOU') {
+      msg('saque-pix-msg', `O Pix não saiu: ${saque.motivo || 'recusado pelo Asaas'}.`, 'erro');
+    } else if (saque.status === 'CONFERIR') {
+      msg('saque-pix-msg', saque.motivo || 'Sem resposta do Asaas: confira no app do Asaas antes de tentar de novo.', 'erro');
+    } else if (saque.status === 'AGUARDANDO_AUTORIZACAO') {
+      msg('saque-pix-msg', 'Pix criado: aprove no app do Asaas para ele sair.', 'ok');
+    } else {
+      $('saque-pix-valor').value = '';
+      msg('saque-pix-msg', `Pix de ${reais(saque.valor)} enviado${saque.destinatario ? ` para ${saque.destinatario}` : ''}.`, 'ok');
+    }
+    try { desenharSaquePix(await api.resumoSaquePix()); } catch { /* a lista atualiza na próxima abertura */ }
+    try { await atualizarCarteira(); } catch { /* o saldo do menu atualiza na próxima consulta */ }
+  } catch (erro) {
+    cancelarConfirmacaoSaque();
+    msg('saque-pix-msg', mensagemErro(erro), 'erro');
   } finally {
     botao.disabled = false;
   }
@@ -535,8 +700,11 @@ function pararAcompanhamento() {
   creditos.relogio = null;
 }
 
-/** Para as consultas periódicas do Pix (usado pelos testes ao trocar de app entre um caso e outro). */
-export const pararAcompanhamentos = pararAcompanhamento;
+/** Para as consultas periódicas do Pix e dos saques (usado pelos testes ao trocar de app entre um caso e outro). */
+export function pararAcompanhamentos() {
+  pararAcompanhamento();
+  pararConsultaSaque();
+}
 
 function desenharCreditos() {
   $('creditos-saldo').textContent = formatarMoedas(saldoAtual());
@@ -912,6 +1080,13 @@ $('btn-sacar').addEventListener('click', abrirSaque);
 $('form-saque').addEventListener('submit', solicitarSaque);
 $('btn-saque-tudo').addEventListener('click', preencherSaqueMaximo);
 $('btn-saque-cancelar').addEventListener('click', () => setState('menu'));
+$('btn-saque-pix').addEventListener('click', abrirSaquePix);
+$('form-saque-pix').addEventListener('submit', enviarSaquePix);
+$('btn-saque-pix-tudo').addEventListener('click', preencherSaquePixMaximo);
+$('btn-saque-pix-voltar').addEventListener('click', sairDoSaquePix);
+$('saque-pix-tipo').addEventListener('change', trocarTipoChave);
+$('saque-pix-chave').addEventListener('input', editouSaquePix);
+$('saque-pix-valor').addEventListener('input', editouSaquePix);
 $('perfil-apelido').addEventListener('input', () => msg('perfil-apelido-msg', ''));
 $('btn-excluir').addEventListener('click', () => {
   $('btn-excluir').hidden = true;
