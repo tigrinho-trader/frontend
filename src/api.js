@@ -158,8 +158,8 @@ export const iniciarCompraPix = moedas => requisitar('POST', '/carteira/compras'
 export const consultarCompraPix = compraId => requisitar('GET', `/carteira/compras/${id(compraId)}`);
 export const simularPagamentoPix = compraId => requisitar('POST', `/carteira/compras/${id(compraId)}/simular-pagamento`);
 /**
- * Saque por Pix do caixa do Asaas (só as contas liberadas no servidor): { permitido, disponivel, restanteHoje,
- * limiteDiario, minimo, saques }. Para as outras contas, { permitido: false }.
+ * Saque por Pix do caixa do Asaas (só contas ADMIN): { permitido, disponivel, moedas, caixa, minimo, saques }.
+ * `disponivel` = o menor entre as moedas e o caixa livre. Para as outras contas, { permitido: false }.
  */
 export const resumoSaquePix = () => requisitar('GET', '/carteira/saques-pix');
 /** { tipoChave: CPF|CNPJ|EMAIL|PHONE|EVP, chave, valor } → o saque (status ENVIADO, CONCLUIDO, FALHOU...). */

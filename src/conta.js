@@ -321,7 +321,7 @@ async function solicitarSaque(e) {
 
 // ---------------------------------------------------------------------------
 // Sacar por Pix: sai do caixa do Asaas (o saldo que não veio das compras de moedas) para uma chave Pix.
-// Só aparece para as contas liberadas no servidor (SAQUE_ADMINS); o servidor confere de novo a cada saque.
+// Só aparece para contas ADMIN (o servidor pergunta ao user-service) e confere de novo a cada saque.
 // ---------------------------------------------------------------------------
 export const INTERVALO_CONSULTA_SAQUE = 5000;
 export const TIPOS_CHAVE = { CPF: 'CPF', CNPJ: 'CNPJ', EMAIL: 'E-mail', PHONE: 'Celular', EVP: 'Chave aleatória' };
@@ -372,7 +372,6 @@ function cancelarConfirmacaoSaque() {
 function desenharSaquePix(resumo) {
   saquePix.resumo = resumo;
   $('saque-pix-disponivel').textContent = reais(resumo.disponivel);
-  $('saque-pix-restante').textContent = reais(resumo.restanteHoje);
   $('saque-pix-moedas').textContent = formatarMoedas(Number(resumo.moedas) || 0);
   $('saque-pix-caixa').textContent = reais(resumo.caixa);
   $('saque-pix-lista').innerHTML = htmlSaquesPix(resumo.saques);
@@ -426,7 +425,7 @@ function editouSaquePix() {
 function preencherSaquePixMaximo() {
   const r = saquePix.resumo;
   if (!r) return;
-  const maximo = Math.min(Number(r.disponivel) || 0, Number(r.restanteHoje) || 0);
+  const maximo = Number(r.disponivel) || 0;   // o servidor já manda o menor entre moedas e caixa
   $('saque-pix-valor').value = maximo.toFixed(2).replace('.', ',');
   editouSaquePix();
 }
@@ -441,13 +440,12 @@ async function enviarSaquePix(e) {
   if (!Number.isFinite(valor) || valor <= 0) return msg('saque-pix-msg', 'Informe quanto deseja sacar.', 'erro');
   const r = saquePix.resumo;
   if (r && valor < Number(r.minimo)) return msg('saque-pix-msg', `O saque mínimo é ${reais(r.minimo)}.`, 'erro');
-  // a mesma conta do servidor (que confere de novo): nunca mais que as moedas, o caixa livre e o limite do dia
+  // a mesma conta do servidor (que confere de novo): nunca mais que as moedas nem que o caixa livre
   if (r && valor > Number(r.moedas) / MOEDAS_POR_REAL) {
     return msg('saque-pix-msg', `Você tem ${formatarMoedas(Number(r.moedas) || 0)} moedas na plataforma (${reais(Number(r.moedas) / MOEDAS_POR_REAL)}).`, 'erro');
   }
   if (r && valor > Number(r.caixa)) return msg('saque-pix-msg', `O caixa do Asaas tem ${reais(r.caixa)} livres agora.`, 'erro');
   if (r && valor > Number(r.disponivel)) return msg('saque-pix-msg', `Disponível para saque: ${reais(r.disponivel)}.`, 'erro');
-  if (r && valor > Number(r.restanteHoje)) return msg('saque-pix-msg', `Hoje ainda cabem ${reais(r.restanteHoje)}.`, 'erro');
 
   const pedido = { tipoChave, chave, valor };
   const assinatura = JSON.stringify(pedido);

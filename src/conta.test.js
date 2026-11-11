@@ -1076,9 +1076,10 @@ describe("rodada com lotes de flechas de mercado", () => {
   });
 });
 
-describe("sacar por Pix (caixa do Asaas)", () => {
+// cada caso sobe o app inteiro duas ou mais vezes: com a máquina carregada passa dos 5 s padrão
+describe("sacar por Pix (caixa do Asaas)", { timeout: 15000 }, () => {
   const RESUMO = {
-    permitido: true, disponivel: 300, moedas: 1000, caixa: 300, restanteHoje: 1000, limiteDiario: 1000, minimo: 1,
+    permitido: true, disponivel: 300, moedas: 1000, caixa: 300, minimo: 1,
     saques: [{ id: "s0", valor: 40, tipoChave: "PHONE", chave: "(11) *****-4321", status: "CONCLUIDO",
       destinatario: "OSCAR R DE S FILHO", taxa: 0, motivo: null, criadoEm: "2026-11-11T12:00:00Z" }],
   };
