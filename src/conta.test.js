@@ -385,14 +385,14 @@ describe("jogo com o servidor", () => {
   it("a entrada de cada campo é a que o servidor cobra (sem entrada livre, volta a mostrar o valor)", async () => {
     rotas["GET /jogos/flecha/regras"] = [200, {
       niveisFlecha: [10, 20, 30], valorMinimoFlecha: 0.01, taxaDevolucaoFlechas: 0.002,
-      campos: [{ slug: "vilarejo", entrada: 0.5 }, { slug: "bosque", entrada: 0 }],
+      campos: [{ slug: "pico", entrada: 0.5 }, { slug: "reserva-real", entrada: 0 }],
     }];
     await iniciarApp();
     $("btn-play").click();
     const cartoes = [...$("range-grid").querySelectorAll(".range")].map((c) => c.textContent.replace(/\s+/g, " "));
-    expect(cartoes[0]).toContain("Entrada 0,5");
-    expect(cartoes[1]).toContain("Entrada livre por tempo limitado");
-    $("range-grid").querySelector('button[data-range="0"]').click();
+    expect(cartoes[2]).toContain("Entrada 0,5");
+    expect(cartoes[3]).toContain("Entrada livre por tempo limitado");
+    $("range-grid").querySelector('button[data-range="2"]').click();
     expect($("buy-fee").textContent).toBe("0,5");
     expect($("buy-total").textContent).toBe("0,5");
     expect($("btn-enter").textContent).toBe("Pagar e entrar");
@@ -407,7 +407,15 @@ describe("jogo com o servidor", () => {
     expect(cartoes[0]).toContain("Bitcoin (em desenvolvimento)");
     expect(cartoes[2]).toContain("Volatilidade 100");
     expect(cartoes[2]).not.toContain("Volatilidade 100 (em desenvolvimento)");
-    $("range-grid").querySelector('button[data-range="0"]').click();
+    // campos sem a V100 (Vilarejo e Bosque) estão em desenvolvimento: não dá para entrar
+    for (const i of [0, 1]) {
+      const botao = $("range-grid").querySelector(`button[data-range="${i}"]`);
+      expect(cartoes[i]).toContain("Em desenvolvimento");
+      expect(botao.disabled).toBe(true);
+      expect(botao.textContent.trim()).toBe("Em desenvolvimento");
+    }
+    expect($("range-grid").querySelector('button[data-range="2"]').textContent.trim()).toBe("Escolher");
+    $("range-grid").querySelector('button[data-range="2"]').click();
     expect($("buy").classList.contains("show")).toBe(true);
     expect($("buy-fee").textContent).toBe("livre por tempo limitado");
     expect($("buy-total").textContent).toBe("0");
@@ -420,7 +428,7 @@ describe("jogo com o servidor", () => {
     $("btn-enter").click();
     await estabilizar();
     const post = chamadas.find((c) => c.chave === "POST /jogos/flecha/sessoes");
-    expect(post.corpo).toEqual({ campo: "vilarejo", flechas: { wood: 10 }, mercado: [] });
+    expect(post.corpo).toEqual({ campo: "pico", flechas: { wood: 10 }, mercado: [] });
     expect(document.getElementById("wrap").dataset.state).toBe("playing");
   });
 
@@ -428,7 +436,7 @@ describe("jogo com o servidor", () => {
     rotas["POST /jogos/flecha/sessoes"] = [422, { detail: "Saldo insuficiente: disponivel 3", status: 422 }];
     await iniciarApp();
     $("btn-play").click();
-    $("range-grid").querySelector('button[data-range="0"]').click();
+    $("range-grid").querySelector('button[data-range="2"]').click();
     $("btn-enter").click();
     await estabilizar();
     expect($("buy").classList.contains("show")).toBe(true);
@@ -442,7 +450,7 @@ describe("jogo com o servidor", () => {
     rotas["POST /jogos/flecha/sessoes"] = [409, { detail: "Já existe sessão aberta", status: 409 }];
     await iniciarApp();
     $("btn-play").click();
-    $("range-grid").querySelector('button[data-range="0"]').click();
+    $("range-grid").querySelector('button[data-range="2"]').click();
     $("btn-enter").click();
     await estabilizar();
     expect($("btn-buy-fechar-aberta").hidden).toBe(false);
@@ -468,7 +476,7 @@ describe("jogo com o servidor", () => {
     };
     await iniciarApp();
     $("btn-play").click();
-    $("range-grid").querySelector('button[data-range="0"]').click();
+    $("range-grid").querySelector('button[data-range="2"]').click();
     $("btn-enter").click();
     await estabilizar();
     $("btn-pause").click();
@@ -558,7 +566,7 @@ describe("comprar moedas", () => {
     rotas["POST /jogos/flecha/sessoes"] = [422, { detail: "Saldo insuficiente: disponivel 3" }];
     await iniciarApp();
     $("btn-play").click();
-    $("range-grid").querySelector('button[data-range="0"]').click();
+    $("range-grid").querySelector('button[data-range="2"]').click();
     $("btn-enter").click();
     await estabilizar();
     expect($("buy-erro").hidden).toBe(false);
@@ -575,7 +583,7 @@ describe("comprar moedas", () => {
     rotas["POST /jogos/flecha/sessoes"] = [409, { detail: "Ja existe uma sessao aberta" }];
     await iniciarApp();
     $("btn-play").click();
-    $("range-grid").querySelector('button[data-range="0"]').click();
+    $("range-grid").querySelector('button[data-range="2"]').click();
     $("btn-enter").click();
     await estabilizar();
     expect($("buy-erro").hidden).toBe(false);

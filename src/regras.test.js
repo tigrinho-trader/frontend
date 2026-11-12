@@ -27,6 +27,7 @@ import {
   shade,
   tiposNoCampo,
   ativosLiberados,
+  campoEmDesenvolvimento,
   emDesenvolvimento,
   entradaLivre,
   flechasEmDesenvolvimento,
@@ -100,8 +101,22 @@ describe("campos de tiro", () => {
     expect(flechasEmDesenvolvimento(vilarejo).map((t) => t.id)).toEqual(["btc"]);
   });
 
+  it("campos sem a V100 (Vilarejo e Bosque) estão em desenvolvimento: não dá para entrar", () => {
+    expect(RANGES.map(campoEmDesenvolvimento)).toEqual([true, true, false, false]);
+    expect(canEnter(1000, vilarejo)).toBe(false);
+    expect(canEnter(1000, bosque)).toBe(false);
+    expect(canEnter(0, pico)).toBe(true);      // entrada livre: entra mesmo sem moedas
+    expect(canEnter(0, real)).toBe(true);
+    expect(isBroke(0)).toBe(false);
+  });
+
   describe("liberando os ativos de novo", () => {
     liberarTodosOsAtivos();
+
+    it("os campos voltam sozinhos", () => {
+      expect(RANGES.some(campoEmDesenvolvimento)).toBe(false);
+      expect(canEnter(0, vilarejo)).toBe(true);
+    });
 
     it("no campo aparecem a madeira e as flechas das criptos dele", () => {
       expect(tiposNoCampo(vilarejo).map((t) => t.id)).toEqual(["wood", "btc"]);
@@ -131,6 +146,7 @@ describe("flechas", () => {
 });
 
 describe("loja", () => {
+  liberarTodosOsAtivos();   // a lógica da loja vale para todo campo, inclusive os em desenvolvimento
   // a cobrança da entrada continua valendo: estes testes usam a entrada de tabela (0,5 / 1,5 / 4 / 10)
   const vilarejo = { ...RANGE_BY_SLUG.vilarejo, fee: 0.5 };
   const bosque = { ...RANGE_BY_SLUG.bosque, fee: 1.5 };
@@ -155,7 +171,6 @@ describe("loja", () => {
 
   it("com a entrada livre dá para entrar em qualquer campo mesmo sem moedas", () => {
     expect(RANGES.every((r) => minCost(r) === 0 && canEnter(0, r))).toBe(true);
-    expect(isBroke(0)).toBe(false);
   });
 
   it("entrada com centavos soma certo com as flechas: 0,5 + 3 × 10 = 30,5", () => {

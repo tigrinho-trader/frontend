@@ -10,6 +10,7 @@ import {
   clamp, formatMult, arrowCost, coinsForHit, emptyQuiver, countArrows, orderCost, minCost,
   canEnter as canEnterWith, isBroke as isBrokeWith, fitOrder, changeOrder, pickBirdType, tiposNoCampo,
   segmentHitsCircle, arrowPosition, ativosLiberados, emDesenvolvimento, flechasEmDesenvolvimento, entradaLivre,
+  campoEmDesenvolvimento,
   TEXTO_ENTRADA_LIVRE,
 } from './regras.js';
 import { Scenery } from './cenarios.js';
@@ -355,8 +356,9 @@ function renderRanges() {
   grid.innerHTML = '';
   RANGES.forEach((r, i) => {
     const ok = canEnter(r);
+    const emDev = campoEmDesenvolvimento(r);
     const card = document.createElement('div');
-    card.className = 'range' + (ok ? '' : ' locked');
+    card.className = 'range' + (ok ? '' : ' locked') + (emDev ? ' campo-em-desenvolvimento' : '');
     const pips = '➶'.repeat(r.tier) + `<span class="off">${'➶'.repeat(4 - r.tier)}</span>`;
     const criptos = r.ativos.map(id => emDesenvolvimento(id)
       ? `<span class="em-desenvolvimento"><b>${ATIVOS[id].marca}</b> ${ATIVOS[id].nome} <small>(em desenvolvimento)</small></span>`
@@ -366,12 +368,13 @@ function renderRanges() {
       : `Entrada <b><span class="coin"></span>${textoValor(r.fee)}</b>`;
     card.innerHTML = `
       <span class="tier" title="Dificuldade">${pips}</span>
+      ${emDev ? '<span class="selo-em-desenvolvimento">Em desenvolvimento</span>' : ''}
       <h3>${r.name}</h3>
       <p>${r.desc}</p>
       <p>${entrada} · flechas de madeira <b>grátis</b> para treinar</p>
       <p>Cripto: ${criptos} · valor da flecha à sua escolha</p>
       <button class="btn" data-range="${i}" ${ok ? '' : 'disabled'}>
-        ${ok ? 'Escolher' : `Precisa de ${textoValor(minCost(r))}`}
+        ${emDev ? 'Em desenvolvimento' : ok ? 'Escolher' : `Precisa de ${textoValor(minCost(r))}`}
       </button>`;
     grid.appendChild(card);
   });

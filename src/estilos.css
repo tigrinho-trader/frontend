@@ -1274,3 +1274,9 @@ h3.secao {
 .range .em-desenvolvimento small { font-weight: 900; }
 .arrow-row.em-desenvolvimento { opacity: 0.5; filter: grayscale(0.7); cursor: default; }
 .range .entrada-livre { color: #2e7d32; }
+.range.campo-em-desenvolvimento { filter: grayscale(0.6); }
+.range .selo-em-desenvolvimento {
+  display: inline-block; margin-bottom: calc(var(--s) * 4px); padding: calc(var(--s) * 2px) calc(var(--s) * 10px);
+  border-radius: 999px; background: #8d6e63; color: #fff; font-weight: 900; font-size: calc(var(--s) * 12px);
+  text-transform: uppercase; letter-spacing: 0.04em;
+}

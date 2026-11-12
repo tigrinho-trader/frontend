@@ -169,6 +169,11 @@ export const ATIVOS_EM_DESENVOLVIMENTO = new Set(['btc', 'eth', 'ouro']);
 export const emDesenvolvimento = ativo => ATIVOS_EM_DESENVOLVIMENTO.has(ativo);
 /** Ativos do campo liberados para jogar (pássaros, cotações e flechas). */
 export const ativosLiberados = range => (range?.ativos || []).filter(a => !emDesenvolvimento(a));
+/**
+ * Campo em desenvolvimento: nenhum ativo dele está liberado (hoje o Vilarejo e o Bosque, que não têm a V100). Não dá
+ * para entrar; volta sozinho quando um ativo dele sair do desenvolvimento.
+ */
+export const campoEmDesenvolvimento = range => ativosLiberados(range).length === 0;
 /** Flechas de mercado do campo que ainda estão em desenvolvimento (a loja mostra, sem deixar comprar). */
 export const flechasEmDesenvolvimento = range =>
   ARROW_TYPES.filter(t => t.mercado && (range?.ativos || []).includes(t.mercado) && emDesenvolvimento(t.mercado));
@@ -183,7 +188,7 @@ export const tiposNoCampo = range =>
 
 /** A madeira é grátis: o mínimo para jogar num campo é a entrada. */
 export const minCost = range => centavos(range.fee + arrowCost(ARROW_BY_ID.wood, range));
-export const canEnter = (wallet, range) => centavos(wallet) >= minCost(range);
+export const canEnter = (wallet, range) => !campoEmDesenvolvimento(range) && centavos(wallet) >= minCost(range);
 export const isBroke = wallet => !RANGES.some(r => canEnter(wallet, r));
 
 /**
