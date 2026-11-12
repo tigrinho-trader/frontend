@@ -9,7 +9,8 @@ import {
   nomeDoValor, proximoNivel, seloDoValor, textoDevolucao, textoValor, visualDoValor,
   clamp, formatMult, arrowCost, coinsForHit, emptyQuiver, countArrows, orderCost, minCost,
   canEnter as canEnterWith, isBroke as isBrokeWith, fitOrder, changeOrder, pickBirdType, tiposNoCampo,
-  segmentHitsCircle, arrowPosition,
+  segmentHitsCircle, arrowPosition, ativosLiberados, emDesenvolvimento, flechasEmDesenvolvimento, entradaLivre,
+  TEXTO_ENTRADA_LIVRE,
 } from './regras.js';
 import { Scenery } from './cenarios.js';
 import * as api from './api.js';
@@ -218,6 +219,13 @@ export async function carregarRegras() {
       minimo: minimo > 0 ? minimo : VALOR_MINIMO_FLECHA,
       taxaDevolucao: taxa >= 0 && taxa < 1 ? taxa : TAXA_DEVOLUCAO_PADRAO,
     };
+    // a entrada de cada campo é a que o servidor cobra (hoje 0: entrada livre por tempo limitado)
+    for (const c of Array.isArray(r?.campos) ? r.campos : []) {
+      const campo = RANGES.find(x => x.slug === c?.slug);
+      const entrada = Number(c?.entrada);
+      if (campo && c?.entrada !== null && Number.isFinite(entrada) && entrada >= 0) campo.fee = entrada;
+    }
+    if (game.state === 'ranges') renderRanges();
   } catch { /* servidor antigo ou fora do ar: valem os padrões */ }
   mostrarTaxaDevolucao();
   return game.regras;
@@ -350,12 +358,17 @@ function renderRanges() {
     const card = document.createElement('div');
     card.className = 'range' + (ok ? '' : ' locked');
     const pips = '➶'.repeat(r.tier) + `<span class="off">${'➶'.repeat(4 - r.tier)}</span>`;
-    const criptos = r.ativos.map(id => `<b style="color:${ATIVOS[id].cor}">${ATIVOS[id].marca}</b> ${ATIVOS[id].nome}`).join(', ');
+    const criptos = r.ativos.map(id => emDesenvolvimento(id)
+      ? `<span class="em-desenvolvimento"><b>${ATIVOS[id].marca}</b> ${ATIVOS[id].nome} <small>(em desenvolvimento)</small></span>`
+      : `<b style="color:${ATIVOS[id].cor}">${ATIVOS[id].marca}</b> ${ATIVOS[id].nome}`).join(', ');
+    const entrada = entradaLivre(r)
+      ? `<b class="entrada-livre">${TEXTO_ENTRADA_LIVRE}</b>`
+      : `Entrada <b><span class="coin"></span>${textoValor(r.fee)}</b>`;
     card.innerHTML = `
       <span class="tier" title="Dificuldade">${pips}</span>
       <h3>${r.name}</h3>
       <p>${r.desc}</p>
-      <p>Entrada <b><span class="coin"></span>${textoValor(r.fee)}</b> · flechas de madeira <b>grátis</b> para treinar</p>
+      <p>${entrada} · flechas de madeira <b>grátis</b> para treinar</p>
       <p>Cripto: ${criptos} · valor da flecha à sua escolha</p>
       <button class="btn" data-range="${i}" ${ok ? '' : 'disabled'}>
         ${ok ? 'Escolher' : `Precisa de ${textoValor(minCost(r))}`}
@@ -414,6 +427,10 @@ function openBuy(range) {
   game.valoresInvalidos = {};
   game.valorAntes = {};
   game.efeito = null;
+  // Flecha que não aparece neste campo (outro campo, ou ativo em desenvolvimento) nunca vai escondida no pedido
+  const doCampo = new Set(tiposNoCampo(range).map(t => t.id));
+  game.order = Object.fromEntries(Object.entries({ ...emptyQuiver(), ...game.order })
+    .map(([id, n]) => [id, doCampo.has(id) ? n : 0]));
   // Se o pedido anterior ficou caro demais, corta das flechas mais caras primeiro
   game.order = fitOrder(game.order, range, game.wallet, countArrows(guardadasNoCampo(range)), game.valores);
   mostrarErroCompra(null);
@@ -548,16 +565,23 @@ function renderBuy() {
           <button class="chip" data-type="${t.id}" data-d="5" ${canAdd ? '' : 'disabled'}>+5</button>
         </div>
       </div>`;
-  }).join('');
+  }).join('') + flechasEmDesenvolvimento(r).map(t => `
+      <div class="arrow-row mercado em-desenvolvimento" title="Em desenvolvimento">
+        <img src="${arrowIcon(t, 1)}" alt="">
+        <div class="arrow-info">
+          <b class="arrow-name">${t.name}</b>
+          <span>em desenvolvimento</span>
+        </div>
+      </div>`).join('');
   game.efeito = null;   // já tocou: redesenhar a loja não repete o efeito
 
-  $('buy-fee').textContent = textoValor(r.fee);
+  $('buy-fee').textContent = entradaLivre(r) ? 'livre por tempo limitado' : textoValor(r.fee);
   $('buy-arrows-label').textContent = `${count} flecha${count === 1 ? '' : 's'}${nGuard ? ` (+${nGuard} guardada${nGuard === 1 ? '' : 's'})` : ''}`;
   $('buy-arrows').textContent = textoValor(arrowsCost);
   $('buy-total').textContent = textoValor(total);
   $('buy-after').textContent = moedas(left);
   $('btn-enter').disabled = count + nGuard === 0 || left < 0 || game.ocupado || temValorInvalido();
-  $('btn-enter').textContent = game.ocupado ? 'Entrando...' : 'Pagar e entrar';
+  $('btn-enter').textContent = game.ocupado ? 'Entrando...' : total > 0 ? 'Pagar e entrar' : 'Entrar';
 }
 
 function updateOrder(typeId, delta) {
@@ -781,7 +805,7 @@ function fillRefill() {
   const vazia = arrowsLeft() === 0;
   $('refill-titulo').textContent = vazia ? 'Acabaram as flechas!' : 'Mais flechas';
   $('btn-refill-voltar').hidden = vazia;
-  $('ref-spent').textContent = `−${moedas(r.fee)}`;
+  $('ref-spent').textContent = entradaLivre(r) ? 'livre' : `−${moedas(r.fee)}`;
   $('ref-earned').textContent = moedasComSinal(game.apostasPartida);
   const netEl = $('ref-net');
   netEl.textContent = moedasComSinal(net);
@@ -925,7 +949,7 @@ async function endSession() {
   netEl.innerHTML = `<span class="coin"></span>${moedasComSinal(net)}`;
   netEl.className = 'net ' + (net > 0 ? 'pos' : net < 0 ? 'neg' : '');
   $('res-range').textContent = game.range.name;
-  $('res-fee').textContent = `−${textoValor(game.range.fee)}`;
+  $('res-fee').textContent = entradaLivre(game.range) ? 'livre' : `−${textoValor(game.range.fee)}`;
   const deMercado = ARROW_TYPES.filter(t => t.mercado);
   const somar = q => deMercado.reduce((s, t) => s + (Number(q?.[t.id]) || 0), 0);
   $('res-arrows').textContent = `${somar(compradas)} compradas · ${usadas ? somar(usadas) : '—'} usadas`;
@@ -1034,7 +1058,7 @@ function spawnPassaroMercado(ativo, { daFlecha = false } = {}) {
 
 /** Cada ativo solta um pássaro a cada `nasceACada` segundos (assim que houver cotação dele). */
 function updateMercadoSpawner(dt) {
-  for (const a of LISTA_ATIVOS.filter(x => game.range.ativos.includes(x.id))) {
+  for (const a of LISTA_ATIVOS.filter(x => ativosLiberados(game.range).includes(x.id))) {
     game.mercadoTimers[a.id] = (game.mercadoTimers[a.id] ?? a.nasceACada) - dt;
     if (game.mercadoTimers[a.id] > 0 || feeds[a.id].preco() === null) continue;
     game.mercadoTimers[a.id] = a.nasceACada;
@@ -1540,7 +1564,7 @@ function update(dt) {
 
   // as cotações só são ouvidas durante a rodada, e só as das criptos do campo
   for (const [id, feed] of Object.entries(feeds)) {
-    if (game.state === 'playing' && game.range.ativos.includes(id)) {
+    if (game.state === 'playing' && ativosLiberados(game.range).includes(id)) {
       if (!feed.ligado()) feed.ligar();
     } else if (feed.ligado()) {
       feed.desligar();
@@ -1811,7 +1835,7 @@ const dolares = (v, casas = 0) =>
 
 /** Placa com as cotações que guiam os pássaros de mercado: uma linha por ativo. */
 function drawTickerMercado() {
-  const linhas = LISTA_ATIVOS.filter(a => game.range.ativos.includes(a.id) && feeds[a.id].preco() !== null);
+  const linhas = LISTA_ATIVOS.filter(a => ativosLiberados(game.range).includes(a.id) && feeds[a.id].preco() !== null);
   if (!linhas.length) return;
   const w = 280, h = 22 + linhas.length * 24;
   // botões HTML do canto direito (pausa, som, pássaros): 3 × 52 px + 2 vãos de 10 + margem de 16
@@ -2636,7 +2660,8 @@ function drawHUD() {
   ctx.font = '900 14px Nunito, sans-serif';
   ctx.lineWidth = 3;
   ctx.strokeStyle = 'rgba(40,20,5,0.8)';
-  const barLabel = `entrada −${moedas(game.range.fee)} · mercado ${moedasComSinal(game.apostasPartida)}`;
+  const barLabel = `entrada ${entradaLivre(game.range) ? 'livre' : `−${moedas(game.range.fee)}`}`
+    + ` · mercado ${moedasComSinal(game.apostasPartida)}`;
   ctx.strokeText(barLabel, W / 2, barY + 16);
   ctx.fillStyle = '#fff';
   ctx.fillText(barLabel, W / 2, barY + 16);

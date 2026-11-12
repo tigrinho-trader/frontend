@@ -1268,3 +1268,9 @@ h3.secao {
   0% { opacity: 1; transform: translate(0, 0) scale(0.4); }
   100% { opacity: 0; transform: translate(calc(var(--s) * var(--dx, 0px)), calc(var(--s) * var(--dy, 0px))) scale(1.4); }
 }
+
+/* Ativos em desenvolvimento (só a V100 está liberada) e entrada livre por tempo limitado */
+.range .em-desenvolvimento { opacity: 0.55; }
+.range .em-desenvolvimento small { font-weight: 900; }
+.arrow-row.em-desenvolvimento { opacity: 0.5; filter: grayscale(0.7); cursor: default; }
+.range .entrada-livre { color: #2e7d32; }

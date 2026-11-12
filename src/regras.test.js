@@ -1,5 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  ATIVOS_EM_DESENVOLVIMENTO,
+  TEXTO_ENTRADA_LIVRE,
   ARROW_BY_ID,
   ARROW_TYPES,
   BIRD_TYPES,
@@ -24,6 +26,10 @@ import {
   segmentHitsCircle,
   shade,
   tiposNoCampo,
+  ativosLiberados,
+  emDesenvolvimento,
+  entradaLivre,
+  flechasEmDesenvolvimento,
   NIVEIS_FLECHA,
   VALOR_FLECHA_PADRAO,
   chaveLote,
@@ -42,6 +48,13 @@ import {
 } from "./regras.js";
 
 const [vilarejo, bosque, pico, real] = RANGES;
+
+/** Os testes da lógica de mercado rodam com todos os ativos liberados (a lógica vale quando saírem do desenvolvimento). */
+function liberarTodosOsAtivos() {
+  const antes = [...ATIVOS_EM_DESENVOLVIMENTO];
+  beforeEach(() => ATIVOS_EM_DESENVOLVIMENTO.clear());
+  afterEach(() => antes.forEach((a) => ATIVOS_EM_DESENVOLVIMENTO.add(a)));
+}
 const pedido = (parcial) => ({ ...emptyQuiver(), ...parcial });
 
 describe("valores dos pássaros", () => {
@@ -63,20 +76,39 @@ describe("campos de tiro", () => {
     expect(RANGE_BY_SLUG["reserva-real"]).toBe(real);
   });
 
-  it("espelham entrada, flecha e multiplicador do contrato do servidor", () => {
-    expect(RANGES.map((r) => [r.fee, r.arrowPrice, r.mult])).toEqual([[0.5, 1, 2], [1.5, 3, 4], [4, 8, 10], [10, 20, 25]]);
+  it("espelham entrada, flecha e multiplicador do contrato do servidor (entrada livre por tempo limitado)", () => {
+    expect(RANGES.map((r) => [r.fee, r.arrowPrice, r.mult])).toEqual([[0, 1, 2], [0, 3, 4], [0, 8, 10], [0, 20, 25]]);
+    expect(RANGES.every(entradaLivre)).toBe(true);
+    expect(TEXTO_ENTRADA_LIVRE).toBe("Entrada livre por tempo limitado");
+    expect(entradaLivre({ fee: 0.5 })).toBe(false);   // com entrada de volta, mostra o valor
   });
 
   it("campos mais caros têm mais criptomoedas", () => {
     expect(RANGES.map((r) => r.ativos)).toEqual([["btc"], ["btc", "eth"], ["btc", "eth", "ouro", "v100"], ["btc", "eth", "ouro", "v100"]]);
   });
 
-  it("no campo aparecem a madeira e as flechas das criptos dele", () => {
-    expect(tiposNoCampo(vilarejo).map((t) => t.id)).toEqual(["wood", "btc"]);
+  it("só a V100 está liberada: bitcoin, ethereum e ouro estão em desenvolvimento", () => {
+    expect(["btc", "eth", "ouro"].every(emDesenvolvimento)).toBe(true);
+    expect(emDesenvolvimento("v100")).toBe(false);
     expect(ARROW_TYPES.map((t) => t.id)).toEqual(["wood", "btc", "eth", "ouro", "v100"]);   // ferro, ouro e diamante saíram
-    expect(tiposNoCampo(bosque).map((t) => t.id)).toEqual(["wood", "btc", "eth"]);
-    expect(tiposNoCampo(pico).map((t) => t.id)).toEqual(["wood", "btc", "eth", "ouro", "v100"]);
+    expect(tiposNoCampo(vilarejo).map((t) => t.id)).toEqual(["wood"]);
+    expect(tiposNoCampo(bosque).map((t) => t.id)).toEqual(["wood"]);
+    expect(tiposNoCampo(pico).map((t) => t.id)).toEqual(["wood", "v100"]);
     expect(tiposNoCampo(null).map((t) => t.id)).toEqual(["wood"]);
+    expect(ativosLiberados(real)).toEqual(["v100"]);
+    expect(flechasEmDesenvolvimento(pico).map((t) => t.id)).toEqual(["btc", "eth", "ouro"]);   // a loja mostra, sem vender
+    expect(flechasEmDesenvolvimento(vilarejo).map((t) => t.id)).toEqual(["btc"]);
+  });
+
+  describe("liberando os ativos de novo", () => {
+    liberarTodosOsAtivos();
+
+    it("no campo aparecem a madeira e as flechas das criptos dele", () => {
+      expect(tiposNoCampo(vilarejo).map((t) => t.id)).toEqual(["wood", "btc"]);
+      expect(tiposNoCampo(bosque).map((t) => t.id)).toEqual(["wood", "btc", "eth"]);
+      expect(tiposNoCampo(pico).map((t) => t.id)).toEqual(["wood", "btc", "eth", "ouro", "v100"]);
+      expect(flechasEmDesenvolvimento(pico)).toEqual([]);
+    });
   });
 });
 
@@ -99,6 +131,12 @@ describe("flechas", () => {
 });
 
 describe("loja", () => {
+  // a cobrança da entrada continua valendo: estes testes usam a entrada de tabela (0,5 / 1,5 / 4 / 10)
+  const vilarejo = { ...RANGE_BY_SLUG.vilarejo, fee: 0.5 };
+  const bosque = { ...RANGE_BY_SLUG.bosque, fee: 1.5 };
+  const pico = { ...RANGE_BY_SLUG.pico, fee: 4 };
+  const real = { ...RANGE_BY_SLUG["reserva-real"], fee: 10 };
+
   it("soma o custo do pedido e conta as flechas", () => {
     const p = pedido({ wood: 10, btc: 2 });
     expect(countArrows(p)).toBe(12);
@@ -112,9 +150,12 @@ describe("loja", () => {
     expect(canEnter(0.5, vilarejo)).toBe(true);
     expect(canEnter(0.49, vilarejo)).toBe(false);
     expect(canEnter(0.7 - 0.2, vilarejo)).toBe(true);        // 0,49999999999999994: conta em centavos
-    expect(isBroke(0.49)).toBe(true);
-    expect(isBroke(0.5)).toBe(false);
     expect(minCost(real)).toBe(10);
+  });
+
+  it("com a entrada livre dá para entrar em qualquer campo mesmo sem moedas", () => {
+    expect(RANGES.every((r) => minCost(r) === 0 && canEnter(0, r))).toBe(true);
+    expect(isBroke(0)).toBe(false);
   });
 
   it("entrada com centavos soma certo com as flechas: 0,5 + 3 × 10 = 30,5", () => {
@@ -216,6 +257,8 @@ describe("valor das flechas de mercado", () => {
 });
 
 describe("lotes de flechas de mercado", () => {
+  liberarTodosOsAtivos();
+
   it("o pedido da loja vira flechas comuns e lotes de mercado (tipo + valor)", () => {
     const p = pedido({ wood: 10, btc: 3, eth: 0, ouro: 2 });
     expect(comunsDoPedido(p)).toEqual({ wood: 10 });

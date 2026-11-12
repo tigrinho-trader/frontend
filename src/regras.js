@@ -41,32 +41,32 @@ for (const t of Object.values(BIRD_TYPES)) {
 }
 
 // Campos de tiro (o servidor usa as mesmas regras): quanto mais caro, mais cada pássaro vale (e mais difícil ele é).
-// Custo = entrada (fixa, em moedas com centavos: 0,5 / 1,5 / 4 / 10) + preço de cada flecha. Equilíbrio: com 10 flechas de madeira
-// é preciso acertar ~3 pássaros para recuperar o que gastou.
+// Custo = entrada + preço de cada flecha. ENTRADA LIVRE POR TEMPO LIMITADO: a entrada de todos os campos está em 0
+// (a tabela era 0,5 / 1,5 / 4 / 10); a cobrança continua igual, só cobra 0.
 export const RANGES = [
   {
-    slug: 'vilarejo', name: 'Campo do Vilarejo', theme: 'village', fee: 0.5, arrowPrice: 1, mult: 2, tier: 1,
+    slug: 'vilarejo', name: 'Campo do Vilarejo', theme: 'village', fee: 0, arrowPrice: 1, mult: 2, tier: 1,
     ativos: ['btc'],
     desc: 'Pássaros lentos e voo reto. Bom para treinar.',
     speedMul: 1.0, wobbleChance: 0, wobbleAmp: 0, spawnEvery: 1.6, maxBirds: 3,
     pool: { red: 5, big: 3, yellow: 1, blue: 0, gold: 0.3 },
   },
   {
-    slug: 'bosque', name: 'Bosque dos Arqueiros', theme: 'forest', fee: 1.5, arrowPrice: 3, mult: 4, tier: 2,
+    slug: 'bosque', name: 'Bosque dos Arqueiros', theme: 'forest', fee: 0, arrowPrice: 3, mult: 4, tier: 2,
     ativos: ['btc', 'eth'],
     desc: 'Mais pássaros rápidos e alguns que sobem e descem.',
     speedMul: 1.15, wobbleChance: 0.2, wobbleAmp: 35, spawnEvery: 1.35, maxBirds: 4,
     pool: { red: 4, big: 2, yellow: 3, blue: 1, gold: 0.5 },
   },
   {
-    slug: 'pico', name: 'Pico das Águias', theme: 'peak', fee: 4, arrowPrice: 8, mult: 10, tier: 3,
+    slug: 'pico', name: 'Pico das Águias', theme: 'peak', fee: 0, arrowPrice: 8, mult: 10, tier: 3,
     ativos: ['btc', 'eth', 'ouro', 'v100'],
     desc: 'Pássaros velozes e voo em ondas. Mais dourados.',
     speedMul: 1.3, wobbleChance: 0.4, wobbleAmp: 50, spawnEvery: 1.1, maxBirds: 5,
     pool: { red: 3, big: 1, yellow: 3, blue: 3, gold: 0.8 },
   },
   {
-    slug: 'reserva-real', name: 'Reserva Real', theme: 'royal', fee: 10, arrowPrice: 20, mult: 25, tier: 4,
+    slug: 'reserva-real', name: 'Reserva Real', theme: 'royal', fee: 0, arrowPrice: 20, mult: 25, tier: 4,
     ativos: ['btc', 'eth', 'ouro', 'v100'],
     desc: 'Só para mestres: pássaros muito rápidos e imprevisíveis.',
     speedMul: 1.45, wobbleChance: 0.6, wobbleAmp: 65, spawnEvery: 0.9, maxBirds: 6,
@@ -160,9 +160,25 @@ export const countArrows = q => ARROW_TYPES.reduce((s, t) => s + (q[t.id] || 0),
 export const orderCost = (order, range, valores = {}) =>
   centavos(ARROW_TYPES.reduce((s, t) => s + (order[t.id] || 0) * arrowCost(t, range, valores), 0));
 
-/** Flechas que aparecem neste campo (loja, HUD, teclas): a madeira e as de mercado das criptos do campo. */
+/**
+ * Ativos ainda em desenvolvimento: aparecem nos campos marcados "em desenvolvimento", mas sem pássaro, sem cotação e
+ * sem flecha. Só a Volatilidade 100 está liberada. Tirar um ativo daqui libera ele de novo (a lógica é a mesma).
+ */
+export const ATIVOS_EM_DESENVOLVIMENTO = new Set(['btc', 'eth', 'ouro']);
+export const emDesenvolvimento = ativo => ATIVOS_EM_DESENVOLVIMENTO.has(ativo);
+/** Ativos do campo liberados para jogar (pássaros, cotações e flechas). */
+export const ativosLiberados = range => (range?.ativos || []).filter(a => !emDesenvolvimento(a));
+/** Flechas de mercado do campo que ainda estão em desenvolvimento (a loja mostra, sem deixar comprar). */
+export const flechasEmDesenvolvimento = range =>
+  ARROW_TYPES.filter(t => t.mercado && (range?.ativos || []).includes(t.mercado) && emDesenvolvimento(t.mercado));
+
+/** Entrada zerada por enquanto: o texto que aparece no lugar do valor. */
+export const TEXTO_ENTRADA_LIVRE = 'Entrada livre por tempo limitado';
+export const entradaLivre = range => centavos(range?.fee || 0) === 0;
+
+/** Flechas que aparecem neste campo (loja, HUD, teclas): a madeira e as de mercado dos ativos liberados do campo. */
 export const tiposNoCampo = range =>
-  ARROW_TYPES.filter(t => !t.mercado || (range?.ativos || []).includes(t.mercado));
+  ARROW_TYPES.filter(t => !t.mercado || ativosLiberados(range).includes(t.mercado));
 
 /** A madeira é grátis: o mínimo para jogar num campo é a entrada. */
 export const minCost = range => centavos(range.fee + arrowCost(ARROW_BY_ID.wood, range));
