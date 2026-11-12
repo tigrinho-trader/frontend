@@ -100,6 +100,15 @@ beforeEach(() => {
   authFalso.falhaIniciar = null;
   authFalso.falhaEntrar = null;
   sessionStorage.clear();
+  // localStorage em memória (o Node pode não ter um); o tutorial conta como visto, os testes dele tiram isto
+  const memoria = new Map();
+  vi.stubGlobal("localStorage", {
+    getItem: (k) => (memoria.has(k) ? memoria.get(k) : null),
+    setItem: (k, v) => memoria.set(k, String(v)),
+    removeItem: (k) => memoria.delete(k),
+    clear: () => memoria.clear(),
+  });
+  localStorage.setItem("flecha-tutorial-visto", "1");
   chamadas.length = 0;
   rotas = {
     "GET /usuarios/me": [200, EU],
@@ -1308,5 +1317,49 @@ describe("sacar por Pix (caixa do Asaas)", { timeout: 15000 }, () => {
     expect(contaAtual).not.toBeNull();
     $("btn-saque-pix-voltar").click();
     expect($("menu-wallet").textContent).toBe("990");
+  });
+});
+
+describe("tutorial", () => {
+  it("abre sozinho no primeiro acesso e navega com < e > (e as setas do teclado)", async () => {
+    localStorage.removeItem("flecha-tutorial-visto");
+    await iniciarApp();
+
+    expect($("tutorial").classList.contains("show")).toBe(true);
+    expect($("tutorial-passo").textContent).toBe("1 / 13");
+    expect($("tutorial-titulo").textContent).toBe("Flecha Certeira");
+    expect($("btn-tutorial-anterior").disabled).toBe(true);
+    expect(localStorage.getItem("flecha-tutorial-visto")).toBe("1");
+
+    $("btn-tutorial-proximo").click();
+    expect($("tutorial-passo").textContent).toBe("2 / 13");
+    expect($("tutorial-titulo").textContent).toBe("Moedas e carteira");
+    $("btn-tutorial-anterior").click();
+    expect($("tutorial-passo").textContent).toBe("1 / 13");
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight" }));
+    expect($("tutorial-passo").textContent).toBe("2 / 13");
+
+    for (let i = 0; i < 20; i++) $("btn-tutorial-proximo").click();   // não passa da última
+    expect($("tutorial-passo").textContent).toBe("13 / 13");
+    expect($("tutorial-titulo").textContent).toBe("Sacar");
+    expect($("btn-tutorial-proximo").disabled).toBe(true);
+    expect($("btn-tutorial-fechar").textContent).toBe("Começar a jogar");
+    expect($("tutorial-pontos").querySelectorAll("span")).toHaveLength(13);
+
+    $("btn-tutorial-fechar").click();
+    expect($("tutorial").classList.contains("show")).toBe(false);
+    expect($("menu").classList.contains("show")).toBe(true);
+  });
+
+  it("depois de visto não abre sozinho; o botão ? Tutorial revisita do começo", async () => {
+    await iniciarApp();
+    expect($("tutorial").classList.contains("show")).toBe(false);
+    expect($("menu").classList.contains("show")).toBe(true);
+
+    $("btn-tutorial").click();
+    expect($("tutorial").classList.contains("show")).toBe(true);
+    expect($("tutorial-passo").textContent).toBe("1 / 13");
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    expect($("menu").classList.contains("show")).toBe(true);
   });
 });

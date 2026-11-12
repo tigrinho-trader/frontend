@@ -36,6 +36,7 @@
               <span class="coin"></span><b id="menu-wallet">0</b><small>saldo</small>
             </button>
             <button type="button" class="pilula" id="btn-arsenal" title="Arsenal: o valor padrão das flechas de mercado">➶ Arsenal</button>
+            <button type="button" class="pilula" id="btn-tutorial" title="Como funciona o jogo">? Tutorial</button>
             <button type="button" class="pilula ouro" id="btn-comprar">+ Comprar moedas</button>
             <button type="button" class="pilula" id="btn-saque-pix" hidden title="Sacar em reais por Pix">Sacar Pix</button>
             <button type="button" class="botao-redondo" id="btn-admin" hidden title="Administração" aria-label="Administração">⚙</button>
@@ -215,6 +216,21 @@
             <tbody id="saque-pix-lista"><tr><td colspan="4" class="vazio">Carregando…</td></tr></tbody>
           </table>
         </div>
+      </div>
+    </div>
+
+    <!-- Tutorial: o jogo explicado em telas, com < e > -->
+    <div class="overlay" id="tutorial">
+      <div class="card conta tutorial">
+        <p class="tutorial-passo" id="tutorial-passo">1 / 1</p>
+        <h2 id="tutorial-titulo">Flecha Certeira</h2>
+        <div class="tutorial-texto" id="tutorial-texto"></div>
+        <div class="tutorial-nav">
+          <button type="button" class="btn secondary tutorial-seta" id="btn-tutorial-anterior" aria-label="Tela anterior">&lt;</button>
+          <div class="tutorial-pontos" id="tutorial-pontos" aria-hidden="true"></div>
+          <button type="button" class="btn tutorial-seta" id="btn-tutorial-proximo" aria-label="Próxima tela">&gt;</button>
+        </div>
+        <button type="button" class="btn ouro small" id="btn-tutorial-fechar">Fechar</button>
       </div>
     </div>
 

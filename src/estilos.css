@@ -1280,3 +1280,18 @@ h3.secao {
   border-radius: 999px; background: #8d6e63; color: #fff; font-weight: 900; font-size: calc(var(--s) * 12px);
   text-transform: uppercase; letter-spacing: 0.04em;
 }
+
+/* Tutorial: telas com < e > */
+.card.tutorial { max-width: calc(var(--s) * 680px); }
+.tutorial-passo { margin: 0; color: #8a6d4b; font-weight: 900; font-size: calc(var(--s) * 13px); letter-spacing: 0.06em; }
+.tutorial-texto { min-height: calc(var(--s) * 230px); margin: calc(var(--s) * 6px) 0; text-align: left;
+  font-size: calc(var(--s) * 17px); line-height: 1.45; }
+.tutorial-texto ul, .tutorial-texto ol { margin: 0.4em 0; padding-left: 1.3em; }
+.tutorial-texto li { margin: 0.3em 0; }
+.tutorial-texto p { margin: 0.5em 0; }
+.tutorial-nav { display: flex; align-items: center; justify-content: space-between; gap: calc(var(--s) * 12px);
+  margin: calc(var(--s) * 10px) 0; }
+.tutorial-nav .tutorial-seta { width: auto; min-width: calc(var(--s) * 70px); margin: 0; font-size: calc(var(--s) * 28px); }
+.tutorial-pontos { display: flex; flex-wrap: wrap; justify-content: center; gap: calc(var(--s) * 6px); }
+.tutorial-pontos span { width: calc(var(--s) * 10px); height: calc(var(--s) * 10px); border-radius: 50%; background: #d7c3a5; }
+.tutorial-pontos span.atual { background: #f9a825; }

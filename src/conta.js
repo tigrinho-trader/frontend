@@ -17,6 +17,7 @@ import {
   proximoNivel, visualDoValor,
 } from './regras.js';
 import { ATIVO_POR_SIMBOLO, reaisComSinal, textoTaxa } from './bitcoin.js';
+import { talvezMostrarTutorial } from './tutorial.js';
 import {
   ROTULO_PAPEL, escaparHtml, formatarComSinal, formatarData, formatarMoedas, htmlExtrato, htmlLinhasUsuarios, iniciais,
   mensagemErro, nomeExibicao, paginacao, urlSegura, validarApelido,
@@ -154,6 +155,7 @@ async function carregarConta() {
     if (e.status !== 401 && e.status !== 403) avisoMenu(`Saldo indisponível: ${mensagemErro(e)}.`, 'erro');
   }
   await encerrarRodadaPendente();
+  talvezMostrarTutorial();   // no primeiro acesso deste navegador; depois, pelo botão "? Tutorial"
 }
 
 /** Se a página fechou no meio de uma rodada, encerra a sessão aberta e avisa o resultado. */
