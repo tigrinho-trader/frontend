@@ -162,13 +162,21 @@ export const orderCost = (order, range, valores = {}) =>
   centavos(ARROW_TYPES.reduce((s, t) => s + (order[t.id] || 0) * arrowCost(t, range, valores), 0));
 
 /**
- * Ativos ainda em desenvolvimento: aparecem nos campos marcados "em desenvolvimento", mas sem pássaro, sem cotação e
- * sem flecha. Só a Volatilidade 100 está liberada. Tirar um ativo daqui libera ele de novo (a lógica é a mesma).
+ * Ativos com a FLECHA ainda em desenvolvimento: a loja mostra marcada, sem vender. Só a flecha da Volatilidade 100 é
+ * vendida. Tirar um ativo daqui volta a vender a flecha dele (a lógica é a mesma).
  */
 export const ATIVOS_EM_DESENVOLVIMENTO = new Set(['btc', 'eth', 'ouro']);
+/**
+ * Ativos ainda sem pássaro e sem cotação no jogo. Bitcoin e ethereum já voam nos campos deles e mostram a cotação
+ * (só a flecha não é vendida); o ouro ainda não aparece.
+ */
+export const ATIVOS_SEM_COTACAO = new Set(['ouro']);
 export const emDesenvolvimento = ativo => ATIVOS_EM_DESENVOLVIMENTO.has(ativo);
-/** Ativos do campo liberados para jogar (pássaros, cotações e flechas). */
+export const semCotacao = ativo => ATIVOS_SEM_COTACAO.has(ativo);
+/** Ativos do campo com a flecha à venda. */
 export const ativosLiberados = range => (range?.ativos || []).filter(a => !emDesenvolvimento(a));
+/** Ativos do campo que aparecem na rodada: pássaro de mercado, cotação e placa com o preço. */
+export const ativosVisiveis = range => (range?.ativos || []).filter(a => !semCotacao(a));
 /**
  * Campo em desenvolvimento: nenhum ativo dele está liberado (hoje o Vilarejo e o Bosque, que não têm a V100). Não dá
  * para entrar; volta sozinho quando um ativo dele sair do desenvolvimento.

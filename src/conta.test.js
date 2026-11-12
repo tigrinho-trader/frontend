@@ -82,7 +82,11 @@ let contaAtual = null;
 async function iniciarApp({ todosOsAtivos = false } = {}) {
   document.documentElement.innerHTML = HTML.replace(/<script[\s\S]*?<\/script>/g, "");
   vi.resetModules();
-  if (todosOsAtivos) (await import("./regras.js")).ATIVOS_EM_DESENVOLVIMENTO.clear();
+  if (todosOsAtivos) {
+    const regras = await import("./regras.js");
+    regras.ATIVOS_EM_DESENVOLVIMENTO.clear();
+    regras.ATIVOS_SEM_COTACAO.clear();
+  }
   const conta = await import("./conta.js");
   contaAtual = conta;
   await conta.iniciarConta();
@@ -404,7 +408,8 @@ describe("jogo com o servidor", () => {
     $("btn-play").click();
     const cartoes = [...$("range-grid").querySelectorAll(".range")].map((c) => c.textContent.replace(/\s+/g, " "));
     expect(cartoes.every((t) => t.includes("Entrada livre por tempo limitado"))).toBe(true);
-    expect(cartoes[0]).toContain("Bitcoin (em desenvolvimento)");
+    expect(cartoes[0]).toContain("Bitcoin (flecha em desenvolvimento)");
+    expect(cartoes[2]).toContain("Ouro (em desenvolvimento)");
     expect(cartoes[2]).toContain("Volatilidade 100");
     expect(cartoes[2]).not.toContain("Volatilidade 100 (em desenvolvimento)");
     // campos sem a V100 (Vilarejo e Bosque) estão em desenvolvimento: não dá para entrar

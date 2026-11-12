@@ -9,8 +9,8 @@ import {
   nomeDoValor, proximoNivel, seloDoValor, textoDevolucao, textoValor, visualDoValor,
   clamp, formatMult, arrowCost, coinsForHit, emptyQuiver, countArrows, orderCost, minCost,
   canEnter as canEnterWith, isBroke as isBrokeWith, fitOrder, changeOrder, pickBirdType, tiposNoCampo,
-  segmentHitsCircle, arrowPosition, ativosLiberados, emDesenvolvimento, flechasEmDesenvolvimento, entradaLivre,
-  campoEmDesenvolvimento,
+  segmentHitsCircle, arrowPosition, emDesenvolvimento, flechasEmDesenvolvimento, entradaLivre,
+  campoEmDesenvolvimento, ativosVisiveis, semCotacao,
   TEXTO_ENTRADA_LIVRE,
 } from './regras.js';
 import { Scenery } from './cenarios.js';
@@ -361,7 +361,8 @@ function renderRanges() {
     card.className = 'range' + (ok ? '' : ' locked') + (emDev ? ' campo-em-desenvolvimento' : '');
     const pips = '➶'.repeat(r.tier) + `<span class="off">${'➶'.repeat(4 - r.tier)}</span>`;
     const criptos = r.ativos.map(id => emDesenvolvimento(id)
-      ? `<span class="em-desenvolvimento"><b>${ATIVOS[id].marca}</b> ${ATIVOS[id].nome} <small>(em desenvolvimento)</small></span>`
+      ? `<span class="em-desenvolvimento"><b>${ATIVOS[id].marca}</b> ${ATIVOS[id].nome} `
+        + `<small>(${semCotacao(id) ? 'em desenvolvimento' : 'flecha em desenvolvimento'})</small></span>`
       : `<b style="color:${ATIVOS[id].cor}">${ATIVOS[id].marca}</b> ${ATIVOS[id].nome}`).join(', ');
     const entrada = entradaLivre(r)
       ? `<b class="entrada-livre">${TEXTO_ENTRADA_LIVRE}</b>`
@@ -1049,7 +1050,7 @@ function spawnPassaroMercado(ativo, { daFlecha = false } = {}) {
 
 /** Cada ativo solta um pássaro a cada `nasceACada` segundos (assim que houver cotação dele). */
 function updateMercadoSpawner(dt) {
-  for (const a of LISTA_ATIVOS.filter(x => ativosLiberados(game.range).includes(x.id))) {
+  for (const a of LISTA_ATIVOS.filter(x => ativosVisiveis(game.range).includes(x.id))) {
     game.mercadoTimers[a.id] = (game.mercadoTimers[a.id] ?? a.nasceACada) - dt;
     if (game.mercadoTimers[a.id] > 0 || feeds[a.id].preco() === null) continue;
     game.mercadoTimers[a.id] = a.nasceACada;
@@ -1565,7 +1566,7 @@ function update(dt) {
 
   // as cotações só são ouvidas durante a rodada, e só as das criptos do campo
   for (const [id, feed] of Object.entries(feeds)) {
-    if (game.state === 'playing' && ativosLiberados(game.range).includes(id)) {
+    if (game.state === 'playing' && ativosVisiveis(game.range).includes(id)) {
       if (!feed.ligado()) feed.ligar();
     } else if (feed.ligado()) {
       feed.desligar();
@@ -1836,7 +1837,7 @@ const dolares = (v, casas = 0) =>
 
 /** Placa com as cotações que guiam os pássaros de mercado: uma linha por ativo. */
 function drawTickerMercado() {
-  const linhas = LISTA_ATIVOS.filter(a => ativosLiberados(game.range).includes(a.id) && feeds[a.id].preco() !== null);
+  const linhas = LISTA_ATIVOS.filter(a => ativosVisiveis(game.range).includes(a.id) && feeds[a.id].preco() !== null);
   if (!linhas.length) return;
   const w = 280, h = 22 + linhas.length * 24;
   // botões HTML do canto direito (pausa, som, pássaros): 3 × 52 px + 2 vãos de 10 + margem de 16

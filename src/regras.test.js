@@ -27,6 +27,7 @@ import {
   shade,
   tiposNoCampo,
   ativosLiberados,
+  ativosVisiveis,
   campoEmDesenvolvimento,
   emDesenvolvimento,
   entradaLivre,
@@ -99,6 +100,14 @@ describe("campos de tiro", () => {
     expect(ativosLiberados(real)).toEqual(["v100"]);
     expect(flechasEmDesenvolvimento(pico).map((t) => t.id)).toEqual(["btc", "eth", "ouro"]);   // a loja mostra, sem vender
     expect(flechasEmDesenvolvimento(vilarejo).map((t) => t.id)).toEqual(["btc"]);
+  });
+
+  it("bitcoin e ethereum voam e mostram a cotação nos campos deles; só a flecha não é vendida", () => {
+    expect(ativosVisiveis(vilarejo)).toEqual(["btc"]);
+    expect(ativosVisiveis(bosque)).toEqual(["btc", "eth"]);
+    expect(ativosVisiveis(pico)).toEqual(["btc", "eth", "v100"]);   // o ouro ainda não aparece
+    expect(ativosVisiveis(real)).toEqual(["btc", "eth", "v100"]);
+    expect(tiposNoCampo(pico).map((t) => t.id)).toEqual(["wood", "v100"]);
   });
 
   it("campos sem a V100 (Vilarejo e Bosque) estão em desenvolvimento: não dá para entrar", () => {
