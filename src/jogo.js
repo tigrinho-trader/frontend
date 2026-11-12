@@ -6,7 +6,7 @@ import {
   DEFAULT_ARROWS, MAX_ARROWS, REFILL_QTY, BIRD_TYPES, RANGES, ARROW_TYPES, ARROW_BY_ID,
   NIVEIS_FLECHA, TAXA_DEVOLUCAO_PADRAO, VALOR_FLECHA_PADRAO, VALOR_MINIMO_FLECHA,
   centavos, chaveLote, comunsDoPedido, espacosDaAljava, lerValorFlecha, mercadoDoPedido, nivelAnterior, nivelDoValor,
-  nomeDoValor, proximoNivel, seloDoValor, textoDevolucao, textoValor, visualDoValor,
+  nomeDoValor, proximoNivel, seloDoValor, textoDevolucao, textoValor, visualDoValor, devolucaoAoSair, textoAvisoSaida,
   clamp, formatMult, arrowCost, coinsForHit, emptyQuiver, countArrows, orderCost, minCost,
   canEnter as canEnterWith, isBroke as isBrokeWith, fitOrder, changeOrder, pickBirdType, tiposNoCampo,
   segmentHitsCircle, arrowPosition, emDesenvolvimento, flechasEmDesenvolvimento, entradaLivre,
@@ -132,6 +132,7 @@ const game = {
   quiver: emptyQuiver(),    // flechas restantes de cada tipo
   selected: 'wood',         // espaço da aljava na mão do arqueiro: "wood" ou o lote de mercado ("btc@20")
   lotes: [],                // flechas de mercado da rodada, em lotes: [{ flecha, valor, quantidade }]
+  saidaArmada: null,        // botão de sair já clicado uma vez com flechas de mercado sobrando (pede o 2º clique)
   shotsFired: 0,
   totalShots: 0,            // tiros em todas as rodadas (para a dica do primeiro tiro)
   hits: 0,
@@ -182,6 +183,7 @@ export function setState(s) {
   }
   if (s === 'menu') $('menu-wallet').textContent = moedas(game.wallet);
   if (s === 'ranges') renderRanges();
+  if (s === 'paused' || s === 'refill') mostrarTaxaDevolucao();   // aviso de saída com as flechas de agora
 }
 
 export const estadoAtual = () => game.state;
@@ -199,12 +201,45 @@ export const valorPadraoAtual = () => game.valorPadrao;
 export const regrasAtuais = () => game.regras;
 
 const fmtPercentual = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 });
-/** Taxa de devolução das flechas não usadas, ex.: "0,2%". */
+/** Taxa de devolução das flechas não usadas, ex.: "1%". */
 const textoTaxaDevolucao = () => `${fmtPercentual.format(game.regras.taxaDevolucao * 100)}%`;
 
+/** Flechas de mercado que sobraram e quanto volta delas se o jogador sair agora (null se não sobrou nenhuma). */
+const sobraAoSair = () => devolucaoAoSair(game.lotes, game.regras.taxaDevolucao);
+
+/**
+ * Aviso de saída na pausa e na tela de compra: quantas flechas de mercado sobraram, quanto volta e quanto se perde
+ * com a taxa de devolução. Desarma a confirmação de saída (o próximo "Sair" volta a avisar antes).
+ */
 function mostrarTaxaDevolucao() {
-  $('pausa-nota').textContent = `Se sair agora, as flechas de mercado que sobraram voltam em moedas para a carteira, `
-    + `com uma taxa de ${textoTaxaDevolucao()}.`;
+  game.saidaArmada = null;
+  const sobra = sobraAoSair();
+  const texto = textoAvisoSaida(sobra, textoTaxaDevolucao());
+  $('pausa-nota').textContent = texto;
+  $('pausa-nota').classList.toggle('alerta', Boolean(sobra));
+  $('refill-aviso-saida').textContent = sobra ? texto : '';
+  $('refill-aviso-saida').hidden = !sobra;
+  if (!game.encerrando) {
+    $('btn-quit').textContent = 'Sair do campo';
+    $('btn-refill-end').textContent = 'Encerrar rodada';
+  }
+}
+
+/**
+ * Sair do campo pelo botão (pausa ou tela de compra). Com flechas de mercado sobrando e taxa a pagar, o primeiro
+ * clique só mostra a perda e troca o botão por "Sair mesmo assim"; o segundo encerra.
+ */
+function pedirSaida(botao) {
+  if (game.encerrando || !sessaoCtl) return;
+  const sobra = sobraAoSair();
+  if (sobra && sobra.taxa > 0 && game.saidaArmada !== botao) {
+    mostrarTaxaDevolucao();
+    game.saidaArmada = botao;
+    $(botao).textContent = `Sair mesmo assim (−${textoValor(sobra.taxa)})`;
+    return;
+  }
+  game.saidaArmada = null;
+  endSession();
 }
 
 /** Lê as regras públicas do jogo (níveis, valor mínimo e taxa de devolução). Sem resposta, fica com o padrão. */
@@ -2933,12 +2968,12 @@ $('refill-options').addEventListener('click', e => {
   const btn = e.target.closest('button[data-type]');
   if (btn && !btn.disabled) buyMoreArrows(btn.dataset.type);
 });
-$('btn-refill-end').addEventListener('click', endSession);
+$('btn-refill-end').addEventListener('click', () => pedirSaida('btn-refill-end'));
 $('btn-refill-voltar').addEventListener('click', () => {
   if (game.state === 'refill' && arrowsLeft() > 0) setState('playing');
 });
 
-$('btn-quit').addEventListener('click', endSession);
+$('btn-quit').addEventListener('click', () => pedirSaida('btn-quit'));
 $('btn-again').addEventListener('click', () => openBuy(game.range));
 $('btn-change-range').addEventListener('click', () => setState('ranges'));
 $('btn-restart').addEventListener('click', () => setState('menu'));

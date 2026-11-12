@@ -4,23 +4,45 @@ import { listar, slidesTutorial } from "./tutorial-conteudo.js";
 const texto = (slides, titulo) => slides.find((s) => s.titulo === titulo).html.replace(/<[^>]+>/g, "").replace(/\s+/g, " ");
 
 describe("tutorial", () => {
-  it("explica o jogo em telas, na ordem", () => {
+  it("explica o jogo em telas, na ordem (o caminho do dinheiro fica fora do jogo)", () => {
     expect(slidesTutorial().map((s) => s.titulo)).toEqual([
       "Flecha Certeira", "Moedas e carteira", "Campos", "Flechas", "Como atirar", "Cancelar o tiro",
-      "Quando o trade acontece", "Resultado de cada flecha", "Taxas do jogo", "Caminho do dinheiro: onde ele encolhe",
-      "E na volta", "Durante a rodada", "Sacar",
+      "Quando o trade acontece", "Resultado de cada flecha", "Taxas do jogo", "Durante a rodada", "Sacar",
     ]);
   });
 
-  it("usa as regras de agora: níveis, valor mínimo e taxa de devolução", () => {
+  it("não cita a corretora pelo nome em nenhuma tela", () => {
+    for (const s of slidesTutorial()) {
+      expect(`${s.titulo} ${s.html}`).not.toMatch(/deriv/i);
+    }
+  });
+
+  it("a primeira tela fala de cotação em tempo real, corretora e que o jogo não ganha com a perda", () => {
+    const abertura = texto(slidesTutorial(), "Flecha Certeira");
+    expect(abertura).toContain("sistema de trading");
+    expect(abertura).toContain("cotação das moedas em tempo real");
+    expect(abertura).toContain("ligado a uma corretora");
+    expect(abertura).toContain("não ganha com a sua perda");
+  });
+
+  it("usa as regras de agora: níveis, valor mínimo e taxa de devolução (padrão 1%)", () => {
     const padrao = slidesTutorial();
     expect(texto(padrao, "Flechas")).toContain("Nível 1 = 10, Nível 2 = 20, Nível 3 = 30 moedas");
     expect(texto(padrao, "Flechas")).toContain("a partir de 1 moeda");
-    expect(texto(padrao, "Taxas do jogo")).toContain("com taxa de 0,2%");
+    expect(texto(padrao, "Taxas do jogo")).toContain("com taxa de 1% (ex.: 3 flechas de R$ 10 voltam 29,7)");
+    expect(texto(padrao, "Taxas do jogo")).toContain("pede um segundo clique");
 
-    const outras = slidesTutorial({ niveis: [5, 15, 25], minimo: 2, taxaDevolucao: 0.01 });
+    const outras = slidesTutorial({ niveis: [5, 15, 25], minimo: 2, taxaDevolucao: 0.005 });
     expect(texto(outras, "Flechas")).toContain("Nível 1 = 5, Nível 2 = 15, Nível 3 = 25 moedas");
-    expect(texto(outras, "Taxas do jogo")).toContain("com taxa de 1%");
+    expect(texto(outras, "Taxas do jogo")).toContain("com taxa de 0,5% (ex.: 3 flechas de R$ 10 voltam 29,85)");
+  });
+
+  it("o lucro não é exatamente 90%: mostra as pequenas perdas do arredondamento em dólar, com o exemplo", () => {
+    const resultado = texto(slidesTutorial(), "Resultado de cada flecha");
+    expect(resultado).toContain("90,1%");
+    expect(resultado).toContain("arredondado para baixo no centavo de dólar");
+    expect(resultado).toContain("até uns R$ 0,10 por flecha");
+    expect(resultado).toContain("R$ 8,94 (em vez de R$ 9,01)");
   });
 
   it("mostra os campos liberados, os em desenvolvimento e a entrada livre", () => {
@@ -29,17 +51,6 @@ describe("tutorial", () => {
     expect(campos).toContain("Em desenvolvimento (ainda não dá para entrar): Campo do Vilarejo e Bosque dos Arqueiros");
     expect(campos).toContain("livre por tempo limitado");
     expect(texto(slidesTutorial(), "Flechas")).toContain("Bitcoin, Ethereum e Ouro PAXG: flecha em desenvolvimento");
-  });
-
-  it("explica o caminho do dinheiro e onde ele encolhe, com o exemplo real", () => {
-    const caminho = texto(slidesTutorial(), "Caminho do dinheiro: onde ele encolhe");
-    for (const etapa of ["Pix no Asaas", "Asaas → Binance", "Real → dólar (USDT)", "Binance → carteira ponte",
-      "Carteira ponte → Deriv", "USDT → USD na Deriv"]) {
-      expect(caminho).toContain(etapa);
-    }
-    expect(caminho).toContain("R$ 39,21");
-    expect(caminho).toContain("R$ 40 viraram +US$ 7,12");
-    expect(texto(slidesTutorial(), "E na volta")).toContain("o saque da Deriv é manual");
   });
 
   it("lembra quando o trade abre e como cancelar", () => {

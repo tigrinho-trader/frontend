@@ -49,6 +49,9 @@ import {
   proximoNivel,
   seloDoValor,
   textoDevolucao,
+  TAXA_DEVOLUCAO_PADRAO,
+  devolucaoAoSair,
+  textoAvisoSaida,
   visualDoValor,
 } from "./regras.js";
 
@@ -338,6 +341,31 @@ describe("lotes de flechas de mercado", () => {
       .toBe("Flechas devolvidas: 3 · +59,88 moedas (taxa 0,12)");
     expect(textoDevolucao({ quantidade: 0, valorBruto: 0, taxa: 0, valorDevolvido: 0 })).toBe("");
     expect(textoDevolucao(null)).toBe("");
+  });
+
+  it("antes de sair: quanto volta das flechas de mercado que sobraram (taxa padrão de 1%)", () => {
+    expect(TAXA_DEVOLUCAO_PADRAO).toBe(0.01);
+    const lotes = [{ flecha: "btc", valor: 20, quantidade: 2 }, { flecha: "btc", valor: 10, quantidade: 1 },
+      { flecha: "eth", valor: 30, quantidade: 0 }];
+    expect(devolucaoAoSair(lotes, 0.01)).toEqual({ quantidade: 3, bruto: 50, devolvido: 49.5, taxa: 0.5 });
+    // mesma conta do servidor: centavos meio-para-cima (95,50 menos 0,2% = 95,31)
+    expect(devolucaoAoSair([{ flecha: "btc", valor: 95.5, quantidade: 1 }], 0.002))
+      .toEqual({ quantidade: 1, bruto: 95.5, devolvido: 95.31, taxa: 0.19 });
+    expect(devolucaoAoSair([], 0.01)).toBeNull();
+    expect(devolucaoAoSair(null, 0.01)).toBeNull();
+    expect(devolucaoAoSair([{ flecha: "btc", valor: 10, quantidade: 0 }], 0.01)).toBeNull();
+  });
+
+  it("aviso de saída: quantas flechas sobram, quanto volta e quanto se perde", () => {
+    expect(textoAvisoSaida({ quantidade: 3, bruto: 50, devolvido: 49.5, taxa: 0.5 }, "1%")).toBe(
+      "Você ainda tem 3 flechas de mercado sem usar (50 moedas). Se sair agora, elas voltam para a carteira com "
+      + "taxa de 1%: você recebe 49,5 moedas e perde 0,5.");
+    expect(textoAvisoSaida({ quantidade: 1, bruto: 10, devolvido: 9.9, taxa: 0.1 }, "1%")).toBe(
+      "Você ainda tem 1 flecha de mercado sem usar (10 moedas). Se sair agora, ela volta para a carteira com "
+      + "taxa de 1%: você recebe 9,9 moedas e perde 0,1.");
+    expect(textoAvisoSaida({ quantidade: 2, bruto: 20, devolvido: 20, taxa: 0 }, "0%")).toBe(
+      "Você ainda tem 2 flechas de mercado sem usar (20 moedas). Se sair agora, elas voltam inteiras para a carteira.");
+    expect(textoAvisoSaida(null, "1%")).toBe("Sem flechas de mercado sobrando: sair agora não tem taxa.");
   });
 });
 

@@ -495,6 +495,7 @@ describe("jogo com o servidor", () => {
     await estabilizar();
     $("btn-pause").click();
     expect($("pause").classList.contains("show")).toBe(true);
+    expect($("pausa-nota").textContent).toBe("Sem flechas de mercado sobrando: sair agora não tem taxa.");
     $("btn-quit").click();
     await estabilizar();
     expect($("result").classList.contains("show")).toBe(true);
@@ -1142,21 +1143,62 @@ describe("rodada com lotes de flechas de mercado", () => {
     expect(chamadas.some((c) => c.chave === "POST /jogos/flecha/sessoes/s-1/flechas")).toBe(false);
   });
 
-  it("ao sair, o resultado mostra a devolução das flechas de mercado que sobraram", async () => {
+  it("ao sair com flechas de mercado sobrando, avisa a perda de 1% e só sai no segundo clique", async () => {
     await entrarComLotes([{ flecha: "btc", valor: 20, quantidade: 2 }]);
     rotas["POST /jogos/flecha/sessoes/s-1/encerrar"] = [200, sessao({
       campo: "bosque", status: "ENCERRADA", compradas: { wood: 10, btc: 2 }, disparadas: { wood: 0, btc: 0 },
-      devolucaoFlechas: { quantidade: 2, valorBruto: 40, taxa: 0.08, valorDevolvido: 39.92 },
+      devolucaoFlechas: { quantidade: 2, valorBruto: 40, taxa: 0.4, valorDevolvido: 39.6 },
     })];
+    const encerrou = () => chamadas.some((c) => c.chave === "POST /jogos/flecha/sessoes/s-1/encerrar");
     $("btn-pause").click();
-    expect($("pausa-nota").textContent).toContain("voltam em moedas");
+    const aviso = "Você ainda tem 2 flechas de mercado sem usar (40 moedas). Se sair agora, elas voltam para a "
+      + "carteira com taxa de 1%: você recebe 39,6 moedas e perde 0,4.";
+    expect($("pausa-nota").textContent).toBe(aviso);
+    expect($("pausa-nota").classList.contains("alerta")).toBe(true);
+
+    // 1º clique: só avisa
     $("btn-quit").click();
     await estabilizar();
+    expect(encerrou()).toBe(false);
+    expect($("pause").classList.contains("show")).toBe(true);
+    expect($("btn-quit").textContent).toBe("Sair mesmo assim (−0,4)");
+
+    // voltou ao jogo e pausou de novo: o aviso recomeça do 1º clique
+    $("btn-resume").click();
+    $("btn-pause").click();
+    expect($("btn-quit").textContent).toBe("Sair do campo");
+    $("btn-quit").click();
+    await estabilizar();
+    expect(encerrou()).toBe(false);
+
+    // 2º clique: sai e a devolução aparece no resultado
+    $("btn-quit").click();
+    await estabilizar();
+    expect(encerrou()).toBe(true);
     expect($("result").classList.contains("show")).toBe(true);
     expect($("res-arrows").textContent).toBe("2 compradas · 0 usadas");
     expect($("res-devolucao-linha").hidden).toBe(false);
-    expect($("res-devolucao").textContent).toBe("Flechas devolvidas: 2 · +39,92 moedas (taxa 0,08)");
-    expect($("res-net").textContent).toBe("−0,08");                        // entrada livre: só a taxa da devolução
+    expect($("res-devolucao").textContent).toBe("Flechas devolvidas: 2 · +39,6 moedas (taxa 0,4)");
+    expect($("res-net").textContent).toBe("−0,4");                         // entrada livre: só a taxa da devolução
+  });
+
+  it("'Encerrar rodada' na compra também avisa a perda das flechas que sobraram antes de sair", async () => {
+    await entrarComLotes([{ flecha: "btc", valor: 10, quantidade: 3 }]);
+    rotas["POST /jogos/flecha/sessoes/s-1/encerrar"] = [200, sessao({ campo: "bosque", status: "ENCERRADA" })];
+    const encerrou = () => chamadas.some((c) => c.chave === "POST /jogos/flecha/sessoes/s-1/encerrar");
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "f" }));
+    expect($("wrap").dataset.state).toBe("refill");
+    expect($("refill-aviso-saida").hidden).toBe(false);
+    expect($("refill-aviso-saida").textContent).toContain("3 flechas de mercado sem usar (30 moedas)");
+    expect($("refill-aviso-saida").textContent).toContain("você recebe 29,7 moedas e perde 0,3");
+
+    $("btn-refill-end").click();
+    await estabilizar();
+    expect(encerrou()).toBe(false);
+    expect($("btn-refill-end").textContent).toBe("Sair mesmo assim (−0,3)");
+    $("btn-refill-end").click();
+    await estabilizar();
+    expect(encerrou()).toBe(true);
   });
 });
 
@@ -1326,25 +1368,25 @@ describe("tutorial", () => {
     await iniciarApp();
 
     expect($("tutorial").classList.contains("show")).toBe(true);
-    expect($("tutorial-passo").textContent).toBe("1 / 13");
+    expect($("tutorial-passo").textContent).toBe("1 / 11");
     expect($("tutorial-titulo").textContent).toBe("Flecha Certeira");
     expect($("btn-tutorial-anterior").disabled).toBe(true);
     expect(localStorage.getItem("flecha-tutorial-visto")).toBe("1");
 
     $("btn-tutorial-proximo").click();
-    expect($("tutorial-passo").textContent).toBe("2 / 13");
+    expect($("tutorial-passo").textContent).toBe("2 / 11");
     expect($("tutorial-titulo").textContent).toBe("Moedas e carteira");
     $("btn-tutorial-anterior").click();
-    expect($("tutorial-passo").textContent).toBe("1 / 13");
+    expect($("tutorial-passo").textContent).toBe("1 / 11");
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight" }));
-    expect($("tutorial-passo").textContent).toBe("2 / 13");
+    expect($("tutorial-passo").textContent).toBe("2 / 11");
 
     for (let i = 0; i < 20; i++) $("btn-tutorial-proximo").click();   // não passa da última
-    expect($("tutorial-passo").textContent).toBe("13 / 13");
+    expect($("tutorial-passo").textContent).toBe("11 / 11");
     expect($("tutorial-titulo").textContent).toBe("Sacar");
     expect($("btn-tutorial-proximo").disabled).toBe(true);
     expect($("btn-tutorial-fechar").textContent).toBe("Começar a jogar");
-    expect($("tutorial-pontos").querySelectorAll("span")).toHaveLength(13);
+    expect($("tutorial-pontos").querySelectorAll("span")).toHaveLength(11);
 
     $("btn-tutorial-fechar").click();
     expect($("tutorial").classList.contains("show")).toBe(false);
@@ -1358,7 +1400,7 @@ describe("tutorial", () => {
 
     $("btn-tutorial").click();
     expect($("tutorial").classList.contains("show")).toBe(true);
-    expect($("tutorial-passo").textContent).toBe("1 / 13");
+    expect($("tutorial-passo").textContent).toBe("1 / 11");
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
     expect($("menu").classList.contains("show")).toBe(true);
   });

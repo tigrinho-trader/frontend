@@ -88,7 +88,7 @@ export const NIVEIS_FLECHA = [10, 20, 30];
 export const VALOR_MINIMO_FLECHA = 1;
 export const VALOR_FLECHA_PADRAO = 10;
 /** Taxa sobre as flechas de mercado não usadas, devolvidas em moedas ao sair do campo (o servidor manda a real). */
-export const TAXA_DEVOLUCAO_PADRAO = 0.002;
+export const TAXA_DEVOLUCAO_PADRAO = 0.01;
 
 export const ARROW_TYPES = [
   {
@@ -409,4 +409,31 @@ export function lerMira(sx, sy, cx, cy, maxPuxada) {
     valid: dist >= PUXADA_MINIMA && !cancelar,
     cancelar,
   };
+}
+
+/**
+ * O que volta das flechas de mercado que sobraram se o jogador sair agora: a mesma conta do servidor (o valor de
+ * todos os lotes menos a taxa de devolução, em centavos). Sem flechas de mercado sobrando, null.
+ */
+export function devolucaoAoSair(lotes, taxa) {
+  const validos = (lotes || []).filter(l => Number(l?.quantidade) > 0 && Number(l?.valor) > 0);
+  const quantidade = validos.reduce((soma, l) => soma + Number(l.quantidade), 0);
+  if (quantidade <= 0) return null;
+  const bruto = centavos(validos.reduce((soma, l) => soma + Number(l.valor) * Number(l.quantidade), 0));
+  const devolvido = centavos(bruto * (1 - (Number(taxa) || 0)));
+  return { quantidade, bruto, devolvido, taxa: centavos(bruto - devolvido) };
+}
+
+/**
+ * Aviso de saída do campo, ex.: "Você ainda tem 2 flechas de mercado sem usar (40 moedas). Se sair agora, elas voltam
+ * para a carteira com taxa de 1%: você recebe 39,6 moedas e perde 0,4."
+ */
+export function textoAvisoSaida(sobra, textoTaxa) {
+  if (!sobra) return 'Sem flechas de mercado sobrando: sair agora não tem taxa.';
+  const n = sobra.quantidade;
+  const inicio = `Você ainda tem ${n} flecha${n === 1 ? '' : 's'} de mercado sem usar (${textoValor(sobra.bruto)} moedas). `;
+  const voltam = n === 1 ? 'ela volta' : 'elas voltam';
+  if (!(sobra.taxa > 0)) return `${inicio}Se sair agora, ${voltam} inteira${n === 1 ? '' : 's'} para a carteira.`;
+  return `${inicio}Se sair agora, ${voltam} para a carteira com taxa de ${textoTaxa}: `
+    + `você recebe ${textoValor(sobra.devolvido)} moedas e perde ${textoValor(sobra.taxa)}.`;
 }

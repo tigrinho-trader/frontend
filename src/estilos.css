@@ -1295,3 +1295,6 @@ h3.secao {
 .tutorial-pontos { display: flex; flex-wrap: wrap; justify-content: center; gap: calc(var(--s) * 6px); }
 .tutorial-pontos span { width: calc(var(--s) * 10px); height: calc(var(--s) * 10px); border-radius: 50%; background: #d7c3a5; }
 .tutorial-pontos span.atual { background: #f9a825; }
+
+/* Aviso de saída do campo: flechas de mercado sobrando voltam com a taxa de devolução */
+.note.alerta { color: #b3261e; font-weight: 800; }

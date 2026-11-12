@@ -1,5 +1,6 @@
 // Conteúdo do tutorial do Flecha Certeira: uma lista de telas { titulo, html }. Os números (níveis, valor mínimo,
 // taxa de devolução, campos liberados, entrada) vêm das regras atuais, para o texto nunca ficar desatualizado.
+// O caminho do dinheiro (Pix, conversões, saques) fica no manual do projeto, não no jogo.
 import {
   ARROW_TYPES, NIVEIS_FLECHA, RANGES, TAXA_DEVOLUCAO_PADRAO, VALOR_MINIMO_FLECHA, campoEmDesenvolvimento,
   emDesenvolvimento, entradaLivre,
@@ -30,16 +31,21 @@ export function slidesTutorial(regras = {}) {
   return [
     {
       titulo: 'Flecha Certeira',
-      html: `<p>Você atira flechas para <b>prever se o preço sobe ou desce nos próximos 5 segundos</b>.</p>
-        <p>Acertou o lado: volta o valor da flecha <b>mais o lucro</b>. Errou: perde o valor da flecha.</p>
+      html: `<p>Um <b>sistema de trading</b> em forma de jogo. Ele usa a <b>cotação das moedas em tempo real</b> e é
+          ligado a uma <b>corretora</b>: cada flecha de mercado abre uma operação de verdade.</p>
+        <p>Você atira para <b>prever se o preço sobe ou desce nos próximos 5 segundos</b>. Acertou o lado: volta o valor
+          da flecha <b>mais o lucro</b> do contrato. Errou: perde o valor da flecha.</p>
+        <p><b>Não é caça-níquel</b>: o jogo não sorteia nada e não ganha com a sua perda. O resultado vem do preço na
+          corretora, e o valor de uma flecha errada fica com o contrato dela, não com o sistema. Ainda é trading de
+          curtíssimo prazo: dá para perder.</p>
         <p>Use <b>&lt;</b> e <b>&gt;</b> (ou as setas do teclado) para passar as telas.</p>`,
     },
     {
       titulo: 'Moedas e carteira',
       html: `<ul>
           <li><b>1 moeda = R$ 1.</b> O saldo aparece no topo do menu.</li>
-          <li>Compre moedas por <b>Pix</b> em <b>+ Comprar moedas</b>: o dinheiro vai para a sua conta na Deriv, onde
-            as operações acontecem.</li>
+          <li>Compre moedas por <b>Pix</b> em <b>+ Comprar moedas</b>: o dinheiro vai para a sua conta na corretora,
+            onde as operações acontecem.</li>
           <li>As moedas entram assim que o Pix é confirmado.</li>
         </ul>`,
     },
@@ -86,15 +92,27 @@ export function slidesTutorial(regras = {}) {
       html: `<ul>
           <li><b>Comprar flechas não é o trade</b>: só separa o dinheiro da rodada.</li>
           <li><b>Mirar também não</b>: enquanto você segura e escolhe sobe ou desce, nada é enviado.</li>
-          <li>A operação (uma opção binária de 5 ticks na Deriv) <b>abre no instante em que a flecha sai do arco</b>.</li>
-          <li>O preço de entrada é o do tick seguinte na Deriv, que pode ser um pouco diferente do "agora" da tela.</li>
+          <li>A operação (uma opção binária de 5 ticks na corretora) <b>abre no instante em que a flecha sai do
+            arco</b>.</li>
+          <li>O preço de entrada é o do tick seguinte na corretora, que pode ser um pouco diferente do "agora" da
+            tela.</li>
         </ul>`,
     },
     {
       titulo: 'Resultado de cada flecha',
       html: `<ul>
-          <li><b>Acertou</b>: volta o valor da flecha + o lucro que a Deriv paga no contrato (na Volatilidade 100, em
-            torno de 90% do valor).</li>
+          <li><b>Acertou</b>: volta o valor da flecha + o lucro do contrato. Na Volatilidade 100 o contrato paga
+            <b>90,1%</b> do valor (medido em nov/2026), mas o lucro que chega é <b>um pouco menor</b>:</li>
+        </ul>
+        <ol>
+          <li>A corretora opera em dólar: o valor da flecha vira dólar pela cotação do momento e é <b>arredondado para
+            baixo no centavo de dólar</b>.</li>
+          <li>O pagamento do contrato também é arredondado no centavo de dólar.</li>
+        </ol>
+        <p>Juntas, essas perdas ficam em <b>até uns R$ 0,10 por flecha</b>. Exemplo: flecha de R$ 10 com o dólar a
+          R$ 5,59 → US$ 1,78 na corretora → lucro de US$ 1,60 = <b>R$ 8,94</b> (em vez de R$ 9,01). Voltam
+          R$ 18,94.</p>
+        <ul>
           <li><b>Errou</b>: perde o valor da flecha.</li>
           <li><b>Empate</b> (o preço terminou igual): o jogo devolve o valor.</li>
           <li>Se a operação falhar ou for recusada, o valor também volta.</li>
@@ -105,37 +123,13 @@ export function slidesTutorial(regras = {}) {
       html: `<ul>
           <li><b>Entrada dos campos</b>: ${livre ? `livre por tempo limitado (a tabela é ${entradasDeTabela()})` : entradas}.</li>
           <li><b>Flechas de mercado que sobram</b>: voltam em moedas ao sair do campo, com taxa de
-            <b>${percentual(taxa)}</b>.</li>
+            <b>${percentual(taxa)}</b> (ex.: 3 flechas de R$ 10 voltam ${numero(30 * (1 - taxa))}). Antes de sair, o jogo
+            mostra quanto você perde e pede um segundo clique.</li>
           <li><b>Madeira que sobra</b>: some (é grátis, não há o que devolver). As flechas não acumulam entre rodadas.</li>
-          <li><b>Lucro da flecha</b>: a Deriv paga em torno de 90% do valor quando você acerta, e fica com tudo quando
-            erra. Para empatar no longo prazo é preciso acertar mais de ~53% das vezes.</li>
-          <li><b>Empate</b>: a Deriv fica com o contrato, mas o jogo devolve as moedas; essa diferença sai do seu
+          <li><b>Lucro da flecha</b>: a corretora paga em torno de 90% do valor quando você acerta, e fica com tudo
+            quando erra. Para empatar no longo prazo é preciso acertar mais de ~53% das vezes.</li>
+          <li><b>Empate</b>: a corretora fica com o contrato, mas o jogo devolve as moedas; essa diferença sai do seu
             dinheiro real.</li>
-        </ul>`,
-    },
-    {
-      titulo: 'Caminho do dinheiro: onde ele encolhe',
-      html: `<p>Na ida, cada etapa come um pouco:</p>
-        <ol>
-          <li><b>Pix no Asaas</b>: o Asaas cobra para receber. No seu teste, um Pix de R$ 40 virou <b>R$ 39,21</b>.</li>
-          <li><b>Asaas → Binance</b>: o Asaas paga um Pix para a Binance (pode ter taxa do Asaas por Pix enviado).</li>
-          <li><b>Real → dólar (USDT) na Binance</b>: taxa de negociação (~0,1%) e a diferença de preço da compra.</li>
-          <li><b>Binance → carteira ponte</b>: taxa de saque da Binance na rede BSC, descontada do USDT.</li>
-          <li><b>Carteira ponte → Deriv</b>: o "gás" da rede BSC, pago em BNB (centavos).</li>
-          <li><b>USDT → USD na Deriv</b>: a carteira passa para a conta Options pela cotação da Deriv.</li>
-        </ol>
-        <p>No seu teste: <b>R$ 40 viraram +US$ 7,12</b> na conta Options, em uns 9 minutos.</p>
-        <p>Por isso as <b>moedas</b> do jogo (que contam o Pix inteiro) ficam um pouco acima do dinheiro que chega na
-          Deriv.</p>`,
-    },
-    {
-      titulo: 'E na volta',
-      html: `<ul>
-          <li><b>Sacar Pix</b> (no jogo): sai do caixa do Asaas para a sua chave; o Asaas pode cobrar a taxa de
-            transferência dele.</li>
-          <li>O dinheiro que está na Deriv <b>não volta sozinho</b>: o saque da Deriv é manual. Na volta tem taxa de
-            novo: saque de USDT, venda por reais na Binance e o Pix da Binance (cerca de R$ 3,50 por saque).</li>
-          <li>Para repor o caixa do Asaas: Deriv → Binance (USDT) → vender por reais → Pix para o Asaas.</li>
         </ul>`,
     },
     {
@@ -152,7 +146,7 @@ export function slidesTutorial(regras = {}) {
       html: `<ul>
           <li><b>Sacar Pix</b> troca moedas por reais (1 moeda = R$ 1) para uma chave Pix sua.</li>
           <li>O Pix sai do <b>caixa do Asaas</b>: o dinheiro que você deixou lá, fora das compras de moedas (essas vão
-            para a Deriv).</li>
+            para a corretora).</li>
           <li>O limite é o menor entre as suas moedas e o caixa livre. O jogo pede confirmação antes de enviar.</li>
         </ul>
         <p>Bom jogo! O botão <b>? Tutorial</b> no menu abre estas telas de novo.</p>`,
