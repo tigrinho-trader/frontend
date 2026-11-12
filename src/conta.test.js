@@ -1102,6 +1102,28 @@ describe("rodada com lotes de flechas de mercado", () => {
     expect(comprar.disabled).toBe(false);
   });
 
+  it("puxar para a frente e soltar cancela o tiro: nada vai para o servidor e a flecha fica na aljava", async () => {
+    await entrarComLotes([{ flecha: "btc", valor: 10, quantidade: 2 }]);
+    rotas["POST /jogos/flecha/estudo/operacoes"] = [201, {
+      id: "op-1", moedasPagas: null,
+      sessao: sessao({ campo: "bosque", flechas: { wood: 10, btc: 1 }, mercado: [{ flecha: "btc", valor: 10, quantidade: 1 }] }),
+    }];
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "2" }));   // flecha bitcoin na mão
+    apontar("pointerdown", 600, 400);
+    apontar("pointermove", 700, 380);   // para a frente, na direção do alvo
+    quadros();
+    apontar("pointerup", 700, 380);
+    quadros();
+    await estabilizar();
+    expect(chamadas.some((c) => c.chave === "POST /jogos/flecha/estudo/operacoes")).toBe(false);
+
+    // o tiro seguinte, puxando para trás, sai normalmente
+    atirar();
+    quadros();
+    await estabilizar();
+    expect(chamadas.filter((c) => c.chave === "POST /jogos/flecha/estudo/operacoes")).toHaveLength(1);
+  });
+
   it("'Voltar ao jogo' fecha a compra sem comprar", async () => {
     await entrarComLotes([{ flecha: "btc", valor: 10, quantidade: 3 }]);
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "f" }));

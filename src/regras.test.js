@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   ATIVOS_EM_DESENVOLVIMENTO,
+  CANCELA_PUXANDO,
+  PUXADA_MINIMA,
   TEXTO_ENTRADA_LIVRE,
+  lerMira,
   ARROW_BY_ID,
   ARROW_TYPES,
   BIRD_TYPES,
@@ -365,5 +368,28 @@ describe("física", () => {
     expect(clamp(5, 0, 3)).toBe(3);
     expect(shade("#000000", 1)).toBe("rgb(255,255,255)");
     expect(shade("#ffffff", -1)).toBe("rgb(0,0,0)");
+  });
+});
+
+describe("mira do arco", () => {
+  it("puxar para trás arma o tiro: força proporcional e direção para a frente", () => {
+    const m = lerMira(600, 400, 500, 450, 230);   // puxou 100 para trás e 50 para baixo
+    expect(m.cancelar).toBe(false);
+    expect(m.valid).toBe(true);
+    expect(m.power).toBeCloseTo(Math.hypot(100, 50) / 230, 6);
+    expect(Math.cos(m.angle)).toBeGreaterThan(0);    // a flecha sai para a direita, para o alvo
+  });
+
+  it("puxada curta não atira", () => {
+    expect(lerMira(600, 400, 600 - PUXADA_MINIMA + 1, 400, 230).valid).toBe(false);
+    expect(lerMira(600, 400, 600, 402, 230).angle).toBeNull();   // curto demais para dar direção
+  });
+
+  it("puxar para a frente (na direção do alvo) cancela: não atira, arco relaxado", () => {
+    const m = lerMira(600, 400, 600 + CANCELA_PUXANDO + 1, 380, 230);
+    expect(m).toEqual({ power: 0, angle: null, valid: false, cancelar: true });
+    // um pouco para a frente (tremida do dedo, puxada quase vertical) ainda não cancela
+    expect(lerMira(600, 400, 600 + CANCELA_PUXANDO, 300, 230).cancelar).toBe(false);
+    expect(lerMira(600, 400, 610, 300, 230).valid).toBe(true);
   });
 });

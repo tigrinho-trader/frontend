@@ -10,7 +10,7 @@ import {
   clamp, formatMult, arrowCost, coinsForHit, emptyQuiver, countArrows, orderCost, minCost,
   canEnter as canEnterWith, isBroke as isBrokeWith, fitOrder, changeOrder, pickBirdType, tiposNoCampo,
   segmentHitsCircle, arrowPosition, emDesenvolvimento, flechasEmDesenvolvimento, entradaLivre,
-  campoEmDesenvolvimento, ativosVisiveis, semCotacao,
+  campoEmDesenvolvimento, ativosVisiveis, semCotacao, lerMira,
   TEXTO_ENTRADA_LIVRE,
 } from './regras.js';
 import { Scenery } from './cenarios.js';
@@ -2305,8 +2305,33 @@ function drawArcher() {
   ctx.restore();
 }
 
+/** Puxando para a frente: avisa que soltar cancela o tiro (e que a flecha volta para a aljava). */
+function drawAvisoCancelar(a) {
+  ctx.save();
+  ctx.setLineDash([6, 6]);
+  ctx.strokeStyle = 'rgba(255,138,128,0.9)';
+  ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(a.sx, a.sy); ctx.lineTo(a.cx, a.cy); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = 'rgba(255,138,128,0.35)';
+  ctx.beginPath(); ctx.arc(a.sx, a.sy, 10, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  const x = clamp(a.cx, 230, W - 230), y = clamp(a.cy - 70, 60, GROUND_Y - 80);
+  ctx.fillStyle = 'rgba(40,20,5,0.82)';
+  roundRect(ctx, x - 220, y - 30, 440, 64, 14);
+  ctx.fill();
+  ctx.textAlign = 'center';
+  outlinedText('✕ Solte para CANCELAR', x, y, "24px 'Lilita One', sans-serif", '#ff8a80', '#2a1a08', 4);
+  outlinedText('nada é enviado: a flecha volta para a aljava', x, y + 24, "800 15px Nunito, sans-serif",
+    '#ffffff', 'rgba(40,20,5,0.8)', 3);
+  ctx.restore();
+}
+
 function drawTrajectory() {
   const a = game.aim;
+  if (a.active && a.cancelar) {
+    drawAvisoCancelar(a);
+    return;
+  }
   if (!a.active || !a.valid) return;
 
   // Elástico do arraste
@@ -2784,11 +2809,11 @@ function canAim() {
 
 function updateAim() {
   const a = game.aim;
-  const dx = a.sx - a.cx, dy = a.sy - a.cy;
-  const dist = Math.hypot(dx, dy);
-  a.power = clamp(dist / MAX_DRAG, 0, 1);
-  if (dist > 4) a.angle = Math.atan2(dy, dx);
-  a.valid = dist >= 18;
+  const mira = lerMira(a.sx, a.sy, a.cx, a.cy, MAX_DRAG);
+  a.power = mira.power;
+  if (mira.angle !== null) a.angle = mira.angle;
+  a.valid = mira.valid;
+  a.cancelar = mira.cancelar;   // puxou para a frente: soltar cancela o tiro
 }
 
 canvas.addEventListener('pointerdown', e => {
@@ -2803,6 +2828,7 @@ canvas.addEventListener('pointerdown', e => {
   const a = game.aim;
   a.active = true;
   a.valid = false;
+  a.cancelar = false;
   a.sx = a.cx = p.x;
   a.sy = a.cy = p.y;
   a.power = 0;
@@ -2821,6 +2847,14 @@ canvas.addEventListener('pointerup', () => {
   const a = game.aim;
   if (!a.active) return;
   a.active = false;
+  if (a.cancelar) {
+    // nada foi enviado: a flecha continua na aljava
+    a.cancelar = false;
+    a.power = 0;
+    addText(LAUNCH.x + 120, LAUNCH.y - 110, 'tiro cancelado', '#ffe0b2', 26);
+    addText(LAUNCH.x + 120, LAUNCH.y - 78, 'a flecha voltou para a aljava', '#ffffff', 18);
+    return;
+  }
   if (a.valid && canAim()) shoot();
 });
 

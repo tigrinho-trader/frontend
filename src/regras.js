@@ -385,3 +385,28 @@ export function segmentHitsCircle(x1, y1, x2, y2, cx, cy, r) {
 export function arrowPosition(x0, y0, vx, vy, g, t) {
   return { x: x0 + vx * t, y: y0 + vy * t + 0.5 * g * t * t };
 }
+
+// ---------------------------------------------------------------------------
+// Mira do arco
+// ---------------------------------------------------------------------------
+/** Puxada mínima (px) para o tiro valer. */
+export const PUXADA_MINIMA = 18;
+/** Arrastar para a FRENTE (na direção do alvo) mais que isso arma o cancelamento. */
+export const CANCELA_PUXANDO = 24;
+
+/**
+ * Lê a mira entre o toque (sx, sy) e o dedo agora (cx, cy). Puxar para trás arma o tiro: força (0 a 1) e ângulo
+ * (null enquanto o arraste é curto demais para dar direção). Puxar para a frente, na direção do alvo, cancela: ao
+ * soltar, nada é enviado e a flecha continua na aljava.
+ */
+export function lerMira(sx, sy, cx, cy, maxPuxada) {
+  const dx = sx - cx, dy = sy - cy;
+  const dist = Math.hypot(dx, dy);
+  const cancelar = cx - sx > CANCELA_PUXANDO;
+  return {
+    power: cancelar ? 0 : clamp(dist / maxPuxada, 0, 1),
+    angle: !cancelar && dist > 4 ? Math.atan2(dy, dx) : null,
+    valid: dist >= PUXADA_MINIMA && !cancelar,
+    cancelar,
+  };
+}
