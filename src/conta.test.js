@@ -1067,6 +1067,28 @@ describe("rodada com lotes de flechas de mercado", () => {
     expect($("wrap").dataset.state).toBe("playing");
   });
 
+  it("o que se ganha no campo já compra flechas sem sair (carteira 20, gastou 20, já voltaram 15)", async () => {
+    rotas["GET /carteira"] = [200, { usuarioId: EU.id, saldo: 20, atualizadaEm: null }];
+    await entrarComLotes([{ flecha: "btc", valor: 10, quantidade: 2 }]);
+    // uma compra de madeira (grátis) traz o estado do servidor: custo 20 e 15 que já voltaram das apostas liquidadas
+    rotas["POST /jogos/flecha/sessoes/s-1/flechas"] = [200, sessao({
+      campo: "bosque", custo: 20, ganhos: 15, flechas: { wood: 11, btc: 2 },
+      mercado: [{ flecha: "btc", valor: 10, quantidade: 2 }],
+    })];
+    $("btn-comprar-flechas").click();
+    const opcoes = $("refill-options");
+    for (let i = 0; i < 4; i++) opcoes.querySelector('button[data-qtd="wood"][data-d="-1"]')?.click();
+    opcoes.querySelector('button.comprar-flechas[data-type="wood"]').click();
+    await estabilizar();
+    $("btn-comprar-flechas").click();
+    expect($("ref-wallet").textContent).toBe("15");                          // 20 − 20 + 15
+    const linha = $("refill-options");
+    for (let i = 0; i < 4; i++) linha.querySelector('button[data-qtd="btc"][data-d="-1"]').click();   // 5 → 1
+    const comprar = linha.querySelector('button.comprar-flechas[data-type="btc"]');
+    expect(comprar.textContent.replace(/\s+/g, " ").trim()).toBe("Comprar 10");
+    expect(comprar.disabled).toBe(false);
+  });
+
   it("'Voltar ao jogo' fecha a compra sem comprar", async () => {
     await entrarComLotes([{ flecha: "btc", valor: 10, quantidade: 3 }]);
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "f" }));

@@ -117,6 +117,24 @@ export function acertaBinario(direcao, passaro) {
   return direcao === 'ALTA' ? passaro.y < FLECHA_BTC.nivel : passaro.y > FLECHA_BTC.nivel;
 }
 
+/** Largura da faixa do alvo (sobe ou desce), em px, na coluna da direita. */
+export const LARGURA_FAIXA_ALVO = 96;
+/** No máximo quantos pássaros uma flecha acerta (o servidor recusa mais que isso). */
+export const MAX_ACERTOS_FLECHA = 5;
+
+/**
+ * Flecha de madeira: mesma dinâmica das de mercado (5 s, sobe ou desce), mas sem moeda nem cotação. Ao chegar,
+ * acerta QUALQUER pássaro que estiver na faixa escolhida da coluna do alvo: acima da linha do meio (SOBE) ou abaixo
+ * dela (DESCE). Quem atira acompanha no olho o pássaro que quiser.
+ */
+export function naFaixaDoAlvo(direcao, passaro, faixa = BTC_ALTURA) {
+  const r = passaro?.type?.r || 0;
+  if (!passaro || Math.abs(passaro.x - FLECHA_BTC.xAlvo) > LARGURA_FAIXA_ALVO / 2 + r) return false;
+  return direcao === 'ALTA'
+    ? passaro.y < FLECHA_BTC.nivel && passaro.y >= faixa.min - r
+    : passaro.y > FLECHA_BTC.nivel && passaro.y <= faixa.max + r;
+}
+
 /**
  * Modo previsão: a flecha de mercado, ao chegar no alvo, acerta este pássaro? Só pássaros do mesmo ativo da
  * flecha (`alvo.ativo`; sem ele, qualquer pássaro de mercado).

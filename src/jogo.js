@@ -19,6 +19,7 @@ import { escaparHtml, formatarMoedas, mensagemErro } from './telas.js';
 import {
   ATIVOS, BTC_MAX_VOANDO, BTC_ALTURA, FLECHA_BTC, LISTA_ATIVOS, acertaBinario, acertaNoAlvo, alturaBtc,
   alvoBinario, alvoFlechaBtc, contarNoPlacar, criarFeedPreco, direcaoDaPrevisao, linhasDoPlacar, placarVazio,
+  LARGURA_FAIXA_ALVO, MAX_ACERTOS_FLECHA, naFaixaDoAlvo,
   lucroDaAposta, moedasComSinal, precoPrevisto, reaisComSinal, somarResultadoReais, textoResultadoEstudo,
   toleranciaEmDolares, velocidadeFlechaBtc, velocidadePassaroDaFlecha,
 } from './bitcoin.js';
@@ -32,7 +33,6 @@ const H = 720, W_MIN = 1280;
 let W = W_MIN;
 const GROUND_Y = 640;             // altura do chão
 const G = 900;                    // gravidade (px/s²)
-const MIN_SPEED = 300, MAX_SPEED = 1350;
 const MAX_DRAG = 230;             // distância de arraste para força máxima
 const ARROW_LEN = 62;
 const LAUNCH = { x: 180, y: 518 }; // ponto de onde a flecha sai (o arco)
@@ -708,19 +708,6 @@ function selectArrow(chave) {
   const espaco = lista.find(e => e.chave === chave && e.n > 0)
     || lista.find(e => e.id === tipoDaChave(chave) && e.n > 0);
   if (espaco) game.selected = espaco.chave;
-  if (tipoNaMao().mercado) avisarEstudo();
-}
-
-/** Na primeira vez que o jogador pega a flecha bitcoin, explica o estudo (uma vez por navegador). */
-function avisarEstudo() {
-  try {
-    if (localStorage.getItem('flecha-estudo-aviso')) return;
-    localStorage.setItem('flecha-estudo-aviso', '1');
-  } catch { /* sem armazenamento: avisa toda vez */ }
-  avisar('Estudo: cada flecha de mercado (bitcoin, ethereum, ouro) vira uma operação na direção que você previu '
-    + '(alta ou queda). Quando a flecha chega, você vê o resultado: previsão certa devolve o valor da flecha mais o '
-    + 'lucro da operação; errada, perde o valor.',
-  'info', 12000);
 }
 
 // Se a flecha escolhida acabou, pega a próxima que ainda tiver
@@ -791,9 +778,10 @@ async function enterRange() {
 /** Resultado da rodada para o jogador: a entrada mais o que as flechas de mercado renderam (pago − valor). */
 const resultadoDaRodada = () => Math.round((game.apostasPartida - (game.range?.fee || 0)) * 100) / 100;
 
-// O servidor só deixa comprar com o saldo da carteira menos o custo da rodada:
-// as moedas ganhas entram na carteira quando a rodada termina.
-const availableToBuy = () => centavos(game.saldoBase - game.spent);
+// O servidor deixa comprar com o saldo da carteira menos o que a rodada ainda compromete: o custo menos o que já
+// voltou nela (apostas de mercado liquidadas). O ganho no campo já pode ser usado sem sair dele.
+const ganhosConfirmados = () => Number(sessaoCtl?.estado()?.ganhos) || 0;
+const availableToBuy = () => centavos(game.saldoBase - game.spent + ganhosConfirmados());
 const canRefill = () => availableToBuy() >= REFILL_QTY * game.range.arrowPrice;
 
 /** Quantidade escolhida para comprar de um tipo durante a rodada. */
@@ -1207,22 +1195,22 @@ function hitBird(arrow, bird) {
 // ---------------------------------------------------------------------------
 // Flechas
 // ---------------------------------------------------------------------------
-function launchVelocity() {
-  const speed = MIN_SPEED + (MAX_SPEED - MIN_SPEED) * game.aim.power;
-  return { vx: Math.cos(game.aim.angle) * speed, vy: Math.sin(game.aim.angle) * speed };
+/**
+ * Como a flecha na mão vai voar: todas (madeira e mercado) levam 5 s até a coluna do alvo e a mira só escolhe o
+ * lado da linha do meio (sobe ou desce). A de mercado segue a cotação do ativo dela; a madeira não tem ativo nem
+ * cotação: acerta qualquer pássaro que estiver na faixa escolhida quando ela chegar.
+ */
+function planoDoTiro() {
+  const ativo = tipoNaMao().mercado || null;
+  const mirado = alvoFlechaBtc(LAUNCH, game.aim.angle, BTC_ALTURA);
+  const alvo = { ...alvoBinario(mirado.y), ativo };
+  return { ...velocidadeFlechaBtc(LAUNCH, alvo), g: FLECHA_BTC.g, alvo };
 }
 
-/** Como a flecha na mão vai voar: velocidade, gravidade e, na flecha de mercado, o ponto onde ela chega em 5 s. */
-function planoDoTiro() {
-  const ativo = tipoNaMao().mercado;
-  if (ativo) {
-    const mirado = alvoFlechaBtc(LAUNCH, game.aim.angle, BTC_ALTURA);
-    // sobe ou desce: a mira só escolhe o lado da linha de agora
-    const alvo = { ...alvoBinario(mirado.y), ativo };
-    return { ...velocidadeFlechaBtc(LAUNCH, alvo), g: FLECHA_BTC.g, alvo };
-  }
-  return { ...launchVelocity(), g: G, alvo: null };
-}
+/** Previsão mostrada no alvo: a de mercado tem o preço de agora; a madeira, só o lado escolhido. */
+const previsaoDoAlvo = alvo => (alvo.ativo
+  ? (feeds[alvo.ativo].preco() === null ? null : previsaoMercado(alvo))
+  : { agora: null, binaria: true, direcao: alvo.binaria });
 
 /** Previsão de uma mira da flecha de mercado: preço de agora, preço previsto e a folga em dólares. */
 function previsaoMercado(alvo) {
@@ -1243,7 +1231,7 @@ function shoot() {
   const espaco = selecionado();
   if (!espaco || espaco.n <= 0) return;
   const v = planoDoTiro();
-  if (v.alvo && feeds[v.alvo.ativo].preco() === null) {
+  if (v.alvo.ativo && feeds[v.alvo.ativo].preco() === null) {
     addText(LAUNCH.x + 160, LAUNCH.y - 120, `esperando a cotação do ${ATIVOS[v.alvo.ativo].nome}...`, '#ffe0b2', 24);
     return;
   }
@@ -1262,10 +1250,10 @@ function shoot() {
     coins: 0,             // moedas estimadas desta flecha
     reportado: false,     // já foi informada ao servidor?
   });
-  if (v.alvo) {
+  const ar = game.arrows[game.arrows.length - 1];
+  ar.previsao = previsaoDoAlvo(v.alvo);
+  if (v.alvo.ativo) {
     // no instante do disparo nasce o pássaro que chega no alvo junto com a flecha
-    const ar = game.arrows[game.arrows.length - 1];
-    ar.previsao = previsaoMercado(v.alvo);
     ar.passaro = spawnPassaroMercado(v.alvo.ativo, { daFlecha: true });
     registrarNoEstudo(ar);
   }
@@ -1327,11 +1315,20 @@ function updateArrows(dt) {
   game.arrows = game.arrows.filter(a => !a.dead);
 }
 
-/** Flecha bitcoin no fim dos 5 s: acerta os pássaros bitcoin que estiverem no círculo do alvo. */
+/**
+ * Flecha no fim dos 5 s. Madeira: acerta qualquer pássaro na faixa escolhida da coluna (até 5). Mercado: vale o
+ * pássaro da flecha, se ele chegou do lado escolhido.
+ */
 function chegarNoAlvo(ar) {
   ar.x = ar.alvo.x;
   ar.y = ar.alvo.y;
-  if (ar.alvo.binaria) {
+  if (!ar.alvo.ativo) {
+    const naFaixa = game.birds
+      .filter(b => b.state === 'flying' && !b.mercado?.daFlecha && naFaixaDoAlvo(ar.alvo.binaria, b))
+      .sort((a, b) => Math.abs(a.x - ar.alvo.x) - Math.abs(b.x - ar.alvo.x))
+      .slice(0, MAX_ACERTOS_FLECHA);
+    for (const b of naFaixa) hitBird(ar, b);
+  } else if (ar.alvo.binaria) {
     // sobe ou desce: vale o pássaro desta flecha, se ele chegou do lado escolhido
     const b = ar.passaro;
     if (b && b.state === 'flying' && acertaBinario(ar.alvo.binaria, b)) {
@@ -1345,14 +1342,15 @@ function chegarNoAlvo(ar) {
     }
   }
   game.particles.push({
-    kind: 'ring', x: ar.x, y: ar.y, size: BIRD_TYPES[ar.alvo.ativo].r + FLECHA_BTC.raio,
-    vx: 0, vy: 0, rot: 0, vr: 0, g: 0, life: 0, max: 0.4, color: ATIVOS[ar.alvo.ativo].cor,
+    kind: 'ring', x: ar.x, y: ar.y,
+    size: ar.alvo.ativo ? BIRD_TYPES[ar.alvo.ativo].r + FLECHA_BTC.raio : LARGURA_FAIXA_ALVO / 2,
+    vx: 0, vy: 0, rot: 0, vr: 0, g: 0, life: 0, max: 0.4, color: ar.alvo.ativo ? ATIVOS[ar.alvo.ativo].cor : '#ffe0b2',
   });
   for (let i = 0; i < 6; i++) spark(ar.x + rand(-12, 12), ar.y + rand(-12, 12), '#ffcc80');
-  if (!ar.hits) addText(ar.x, ar.y - 40, 'passou!', '#ffe0b2', 26);
+  if (!ar.hits) addText(ar.x, ar.y - 40, ar.alvo.ativo ? 'passou!' : 'nenhum pássaro na faixa', '#ffe0b2', 26);
   ar.dead = true;
   reportarTiro(ar);
-  acompanharEstudo(ar);
+  if (ar.alvo.ativo) acompanharEstudo(ar);
 }
 
 /**
@@ -2354,7 +2352,7 @@ function drawTrajectory() {
     }
   }
 
-  if (v.alvo) drawAlvoMercado(v.alvo, 1, null, feeds[v.alvo.ativo].preco() === null ? null : previsaoMercado(v.alvo));
+  drawAlvoMercado(v.alvo, 1, null, previsaoDoAlvo(v.alvo));
 
   // Força e ângulo
   const deg = Math.round(-a.angle * 180 / Math.PI);

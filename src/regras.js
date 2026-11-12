@@ -92,7 +92,8 @@ export const TAXA_DEVOLUCAO_PADRAO = 0.002;
 
 export const ARROW_TYPES = [
   {
-    id: 'wood', name: 'Madeira', price: 0, coins: 1, desc: 'Grátis: para treinar a mira.',
+    id: 'wood', name: 'Madeira', price: 0, coins: 1,
+    desc: 'Grátis: sobe ou desce em 5 s, sem cotação. Acerta os pássaros que estiverem na faixa escolhida.',
     shaft: ['#5d3a1a', '#c08a52'], head: ['#f5f7fa', '#a9b2bc', '#5f6a75'], headStroke: '#37414a',
     fletch: ['#ef5350', '#c62828'], trail: '255,255,255', headSize: 1,
   },

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   ATIVOS, ATIVO_POR_SIMBOLO, BINANCE_WS, lucroDaAposta, moedasComSinal, contarNoPlacar, linhasDoPlacar, placarVazio, reaisComSinal,
   somarResultadoReais, taxaDeAcerto, textoTaxa, BTC_ALTURA, BTC_AMPLITUDE, LISTA_ATIVOS, criarFeedPreco, urlBinance, BTC_NASCE_A_CADA, BTC_PRECO_SIMULADO, FLECHA_BTC, acertaBinario, acertaNoAlvo,
-  alturaBtc, alvoBinario,
+  alturaBtc, alvoBinario, LARGURA_FAIXA_ALVO, MAX_ACERTOS_FLECHA, naFaixaDoAlvo,
   alvoFlechaBtc, criarFeedBtc, direcaoDaPrevisao, escalaBtc, lerMensagemBinance, precoPrevisto, textoResultadoEstudo,
   toleranciaEmDolares, velocidadeFlechaBtc,
   velocidadePassaroDaFlecha,
@@ -384,6 +384,26 @@ describe("modo sobe ou desce (binário)", () => {
     expect(acertaBinario("QUEDA", passaro(FLECHA_BTC.nivel))).toBe(false);   // preço parado: ninguém acerta
     expect(acertaBinario("ALTA", passaro(FLECHA_BTC.nivel))).toBe(false);
     expect(acertaBinario("ALTA", { y: 0 })).toBe(false);                     // só pássaro bitcoin
+  });
+
+  it("madeira: acerta qualquer pássaro na faixa escolhida da coluna do alvo, sem moeda nem cotação", () => {
+    const passaro = (x, y, r = 20) => ({ x, y, type: { r } });
+    const x = FLECHA_BTC.xAlvo;
+    // na coluna, do lado escolhido
+    expect(naFaixaDoAlvo("ALTA", passaro(x, FLECHA_BTC.nivel - 50))).toBe(true);
+    expect(naFaixaDoAlvo("QUEDA", passaro(x + 30, FLECHA_BTC.nivel + 80))).toBe(true);
+    // do outro lado da linha do meio, não
+    expect(naFaixaDoAlvo("ALTA", passaro(x, FLECHA_BTC.nivel + 50))).toBe(false);
+    expect(naFaixaDoAlvo("QUEDA", passaro(x, FLECHA_BTC.nivel - 50))).toBe(false);
+    expect(naFaixaDoAlvo("ALTA", passaro(x, FLECHA_BTC.nivel))).toBe(false);          // em cima da linha: nenhum lado
+    // fora da coluna (longe do alvo), não; encostando na borda (raio do pássaro), sim
+    expect(naFaixaDoAlvo("ALTA", passaro(x - 300, FLECHA_BTC.nivel - 50))).toBe(false);
+    expect(naFaixaDoAlvo("ALTA", passaro(x - LARGURA_FAIXA_ALVO / 2 - 19, FLECHA_BTC.nivel - 50))).toBe(true);
+    expect(naFaixaDoAlvo("ALTA", passaro(x - LARGURA_FAIXA_ALVO / 2 - 21, FLECHA_BTC.nivel - 50))).toBe(false);
+    // pássaro de qualquer tipo (não precisa ser de mercado)
+    expect(naFaixaDoAlvo("QUEDA", { x, y: BTC_ALTURA.max, type: { r: 15 } })).toBe(true);
+    expect(naFaixaDoAlvo("QUEDA", null)).toBe(false);
+    expect(MAX_ACERTOS_FLECHA).toBe(5);   // o servidor recusa combo maior que 5
   });
 
   it("a flecha de mercado custa o valor escolhido, o mesmo em todo campo", () => {
