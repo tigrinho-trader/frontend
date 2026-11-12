@@ -147,7 +147,7 @@ async function carregarConta() {
   mostrarPerfilNoMenu();
   modoMenu('logado');
   carregarRegras();   // níveis, valor mínimo e taxa de devolução das flechas de mercado
-  verificarSaquePix(); // o botão "Sacar Pix" só aparece para as contas liberadas no servidor
+  verificarSaquePix(); // o botão "Sacar Pix" aparece se o servidor tiver o saque ligado
   try {
     await atualizarCarteira();
   } catch (e) {
@@ -279,49 +279,9 @@ function mostrarSaldoNaTela() {
   $('saldo-referencia').textContent = `Valor de referência: ${reaisDeMoedas(saldo)} (1 moeda = R$ 1)`;
 }
 
-function abrirSaque() {
-  const saldo = saldoAtual();
-  $('saque-moedas').textContent = formatarMoedas(saldo);
-  $('saque-reais-disponiveis').textContent = reaisDeMoedas(saldo);
-  $('saque-valor').value = '';
-  msg('saque-msg', '');
-  setState('saque');
-  $('saque-valor').focus();
-}
-
-function preencherSaqueMaximo() {
-  const maximo = Math.floor((saldoAtual() / MOEDAS_POR_REAL) * 100) / 100;
-  $('saque-valor').value = maximo.toFixed(2).replace('.', ',');
-  $('saque-valor').focus();
-}
-
-async function solicitarSaque(e) {
-  e.preventDefault();
-  const reais = Number(String($('saque-valor').value).replace(',', '.'));
-  const saldo = saldoAtual();
-  if (!Number.isFinite(reais) || reais < 1) return msg('saque-msg', 'Informe pelo menos R$ 1,00.', 'erro');
-  const moedas = Math.round(reais * MOEDAS_POR_REAL * 100) / 100;
-  if (moedas > saldo) return msg('saque-msg', `Seu saldo permite sacar no máximo ${reaisDeMoedas(saldo)}.`, 'erro');
-  const botao = $('btn-saque-confirmar');
-  botao.disabled = true;
-  msg('saque-msg', 'Criando subconta e transferindo BTC…');
-  try {
-    await api.sacarMoedas(moedas);
-    await atualizarCarteira();
-    msg('saque-msg', 'Saque enviado para sua subconta Binance!', 'ok');
-    $('saque-moedas').textContent = formatarMoedas(saldoAtual());
-    $('saque-reais-disponiveis').textContent = reaisDeMoedas(saldoAtual());
-    $('saque-valor').value = '';
-  } catch (e) {
-    msg('saque-msg', mensagemErro(e), 'erro');
-  } finally {
-    botao.disabled = false;
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Sacar por Pix: sai do caixa do Asaas (o saldo que não veio das compras de moedas) para uma chave Pix.
-// Só aparece para contas ADMIN (o servidor pergunta ao user-service) e confere de novo a cada saque.
+// O botão aparece para quem está logado (se o Asaas estiver configurado); o servidor confere tudo de novo.
 // ---------------------------------------------------------------------------
 export const INTERVALO_CONSULTA_SAQUE = 5000;
 export const TIPOS_CHAVE = { CPF: 'CPF', CNPJ: 'CNPJ', EMAIL: 'E-mail', PHONE: 'Celular', EVP: 'Chave aleatória' };
@@ -1074,10 +1034,6 @@ $('form-apelido').addEventListener('submit', salvarApelido);
 $('btn-saldo').addEventListener('click', abrirSaldo);
 $('btn-saldo-voltar').addEventListener('click', () => setState('menu'));
 $('btn-saldo-comprar').addEventListener('click', () => abrirCreditos('saldo'));
-$('btn-sacar').addEventListener('click', abrirSaque);
-$('form-saque').addEventListener('submit', solicitarSaque);
-$('btn-saque-tudo').addEventListener('click', preencherSaqueMaximo);
-$('btn-saque-cancelar').addEventListener('click', () => setState('menu'));
 $('btn-saque-pix').addEventListener('click', abrirSaquePix);
 $('form-saque-pix').addEventListener('submit', enviarSaquePix);
 $('btn-saque-pix-tudo').addEventListener('click', preencherSaquePixMaximo);

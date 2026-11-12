@@ -147,7 +147,6 @@ export const alterarPapel = (usuarioId, papel) =>
 // ---------------------------------------------------------------------------
 export const carteira = () => requisitar('GET', '/carteira');
 export const extrato = () => requisitar('GET', '/carteira/extrato');
-export const sacarMoedas = moedas => requisitar('POST', '/carteira/saques', { corpo: { valor: moedas } });
 /** Compra de moedas. Hoje é o pagamento de teste (sandbox) da carteira; depois, Pix. */
 export const comprarMoedas = valor => requisitar('POST', '/carteira/depositos', { corpo: { valor } });
 /** Resgata um cupom: 200 { moedas, saldo }; 422 cupom inválido; 409 cupom já usado nesta conta. */
@@ -158,7 +157,7 @@ export const iniciarCompraPix = moedas => requisitar('POST', '/carteira/compras'
 export const consultarCompraPix = compraId => requisitar('GET', `/carteira/compras/${id(compraId)}`);
 export const simularPagamentoPix = compraId => requisitar('POST', `/carteira/compras/${id(compraId)}/simular-pagamento`);
 /**
- * Saque por Pix do caixa do Asaas (só contas ADMIN): { permitido, disponivel, moedas, caixa, minimo, saques }.
+ * Saque por Pix do caixa do Asaas: { permitido, disponivel, moedas, caixa, minimo, saques }.
  * `disponivel` = o menor entre as moedas e o caixa livre. Para as outras contas, { permitido: false }.
  */
 export const resumoSaquePix = () => requisitar('GET', '/carteira/saques-pix');

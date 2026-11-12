@@ -37,8 +37,7 @@
             </button>
             <button type="button" class="pilula" id="btn-arsenal" title="Arsenal: o valor padrão das flechas de mercado">➶ Arsenal</button>
             <button type="button" class="pilula ouro" id="btn-comprar">+ Comprar moedas</button>
-            <button type="button" class="pilula" id="btn-sacar" title="Sacar bônus em BTC">Sacar BTC</button>
-            <button type="button" class="pilula" id="btn-saque-pix" hidden title="Sacar do caixa do Asaas por Pix">Sacar Pix</button>
+            <button type="button" class="pilula" id="btn-saque-pix" hidden title="Sacar em reais por Pix">Sacar Pix</button>
             <button type="button" class="botao-redondo" id="btn-admin" hidden title="Administração" aria-label="Administração">⚙</button>
             <button type="button" class="botao-redondo" id="btn-sair" title="Sair" aria-label="Sair">⏻</button>
           </nav>
@@ -171,31 +170,7 @@
       </div>
     </div>
 
-    <div class="overlay" id="saque">
-      <div class="card conta">
-        <h2>Sacar bônus em BTC</h2>
-        <p class="sub">O sistema criará uma subconta Binance exclusiva para você e transferirá o equivalente do seu bônus.</p>
-        <p class="saque-disponivel">Disponível: <b id="saque-moedas">0</b> moedas · <b id="saque-reais-disponiveis">R$ 0,00</b></p>
-        <form class="form-saque" id="form-saque" novalidate>
-          <div class="saque-campo">
-            <label for="saque-valor">Quanto deseja sacar?</label>
-            <div class="saque-valor-box">
-              <span class="saque-prefixo">R$</span>
-              <input type="text" id="saque-valor" inputmode="decimal" autocomplete="off" placeholder="10,00" aria-describedby="saque-dica" required>
-            </div>
-            <button type="button" class="mini saque-tudo" id="btn-saque-tudo">Usar saldo máximo</button>
-          </div>
-          <p class="note" id="saque-dica">Conversão: 1 moeda = R$ 1. A cotação BTC/BRL é consultada no momento do saque.</p>
-          <p class="msg" id="saque-msg" aria-live="polite"></p>
-          <div class="saldo-botoes">
-            <button class="btn ouro small" type="submit" id="btn-saque-confirmar">Solicitar saque</button>
-            <button class="btn secondary" type="button" id="btn-saque-cancelar">Voltar</button>
-          </div>
-        </form>
-      </div>
-    </div>
-
-    <!-- Saque por Pix do caixa do Asaas: só aparece para contas ADMIN -->
+    <!-- Saque por Pix: troca moedas por reais, do caixa do Asaas para uma chave Pix -->
     <div class="overlay" id="saque-pix">
       <div class="card conta">
         <h2>Sacar por Pix</h2>

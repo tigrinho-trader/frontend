@@ -282,17 +282,8 @@ describe("perfil", () => {
       campos: { vilarejo: { wood: 3 }, bosque: { wood: 0 } },
       mercado: { btc: 2, eth: 0, ouro: 1 },
     }];
-    await iniciarApp();
-    expect($("btn-sacar").disabled).toBe(false);
     rotas["GET /carteira"] = [200, { usuarioId: EU.id, saldo: 900, atualizadaEm: null }];
-    rotas["POST /carteira/saques"] = [200, { usuarioId: EU.id, saldo: 900, atualizadaEm: null }];
-    $("btn-sacar").click();
-    expect($("saque").classList.contains("show")).toBe(true);
-    $("saque-valor").value = "10,50";
-    $("form-saque").dispatchEvent(new Event("submit", { cancelable: true }));
-    await estabilizar();
-    expect(chamadas.find((c) => c.chave === "POST /carteira/saques").corpo).toEqual({ valor: 10.5 });   // R$ 1 = 1 moeda
-    expect($("saque-msg").textContent).toContain("Saque enviado");
+    await iniciarApp();
     $("btn-saldo").click();
     await estabilizar();
     expect($("saldo").classList.contains("show")).toBe(true);
@@ -1086,7 +1077,16 @@ describe("sacar por Pix (caixa do Asaas)", { timeout: 15000 }, () => {
   const enviar = () => $("form-saque-pix").dispatchEvent(new Event("submit", { cancelable: true }));
   const posts = () => chamadas.filter((c) => c.chave === "POST /carteira/saques-pix");
 
-  it("conta sem permissão (ou servidor sem a rota) não vê o botão", async () => {
+  it("o saque em BTC saiu: só existe o Sacar Pix", async () => {
+    rotas["GET /carteira/saques-pix"] = [200, RESUMO];
+    await iniciarApp();
+    expect($("btn-sacar")).toBeNull();
+    expect($("saque")).toBeNull();
+    expect($("btn-saque-pix").hidden).toBe(false);
+    expect($("btn-saque-pix").textContent).toBe("Sacar Pix");
+  });
+
+  it("servidor com o saque desligado (ou sem a rota) não mostra o botão", async () => {
     await iniciarApp();                      // sem a rota: 404
     expect($("btn-saque-pix").hidden).toBe(true);
 
