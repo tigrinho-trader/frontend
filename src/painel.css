@@ -237,3 +237,7 @@ label, .rotulo-grupo { display: block; margin: 12px 0 4px; font-size: 0.9rem; }
 .movimentos-lado > div { min-width: 0; }
 .tabela-movimentos { min-width: 0; }
 .tabela-movimentos td small { display: block; }
+/* Movimentos do Asaas e da Binance: rolam por dentro, com o cabeçalho preso no topo. */
+.movimentos-lado .tabela-rolagem { max-height: min(420px, 60vh); overflow: auto; overscroll-behavior: contain; }
+.movimentos-lado .tabela th { position: sticky; top: 0; z-index: 1; }
+.tabela-movimentos td.quando { white-space: nowrap; font-variant-numeric: tabular-nums; }

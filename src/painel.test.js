@@ -80,6 +80,9 @@ beforeEach(() => {
     "GET /painel/carteira/financeiro": [200, FINANCEIRO],
     "PUT /painel/jogo/config": (init) => [200, { atual: { ...AMBIENTE, ...JSON.parse(init.body),
       niveis: JSON.parse(init.body).niveis || AMBIENTE.niveis }, ambiente: AMBIENTE }],
+    "GET /painel/carteira/config": [200, { atual: { pixMinimoMoedas: 30 }, ambiente: { pixMinimoMoedas: 30 } }],
+    "PUT /painel/carteira/config": (init) => [200, {
+      atual: { pixMinimoMoedas: JSON.parse(init.body).pixMinimoMoedas ?? 30 }, ambiente: { pixMinimoMoedas: 30 } }],
   };
   vi.stubGlobal("fetch", vi.fn(async (url, init) => {
     const caminho = url.replace(/^\/api/, "").split("?")[0];
@@ -177,7 +180,35 @@ describe("painel do super-admin", () => {
     const put = chamadas.find((c) => c.chave === "PUT /painel/jogo/config");
     expect(put.corpo).toEqual({ taxaPoupanca: 0.075, taxaDevolucao: null, perdaMaximaDiaBrl: 40, maxOperacoesDia: null,
       maxAbertas: null, valorMinimo: null, entradaLivre: false, niveis: null });
+    expect(chamadas.find((c) => c.chave === "PUT /painel/carteira/config").corpo).toEqual({ pixMinimoMoedas: null });
     expect($("regras-msg").textContent).toContain("Regras salvas");
+  });
+
+  it("aba Regras: valor mínimo do Pix com padrão de R$ 30, muda e volta ao .env", async () => {
+    await abrirPainel();
+    await entrar();
+    document.querySelector('.aba[data-aba="regras"]').click();
+    await estabilizar();
+    expect($("cfg-pixMinimoMoedas").value).toBe("");
+    expect($("cfg-pixMinimoMoedas").placeholder).toBe("30 (.env)");
+
+    $("cfg-pixMinimoMoedas").value = "12.5";                          // centavos não
+    $("form-regras").dispatchEvent(new Event("submit", { cancelable: true }));
+    await estabilizar();
+    expect(chamadas.some((c) => c.chave === "PUT /painel/carteira/config")).toBe(false);
+    expect($("regras-msg").textContent).toContain("reais inteiros");
+
+    $("cfg-pixMinimoMoedas").value = "50";
+    $("form-regras").dispatchEvent(new Event("submit", { cancelable: true }));
+    await estabilizar();
+    expect(chamadas.find((c) => c.chave === "PUT /painel/carteira/config").corpo).toEqual({ pixMinimoMoedas: 50 });
+    expect($("cfg-pixMinimoMoedas").value).toBe("50");
+
+    $("btn-padrao-regras").click();
+    await estabilizar();
+    const puts = chamadas.filter((c) => c.chave === "PUT /painel/carteira/config");
+    expect(puts.at(-1).corpo).toEqual({});
+    expect($("cfg-pixMinimoMoedas").value).toBe("");
   });
 
   it("níveis pela metade não são enviados", async () => {
@@ -221,6 +252,7 @@ describe("painel do super-admin", () => {
     expect($("fin-ponte-linhas").textContent).toContain("0x57dE…4CcF");
     expect(sem($("fin-fluxo").textContent)).toContain("Pix recebidos no AsaasR$ 40,00");
     expect($("fin-asaas-movimentos").textContent).toContain("Compra de moedas");
+    expect($("fin-asaas-movimentos").querySelector("td.quando").textContent).toBe("16/11");   // data curta, sem quebrar
     expect($("fin-binance-movimentos").textContent).toContain("Nada no período");
 
     document.querySelector('[data-dias-fin="30"]').click();
@@ -238,5 +270,15 @@ describe("painel do super-admin", () => {
     expect(exemploPoupanca(0.05)).toContain("volta 18,05");
     expect(exemploPoupanca(0)).toContain("volta 19 inteiros");
     expect(comSinal(-10)).toBe("−10");
+  });
+});
+
+describe("dataCurta", () => {
+  it("encurta data e data com hora sem mexer no fuso", async () => {
+    const { dataCurta } = await abrirPainel();
+    expect(dataCurta("2026-11-16T02:53:12")).toBe("16/11 02:53");
+    expect(dataCurta("2026-11-16")).toBe("16/11");
+    expect(dataCurta(null)).toBe("");
+    expect(dataCurta("ontem")).toBe("ontem");
   });
 });

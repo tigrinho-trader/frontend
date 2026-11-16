@@ -110,18 +110,18 @@ describe("valor livre em reais", () => {
   const PIX = { centavosPorMoeda: 100, ...LIMITES_PADRAO.pix };   // R$ 1 = 1 moeda
   const sem = (t) => t.replace(/\s/g, " ");
 
-  it("faixa padrão do Pix vai de R$ 5 a R$ 2.000 (5 a 2.000 moedas)", () => {
-    expect(faixaEmReais(PIX)).toEqual({ min: 5, max: 2000 });
-    expect(sem(textoFaixa(PIX))).toBe("de R$ 5 a R$ 2.000");
+  it("faixa padrão do Pix vai de R$ 30 a R$ 2.000 (30 a 2.000 moedas)", () => {
+    expect(faixaEmReais(PIX)).toEqual({ min: 30, max: 2000 });
+    expect(sem(textoFaixa(PIX))).toBe("de R$ 30 a R$ 2.000");
     expect(faixaEmReais({ centavosPorMoeda: 100, ...LIMITES_PADRAO.sandbox })).toEqual({ min: 1, max: 5000 });
   });
 
   it("converte reais inteiros em moedas (R$ 1 = 1 moeda)", () => {
-    expect(moedasDoValor("5", PIX)).toEqual({ moedas: 5 });
-    expect(moedasDoValor("25", PIX)).toEqual({ moedas: 25 });
+    expect(moedasDoValor("30", PIX)).toEqual({ moedas: 30 });
+    expect(moedasDoValor("45", PIX)).toEqual({ moedas: 45 });
     expect(moedasDoValor(" R$ 37 ", PIX)).toEqual({ moedas: 37 });
     expect(moedasDoValor("2.000", PIX)).toEqual({ moedas: 2000 });
-    expect(moedasDoValor("12,00", PIX)).toEqual({ moedas: 12 });
+    expect(moedasDoValor("42,00", PIX)).toEqual({ moedas: 42 });
     expect(precoEmReais(25, 100).replace(/\s/g, " ")).toBe("R$ 25,00");
   });
 
@@ -134,10 +134,10 @@ describe("valor livre em reais", () => {
   it("recusa centavos, texto e valores fora da faixa", () => {
     expect(moedasDoValor("2,50", PIX).erro).toContain("inteiro");
     expect(moedasDoValor("2.5", PIX).erro).toContain("inteiro");
-    for (const t of ["abc", "0", "4", "-5", "2001", "1e3", "10 reais"]) {
+    for (const t of ["abc", "0", "29", "-5", "2001", "1e3", "10 reais"]) {
       const r = moedasDoValor(t, PIX);
       expect(r.moedas).toBeNull();
-      expect(sem(r.erro)).toBe("Escolha um valor de R$ 5 a R$ 2.000.");
+      expect(sem(r.erro)).toBe("Escolha um valor de R$ 30 a R$ 2.000.");
     }
   });
 

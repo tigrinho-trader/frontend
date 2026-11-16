@@ -144,12 +144,21 @@ function mostrarLugar(id, parte, valor, linhas) {
   }
 }
 
+/** "2026-11-16T02:53:12" -> "16/11 02:53"; "2026-11-16" -> "16/11" (já vem no horário de Brasília). */
+export function dataCurta(quando) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}))?/.exec(quando || '');
+  if (!m) return quando || '';
+  return m[4] ? `${m[3]}/${m[2]} ${m[4]}:${m[5]}` : `${m[3]}/${m[2]}`;
+}
+
 function linhasMovimentos(tbody, movimentos, comSituacao) {
   tbody.innerHTML = '';
   for (const m of movimentos) {
     const tr = document.createElement('tr');
     const quando = document.createElement('td');
-    quando.textContent = (m.quando || '').replace('T', ' ').slice(0, 16);
+    quando.className = 'quando';
+    quando.textContent = dataCurta(m.quando);
+    if (m.quando) quando.title = m.quando.replace('T', ' ');
     const oque = document.createElement('td');
     oque.textContent = m.descricao || '';
     if (!comSituacao && m.situacao) {
@@ -433,20 +442,39 @@ export function corpoDasRegras() {
   return corpo;
 }
 
-export async function carregarRegras() {
-  $('regras-msg').textContent = '';
-  try {
-    preencherRegras(await pedir('GET', '/painel/jogo/config'));
-  } catch (erro) {
-    if (erro.status !== 401) $('regras-msg').textContent = `Não deu para carregar: ${erro.message}`;
-  }
+/** Regras da carteira (hoje só o valor mínimo do Pix de compra; vazio = vale o .env). */
+export function preencherRegrasCarteira({ atual, ambiente }) {
+  $('cfg-pixMinimoMoedas').placeholder = `${ambiente.pixMinimoMoedas} (.env)`;
+  $('cfg-pixMinimoMoedas').value =
+    atual.pixMinimoMoedas === ambiente.pixMinimoMoedas ? '' : String(atual.pixMinimoMoedas);
 }
 
-async function salvarRegras(evento, corpo = corpoDasRegras()) {
+/** Corpo do PUT /painel/carteira/config. */
+export function corpoDaCarteira() {
+  return { pixMinimoMoedas: numeroOuNulo($('cfg-pixMinimoMoedas').value) };
+}
+
+export async function carregarRegras() {
+  $('regras-msg').textContent = '';
+  const [jogo, carteira] = await Promise.allSettled([
+    pedir('GET', '/painel/jogo/config'), pedir('GET', '/painel/carteira/config')]);
+  if (jogo.status === 'fulfilled') preencherRegras(jogo.value);
+  if (carteira.status === 'fulfilled') preencherRegrasCarteira(carteira.value);
+  const falha = [jogo, carteira].find(r => r.status === 'rejected' && r.reason?.status !== 401);
+  if (falha) $('regras-msg').textContent = `Não deu para carregar: ${falha.reason.message}`;
+}
+
+async function salvarRegras(evento, corpo = corpoDasRegras(), corpoCarteira = corpoDaCarteira()) {
   evento?.preventDefault();
   const msg = $('regras-msg');
   msg.className = 'msg';
   const invalido = Object.entries(corpo).find(([, v]) => Number.isNaN(v) || (Array.isArray(v) && v.some(Number.isNaN)));
+  const pix = corpoCarteira.pixMinimoMoedas;
+  if (pix !== undefined && pix !== null && (Number.isNaN(pix) || !Number.isInteger(pix) || pix < 1)) {
+    msg.className = 'msg erro';
+    msg.textContent = 'O valor mínimo do Pix é em reais inteiros (ex.: 30).';
+    return;
+  }
   if (invalido) {
     msg.className = 'msg erro';
     msg.textContent = 'Confira os números: use só algarismos e vírgula.';
@@ -460,6 +488,7 @@ async function salvarRegras(evento, corpo = corpoDasRegras()) {
   $('btn-salvar-regras').disabled = true;
   try {
     preencherRegras(await pedir('PUT', '/painel/jogo/config', corpo));
+    preencherRegrasCarteira(await pedir('PUT', '/painel/carteira/config', corpoCarteira));
     msg.className = 'msg ok';
     msg.textContent = 'Regras salvas. Já valem para as próximas flechas.';
   } catch (erro) {
@@ -491,7 +520,7 @@ for (const b of document.querySelectorAll('[data-dias-fin]')) {
   });
 }
 $('btn-repasse-atualizar').addEventListener('click', carregarRepasse);
-$('btn-padrao-regras').addEventListener('click', () => salvarRegras(null, {}));
+$('btn-padrao-regras').addEventListener('click', () => salvarRegras(null, {}, {}));
 $('cfg-taxaPoupanca').addEventListener('input', () => {
   const f = paraFracao($('cfg-taxaPoupanca').value);
   $('exemplo-poupanca').textContent = exemploPoupanca(f === null ? 0 : f);

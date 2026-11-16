@@ -35,9 +35,9 @@ export function precoEmReais(moedas, centavosPorMoeda) {
   return (centavos / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
-/** Limites quando a carteira não informa (R$ 1 = 1 moeda): Pix de 5 a 2.000 moedas; pagamento de teste até 5.000. */
+/** Limites quando a carteira não informa (R$ 1 = 1 moeda): Pix de 30 a 2.000 moedas; pagamento de teste até 5.000. */
 export const LIMITES_PADRAO = {
-  pix: { minimoMoedas: 5, maximoMoedas: 2000 },
+  pix: { minimoMoedas: 30, maximoMoedas: 2000 },   // reserva: o servidor manda o do painel
   sandbox: { minimoMoedas: 1, maximoMoedas: 5000 },
 };
 

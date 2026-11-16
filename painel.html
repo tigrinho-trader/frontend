@@ -175,7 +175,7 @@
 
     <!-- Regras do jogo (por cima do .env) -->
     <section class="secao" id="aba-regras" hidden>
-      <div class="linha-titulo"><h2>Regras do jogo</h2></div>
+      <div class="linha-titulo"><h2>Regras do jogo e da loja</h2></div>
       <p class="nota">Campo vazio usa o valor do .env (mostrado em cinza). Vale na hora, sem reiniciar.</p>
       <form id="form-regras" class="regras">
         <fieldset>
@@ -211,6 +211,13 @@
           </div>
           <label for="cfg-valorMinimo">Valor mínimo da flecha (moedas)</label>
           <input id="cfg-valorMinimo" type="number" min="0.01" step="0.01" inputmode="decimal">
+        </fieldset>
+        <fieldset>
+          <legend>Compra de moedas por Pix</legend>
+          <label for="cfg-pixMinimoMoedas">Valor mínimo do Pix (R$)</label>
+          <input id="cfg-pixMinimoMoedas" type="number" min="1" step="1" inputmode="numeric">
+          <p class="exemplo">Pix menores que uns R$ 30 ficam juntando no Asaas até somar o saque mínimo da Binance
+            (5 USDT) antes de virar options. Os pacotes abaixo do mínimo somem da loja.</p>
         </fieldset>
         <p class="msg" id="regras-msg" role="status"></p>
         <div class="acoes">
