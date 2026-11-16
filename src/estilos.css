@@ -1298,3 +1298,18 @@ h3.secao {
 
 /* Aviso de saída do campo: flechas de mercado sobrando voltam com a taxa de devolução */
 .note.alerta { color: #b3261e; font-weight: 800; }
+
+/* Resultado da rodada: compacto e mais largo, cabe na tela sem rolar (os rótulos não quebram linha) */
+.card.resultado { width: calc(var(--s) * 760px); padding: calc(var(--s) * 16px) calc(var(--s) * 32px); }
+.card.resultado h2 { font-size: calc(var(--s) * 36px); margin: 0 0 calc(var(--s) * 2px); }
+.card.resultado .net { font-size: calc(var(--s) * 50px); margin-bottom: calc(var(--s) * 8px); }
+.card.resultado .stats { width: 100%; margin-bottom: calc(var(--s) * 8px); font-size: calc(var(--s) * 18px); }
+.card.resultado .stats td { padding: calc(var(--s) * 3px) 0; }
+.card.resultado .stats td:first-child { white-space: nowrap; }
+.card.resultado .stats td.devolucao { white-space: normal; font-size: calc(var(--s) * 16px); }
+.card.resultado .stats tr.total td { font-size: calc(var(--s) * 22px); padding-top: calc(var(--s) * 6px); }
+.card.resultado .note { margin: calc(var(--s) * 4px) 0; }
+.card.resultado .note:empty { display: none; }
+.card.resultado .broke { margin-bottom: calc(var(--s) * 6px); }
+.card.resultado .btn { min-width: calc(var(--s) * 190px); margin: calc(var(--s) * 4px);
+  padding: calc(var(--s) * 9px) calc(var(--s) * 22px); font-size: calc(var(--s) * 24px); }
