@@ -21,7 +21,7 @@ import {
   ATIVOS, BTC_MAX_VOANDO, BTC_ALTURA, FLECHA_BTC, LISTA_ATIVOS, acertaBinario, acertaNoAlvo, alturaBtc,
   alvoBinario, alvoFlechaBtc, contarNoPlacar, criarFeedPreco, direcaoDaPrevisao, linhasDoPlacar, placarVazio,
   LARGURA_FAIXA_ALVO, MAX_ACERTOS_FLECHA, naFaixaDoAlvo,
-  lucroDaAposta, moedasComSinal, precoPrevisto, reaisComSinal, somarResultadoReais, textoResultadoEstudo,
+  lucroDaAposta, moedasComSinal, precoPrevisto, textoResultadoEstudo,
   toleranciaEmDolares, velocidadeFlechaBtc, velocidadePassaroDaFlecha,
 } from './bitcoin.js';
 
@@ -158,7 +158,6 @@ const game = {
   estudo: null,             // último resultado do estudo mostrado no HUD: { texto, detalhe, cor }
   guardadas: null,          // flechas guardadas do jogador (GET /jogos/flecha/aljava): { campos, mercado }
   placarPartida: placarVazio(),   // acertos nas flechas de mercado desta partida, por ativo
-  reaisPartida: 0,          // soma, em reais, do resultado das operações feitas com as flechas desta partida
   apostasPartida: 0,        // moedas que as flechas de mercado renderam (pago pelo servidor − valor de cada flecha)
   passarosComuns: lerPassarosComuns(),   // false: só os pássaros de criptomoeda aparecem na rodada
   pending: null,            // 'win' | 'lose' enquanto espera a animação terminar
@@ -804,7 +803,6 @@ async function enterRange() {
   game.mercadoTimers = { btc: 1, eth: 2.5, ouro: 4 };
   game.estudo = null;
   game.placarPartida = placarVazio();
-  game.reaisPartida = 0;
   game.apostasPartida = 0;
   game.pending = null;
   game.endTimer = 0;
@@ -987,7 +985,7 @@ async function endSession() {
   $('res-mercado-linha').hidden = !placar.length;
   $('res-mercado').textContent = placar.map(l => l.texto).join(' · ');
   $('res-reais-linha').hidden = !placar.length;
-  $('res-reais').textContent = `${moedasComSinal(game.apostasPartida)} moedas (${reaisComSinal(game.reaisPartida)})`;
+  $('res-reais').textContent = `${moedasComSinal(game.apostasPartida)} moedas`;
   $('res-reais').className = game.apostasPartida > 0 ? 'pos' : game.apostasPartida < 0 ? 'neg' : '';
   $('res-wallet').textContent = moedas(game.wallet);
   $('res-aviso').textContent = falha
@@ -1025,17 +1023,19 @@ function spawnBird() {
   const cfg = game.range;
   const typeId = pickBirdType(cfg.pool);
   const type = BIRD_TYPES[typeId];
-  const dir = Math.random() < 0.5 ? 1 : -1;
+  // todos os pássaros andam igual ao da flecha: da esquerda até a coluna do alvo em 5 s, para nenhum passar mais
+  // rápido ou mais devagar que o da operação e confundir a leitura de subida e descida
+  const dir = 1;
   const amp = Math.random() < cfg.wobbleChance ? rand(15, cfg.wobbleAmp) : 0;
   const baseY = rand(70 + amp, 420);
   const phase = rand(0, Math.PI * 2);
   game.birds.push({
     type, typeId, dir,
-    x: dir > 0 ? -60 : W + 60,
+    x: FLECHA_BTC.xNascimento,
     y: baseY + amp * Math.sin(phase),
     baseY, amp, phase,
     freq: rand(1.2, 2.6),
-    vx: dir * type.speed * cfg.speedMul * rand(0.85, 1.15),
+    vx: velocidadePassaroDaFlecha(),
     vy: 0,
     t: 0,
     flap: rand(0, 6),
@@ -1062,13 +1062,14 @@ const feeds = Object.fromEntries(LISTA_ATIVOS.map(a => [a.id, criarFeedPreco({
 function spawnPassaroMercado(ativo, { daFlecha = false } = {}) {
   const type = BIRD_TYPES[ativo];
   const feed = feeds[ativo];
-  const dir = daFlecha || Math.random() < 0.5 ? 1 : -1;
+  // mesma velocidade e mesmo sentido do pássaro da flecha: 5 s da esquerda até a coluna do alvo
+  const dir = 1;
   const baseY = daFlecha ? FLECHA_BTC.nivel : rand(170, 340);
   const bird = {
     type, typeId: ativo, dir,
-    x: daFlecha ? FLECHA_BTC.xNascimento : dir > 0 ? -60 : W + 60,
+    x: FLECHA_BTC.xNascimento,
     y: baseY, baseY, amp: 0, phase: 0, freq: 0,
-    vx: daFlecha ? velocidadePassaroDaFlecha() : dir * type.speed * game.range.speedMul * rand(0.9, 1.1),
+    vx: velocidadePassaroDaFlecha(),
     vy: 0, t: 0,
     flap: rand(0, 6),
     blink: rand(1, 4),
@@ -1502,7 +1503,6 @@ async function acompanharEstudo(ar) {
       const resultado = textoResultadoEstudo(op, ar.valor);
       if (resultado) {
         contarNoPlacar(game.placarPartida, ar.alvo.ativo, op);
-        game.reaisPartida = somarResultadoReais(game.reaisPartida, op);
         game.apostasPartida = Math.round((game.apostasPartida + lucroDaAposta(op, ar.valor)) * 100) / 100;
         // as moedas entram pelo servidor: durante a rodada, na sessão; depois dela, direto na carteira
         if (sessaoCtl) sessaoCtl.atualizar().catch(() => {});
@@ -2001,12 +2001,6 @@ function drawTickerMercado() {
     ctx.font = '800 10px Nunito, sans-serif';
     ctx.fillStyle = 'rgba(255,240,215,0.85)';
     ctx.fillText('ACERTOS NESTA PARTIDA', x + 12, proximoY + 14);
-    // quanto as operações desta partida renderam (ou custaram) em reais
-    ctx.textAlign = 'right';
-    ctx.font = '900 11px Nunito, sans-serif';
-    ctx.fillStyle = game.reaisPartida > 0 ? '#b9f6ca' : game.reaisPartida < 0 ? '#ff8a80' : 'rgba(255,240,215,0.85)';
-    ctx.fillText(`saldo ${reaisComSinal(game.reaisPartida)}`, x + w - 12, proximoY + 14);
-    ctx.textAlign = 'left';
     let px = x + 12;
     for (const { ativo, texto } of placar) {
       ctx.font = "15px 'Lilita One', sans-serif";

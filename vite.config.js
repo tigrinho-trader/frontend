@@ -5,6 +5,12 @@ import { defineConfig } from "vite";
 // O login (OIDC) usa VITE_OIDC_AUTHORITY, VITE_OIDC_CLIENT_ID, VITE_OIDC_AUDIENCE e VITE_OIDC_PROVEDOR;
 // sem elas vai para o Keycloak local em http://localhost:8180 (veja .env.example).
 export default defineConfig({
+  // duas paginas: o jogo (index.html) e o painel do super-admin (painel.html)
+  build: {
+    rollupOptions: {
+      input: { jogo: "index.html", painel: "painel.html" },
+    },
+  },
   server: {
     port: 5173,
     proxy: {

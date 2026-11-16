@@ -322,13 +322,13 @@ describe("estudo da sabedoria das massas", () => {
     const ganhou = textoResultadoEstudo({ status: "FECHADA", modo: "REAL", valor: 10, moedasPagas: 10.12,
       resultadoBinarioBrl: 10, resultadoLiquidoBrl: 0.12 });
     expect(ganhou.texto).toBe("+0,12 moedas");                             // valor + lucro de R$ 0,12
-    expect(sem(ganhou.detalhe)).toBe("acertou · operação real +R$ 0,12");
+    expect(sem(ganhou.detalhe)).toBe("acertou · operação real");
     expect(ganhou.cor).toBe("ganho");
 
     const perdeu = textoResultadoEstudo({ status: "FECHADA", modo: "SIMULADO", valor: 20, moedasPagas: 0,
       resultadoBinarioBrl: -10, resultadoLiquidoBrl: -0.0042 });
     expect(perdeu.texto).toBe("−20 moedas");                               // perde o valor da flecha
-    expect(sem(perdeu.detalhe)).toBe("errou · simulação −R$ 0,0042");     // centavos de centavo aparecem
+    expect(sem(perdeu.detalhe)).toBe("errou · simulação");
     expect(perdeu.cor).toBe("perda");
 
     const empate = textoResultadoEstudo({ status: "FECHADA", modo: "REAL", valor: 30, moedasPagas: 30,
@@ -463,7 +463,7 @@ describe("ativos de mercado: bitcoin, ethereum e ouro", () => {
   it("o resultado diz de qual ativo era a aposta", () => {
     const op = { status: "FECHADA", modo: "SIMULADO", simbolo: "PAXGUSDT", valor: 10, moedasPagas: 9.94,
       resultadoBinarioBrl: 10, resultadoLiquidoBrl: -0.06 };
-    expect(sem(textoResultadoEstudo(op).detalhe)).toBe("Ouro · acertou · simulação −R$ 0,06");
+    expect(sem(textoResultadoEstudo(op).detalhe)).toBe("Ouro · acertou · simulação");
     expect(textoResultadoEstudo({ status: "RECUSADA", simbolo: "ETHUSDT", moedasPagas: 10, motivo: "x" }).detalhe)
       .toBe("x · Ethereum");
   });

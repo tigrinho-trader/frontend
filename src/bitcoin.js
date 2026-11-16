@@ -371,11 +371,10 @@ export function textoResultadoEstudo(op, valor) {
   const cor = binario > 0 ? 'ganho' : binario < 0 ? 'perda' : 'neutro';
   const texto = binario === 0 ? 'Empate · moedas devolvidas' : `${moedasComSinal(lucro)} moedas`;
   const tipo = op.modo === 'REAL' ? 'operação real' : 'simulação';
-  const percentual = Number(op.resultadoPercentual);
-  const pct = Number.isFinite(percentual) ? ` · ${percentual >= 0 ? '+' : ''}${percentual.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%` : '';
+  // só moedas: o resultado da flecha já está no texto (o valor em reais confundia com o resultado da rodada)
   return {
     texto,
-    detalhe: `${ativo}${binario > 0 ? 'acertou' : binario < 0 ? 'errou' : 'empatou'} · ${tipo}${pct} ${reais(Number(op.resultadoLiquidoBrl) || 0)}`,
+    detalhe: `${ativo}${binario > 0 ? 'acertou' : binario < 0 ? 'errou' : 'empatou'} · ${tipo}`,
     cor,
   };
 }
