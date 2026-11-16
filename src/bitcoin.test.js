@@ -5,7 +5,7 @@ import {
   alturaBtc, alvoBinario, LARGURA_FAIXA_ALVO, MAX_ACERTOS_FLECHA, naFaixaDoAlvo,
   alvoFlechaBtc, criarFeedBtc, direcaoDaPrevisao, escalaBtc, lerMensagemBinance, precoPrevisto, textoResultadoEstudo,
   toleranciaEmDolares, velocidadeFlechaBtc,
-  velocidadePassaroDaFlecha, progressoDoVoo, epocaDe,
+  velocidadePassaroDaFlecha, progressoDoVoo, progressoDoPassaro, epocaDe,
 } from "./bitcoin.js";
 import {
   VALOR_FLECHA_PADRAO, ARROW_BY_ID, BIRD_TYPES, RANGES, arrowCost, arrowPosition, coinsForHit, pickBirdType,
@@ -533,6 +533,17 @@ describe("voo da flecha de mercado pelo tempo do contrato", () => {
     // resultado antes do fim do contrato (operação que fechou cedo): espera o contrato acabar
     expect(progressoDoVoo(4, 3)).toBeCloseTo(progressoDoVoo(4), 6);
     expect(progressoDoVoo(5.35, 3)).toBe(1);
+  });
+
+  it("o pássaro sai 0,3 s depois da flecha e chega ao alvo junto com ela", () => {
+    expect(FLECHA_BTC.atrasoPassaro).toBe(0.3);
+    expect(progressoDoPassaro(0)).toBe(0);
+    expect(progressoDoPassaro(0.3)).toBe(0);                            // ainda esperando fora da tela
+    expect(progressoDoPassaro(0.5)).toBeGreaterThan(0);
+    expect(progressoDoPassaro(2.5)).toBeLessThan(progressoDoVoo(2.5));  // atrás da flecha no meio do caminho
+    expect(progressoDoPassaro(5.7)).toBeLessThan(1);                    // sem resultado não chega
+    expect(progressoDoPassaro(6.05, 5.7)).toBe(1);                      // com o resultado chega junto
+    expect(progressoDoVoo(6.05, 5.7)).toBe(1);
   });
 
   it("horário do tick em segundos e o preço de cada tick no feed", () => {

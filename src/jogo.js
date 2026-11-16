@@ -21,7 +21,7 @@ import {
   ATIVOS, BTC_MAX_VOANDO, BTC_ALTURA, FLECHA_BTC, LISTA_ATIVOS, acertaBinario, acertaNoAlvo, alturaBtc,
   alvoBinario, alvoFlechaBtc, contarNoPlacar, criarFeedPreco, direcaoDaPrevisao, linhasDoPlacar, placarVazio,
   LARGURA_FAIXA_ALVO, MAX_ACERTOS_FLECHA, naFaixaDoAlvo,
-  lucroDaAposta, moedasComSinal, precoPrevisto, textoResultadoEstudo, progressoDoVoo, epocaDe,
+  lucroDaAposta, moedasComSinal, precoPrevisto, textoResultadoEstudo, progressoDoVoo, progressoDoPassaro, epocaDe,
   toleranciaEmDolares, velocidadeFlechaBtc, velocidadePassaroDaFlecha,
 } from './bitcoin.js';
 
@@ -1498,7 +1498,9 @@ function updateArrows(dt) {
         ar.t = progressoDoVoo(ar.idade, ar.resultadoEm) * FLECHA_BTC.tempo;
         const b = ar.passaro;
         if (b?.mercado?.guiado && b.state === 'flying') {
-          b.x = FLECHA_BTC.xNascimento + (ar.t / FLECHA_BTC.tempo) * (FLECHA_BTC.xAlvo - FLECHA_BTC.xNascimento);
+          // o pássaro sai um pouco depois da flecha e chega junto com ela
+          b.x = FLECHA_BTC.xNascimento
+            + progressoDoPassaro(ar.idade, ar.resultadoEm) * (FLECHA_BTC.xAlvo - FLECHA_BTC.xNascimento);
         }
       } else {
         ar.t += dt;

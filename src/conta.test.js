@@ -979,7 +979,8 @@ describe("loja com o valor das flechas de mercado", () => {
   });
 });
 
-describe("rodada com lotes de flechas de mercado", () => {
+// os casos com o voo do contrato esperam consultas reais e rodam centenas de quadros: folga para a máquina carregada
+describe("rodada com lotes de flechas de mercado", { timeout: 15000 }, () => {
   let quadro = null;
   let fonteCotacoes = null;
 

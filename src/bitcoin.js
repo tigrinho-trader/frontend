@@ -69,6 +69,7 @@ export const FLECHA_BTC = {
   xNascimento: -60,  // de onde sai o pássaro da flecha (fora da tela, à esquerda)
   nivel: 255,        // altura que representa o preço no instante do disparo
   raio: 10,          // folga do acerto, somada ao raio do pássaro
+  atrasoPassaro: 0.3, // s que o pássaro da flecha de mercado espera (fora da tela) antes de sair; chega junto com ela
 };
 
 /** Altura mirada: onde a reta do arco cruza a coluna do alvo, dentro da faixa de voo do pássaro. */
@@ -100,6 +101,18 @@ export function progressoDoVoo(idade, resultadoEm = null, {
   const p0 = antes(inicio);
   const k = (idade - inicio) / arrancada;
   return k >= 1 - 1e-9 ? 1 : p0 + (1 - p0) * k * k;
+}
+
+/**
+ * Progresso (0 a 1) do pássaro da flecha de mercado: ele sai {@code atraso} s depois da flecha e anda um pouco mais
+ * rápido, de modo que chega ao alvo junto com ela (as mesmas fases de {@link progressoDoVoo}).
+ */
+export function progressoDoPassaro(idade, resultadoEm = null, atraso = FLECHA_BTC.atrasoPassaro) {
+  if (idade <= atraso) return 0;
+  const inicio = progressoDoVoo(atraso, resultadoEm);
+  const p = progressoDoVoo(idade, resultadoEm);
+  if (p >= 1 || inicio >= 1) return 1;
+  return Math.max(0, (p - inicio) / (1 - inicio));
 }
 
 /** Segundos (época) de um instante ISO ("2026-11-16T01:00:05Z"), ou null. */
