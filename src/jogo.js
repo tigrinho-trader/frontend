@@ -21,7 +21,7 @@ import {
   ATIVOS, BTC_MAX_VOANDO, BTC_ALTURA, FLECHA_BTC, LISTA_ATIVOS, acertaBinario, acertaNoAlvo, alturaBtc,
   alvoBinario, alvoFlechaBtc, contarNoPlacar, criarFeedPreco, direcaoDaPrevisao, linhasDoPlacar, placarVazio,
   LARGURA_FAIXA_ALVO, MAX_ACERTOS_FLECHA, naFaixaDoAlvo,
-  lucroDaAposta, moedasComSinal, precoPrevisto, textoResultadoEstudo,
+  lucroDaAposta, moedasComSinal, precoPrevisto, textoResultadoEstudo, progressoDoVoo, epocaDe,
   toleranciaEmDolares, velocidadeFlechaBtc, velocidadePassaroDaFlecha,
 } from './bitcoin.js';
 
@@ -1188,6 +1188,11 @@ function updateMercadoSpawner(dt) {
 function voarMercado(b, dt) {
   const m = b.mercado;
   const feed = feeds[m.ativo];
+  if (m.precoFinal == null && m.saidaEpoca != null) {
+    // chegou o tick que encerra o contrato: o pássaro para nessa altura (é o preço que decide)
+    const naSaida = feed.precoNoTick(m.saidaEpoca);
+    if (naSaida !== null) m.precoFinal = naSaida;
+  }
   const preco = m.precoFinal ?? feed.preco();
   if (m.precoFinal == null && m.geracao !== feed.geracao()) {
     // o preço saltou (cotação real ⇄ simulada): continua de onde está
@@ -1250,7 +1255,8 @@ function updateBirds(dt) {
       b.flap += dt * (b.type.r < 20 ? 18 : 13);
       b.blink -= dt;
       if (b.blink < -0.12) b.blink = rand(1.5, 4);
-      if (!b.mercado?.parado) b.x += b.vx * dt;   // o da flecha espera no alvo o contrato terminar
+      // o da flecha anda junto com ela (guiado pelo contrato) ou espera no alvo o resultado
+      if (!b.mercado?.parado && !b.mercado?.guiado) b.x += b.vx * dt;
       if (b.mercado) voarMercado(b, dt);
       else b.y = b.baseY + b.amp * Math.sin(b.phase + b.t * b.freq);
       if (b.type.shiny && Math.random() < dt * 30) spark(b.x - b.dir * b.type.r, b.y + rand(-8, 8));
@@ -1442,7 +1448,13 @@ function soltarComprada(lancando, op) {
   }
   const ar = lancarFlecha(lancando.v, lancando.espaco, lancando.previsao);
   ar.reportado = true;
+  ar.guiada = true;
+  ar.idade = 0;
   ar.passaro = spawnPassaroMercado(lancando.v.alvo.ativo, { daFlecha: true });
+  ar.passaro.mercado.guiado = true;
+  // o contrato acaba 5 ticks (1 por segundo) depois do tick de entrada
+  const entradaEm = epocaDe(op?.entradaEm);
+  if (entradaEm !== null) ar.passaro.mercado.saidaEpoca = entradaEm + 5;
   aplicarEntrada(ar, op);
   const entrada = Number(op?.precoEntradaContrato);
   mostrarEstudo({
@@ -1470,7 +1482,17 @@ function updateArrows(dt) {
     if (ar.state === 'flying') {
       ar.px = ar.x;
       ar.py = ar.y;
-      ar.t += dt;
+      if (ar.guiada) {
+        // flecha de mercado com contrato: anda pelo tempo do contrato e acelera quando o resultado chega
+        ar.idade += dt;
+        ar.t = progressoDoVoo(ar.idade, ar.resultadoEm) * FLECHA_BTC.tempo;
+        const b = ar.passaro;
+        if (b?.mercado?.guiado && b.state === 'flying') {
+          b.x = FLECHA_BTC.xNascimento + (ar.t / FLECHA_BTC.tempo) * (FLECHA_BTC.xAlvo - FLECHA_BTC.xNascimento);
+        }
+      } else {
+        ar.t += dt;
+      }
       // Posição pela fórmula exata: a flecha segue exatamente a curva mostrada na mira
       ({ x: ar.x, y: ar.y } = arrowPosition(ar.x0, ar.y0, ar.vx0, ar.vy0, ar.g, ar.t));
       ar.angle = Math.atan2(ar.vy0 + ar.g * ar.t, ar.vx0);
@@ -1582,6 +1604,10 @@ function resolverFlechaDeMercado(ar) {
     if (entrada > 0) b.mercado.precoInicial = entrada;
     if (saida > 0) b.mercado.precoFinal = saida;
     b.mercado.parado = false;
+    if (b.mercado.guiado) {
+      b.mercado.guiado = false;
+      b.vx = velocidadePassaroDaFlecha();
+    }
     if (b.state === 'flying') voarMercado(b, 0);
   }
   ar.x = ar.alvo.x;
@@ -1601,7 +1627,8 @@ function resolverFlechaDeMercado(ar) {
 
 // Consulta a operação desde o disparo: a entrada real chega ~1 s depois e o fim, 5 ticks depois da entrada (a Deriv
 // pode levar mais alguns segundos para confirmar). Não deixe a interface silenciosa enquanto o backend liquida.
-const ESPERA_RESULTADO_MS = 400, TENTATIVAS_RESULTADO = 75;
+// No começo do contrato não há o que ver: a cada 500 ms; perto do fim e depois, a cada 200 ms.
+const ESPERA_RESULTADO_MS = 500, ESPERA_RESULTADO_FIM_MS = 200, TENTATIVAS_RESULTADO = 150;
 
 /**
  * Do disparo até a liquidação: quando a compra confirma, o marco e o pássaro passam para o preço real de entrada;
@@ -1632,7 +1659,7 @@ async function acompanharEstudo(ar) {
         return;
       }
     }
-    await esperar(ESPERA_RESULTADO_MS);
+    await esperar((ar.idade ?? 0) < FLECHA_BTC.tempo - 0.6 ? ESPERA_RESULTADO_MS : ESPERA_RESULTADO_FIM_MS);
     op = await api.operacaoEstudo(registro.id).catch(erro => {
       ultimoErro = erro;
       return null;
@@ -1669,6 +1696,7 @@ function receberVeredito(ar, op, resultado, textoSemOperacao = 'valor devolvido'
     : fechada ? 'empate: valor devolvido'
     : op ? 'não abriu: valor devolvido' : textoSemOperacao;
   ar.veredito = { op, resultado, textoPassaro, mostrado: !op || !fechada };
+  ar.resultadoEm ??= ar.idade ?? 0;   // a flecha guiada acelera até o alvo a partir daqui
   if (op && !fechada) mostrarEstudo(resultado);
   if (ar.state === 'aguardando') resolverFlechaDeMercado(ar);
 }
@@ -3215,7 +3243,8 @@ mostrarTaxaDevolucao();
 // ---------------------------------------------------------------------------
 let last = performance.now();
 function frame(now) {
-  const dt = Math.min(0.033, (now - last) / 1000);
+  // nunca negativo: o voo guiado das flechas de mercado não pode voltar no tempo
+  const dt = Math.max(0, Math.min(0.033, (now - last) / 1000));
   last = now;
   update(dt);
   render();

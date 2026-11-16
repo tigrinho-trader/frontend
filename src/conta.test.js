@@ -1149,6 +1149,7 @@ describe("rodada com lotes de flechas de mercado", () => {
   });
   const umaConsulta = () => new Promise((r) => setTimeout(r, 600));   // o jogo consulta a cada 400 ms
   const CINCO_SEGUNDOS = 330;                                          // quadros de 16 ms
+  const ARRANCADA = 40;                                                // 0,35 s até o alvo depois do resultado
 
   it("a flecha chega antes do fim do contrato: espera no alvo e só então o resultado decide o pássaro", async () => {
     await entrarComLotes([{ flecha: "btc", valor: 10, quantidade: 3 }]);
@@ -1169,7 +1170,7 @@ describe("rodada com lotes de flechas de mercado", () => {
     agora = ganhou;                     // tick de saída acima da entrada: o contrato ganhou
     await umaConsulta();
     await estabilizar();
-    quadros();
+    quadros(ARRANCADA);                 // o resultado chegou: a flecha acelera até o alvo
     expect($("aviso").textContent).toContain("+8,94 moedas");
     expect($("aviso").textContent).toContain("acertou");
   });
@@ -1185,7 +1186,7 @@ describe("rodada com lotes de flechas de mercado", () => {
     await estabilizar();
     expect($("aviso").textContent).toMatch(/^Contrato aberto · entrada .*100\.050.* · fecha em 5 ticks$/);
 
-    quadros(CINCO_SEGUNDOS);
+    quadros(CINCO_SEGUNDOS + ARRANCADA);
     expect($("aviso").textContent).toContain("−10 moedas");
     expect($("aviso").textContent).toContain("errou");
   });

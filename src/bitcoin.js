@@ -81,6 +81,33 @@ export function alvoFlechaBtc(origem, angulo, faixa = BTC_ALTURA) {
 }
 
 /** Velocidade do pássaro da flecha: sai de xNascimento e chega em xAlvo no mesmo instante que a flecha. */
+/**
+ * Voo da flecha de mercado (e do pássaro dela) pelo tempo do contrato, de 0 a 1 até a coluna do alvo:
+ * - durante o contrato ({@code duracao} s, os 5 ticks): ritmo constante até {@code pFim} (85%);
+ * - contrato acabou e o resultado ainda não chegou: continua cada vez mais devagar, chegando perto de {@code pMax}
+ *   (97%), sem parar no ar;
+ * - resultado chegou ({@code resultadoEm}, em segundos desde o lançamento): acelera e chega ao alvo em
+ *   {@code arrancada} s. Nunca antes de o contrato acabar: a altura do pássaro até o tick de saída é o que vale.
+ */
+export function progressoDoVoo(idade, resultadoEm = null, {
+  duracao = FLECHA_BTC.tempo, pFim = 0.85, pMax = 0.97, espera = 0.6, arrancada = 0.35,
+} = {}) {
+  const antes = t => (t <= duracao ? pFim * Math.max(0, t) / duracao
+    : pFim + (pMax - pFim) * (1 - Math.exp(-(t - duracao) / espera)));
+  if (resultadoEm === null || resultadoEm === undefined) return antes(idade);
+  const inicio = Math.max(resultadoEm, duracao);
+  if (idade <= inicio) return antes(idade);
+  const p0 = antes(inicio);
+  const k = (idade - inicio) / arrancada;
+  return k >= 1 - 1e-9 ? 1 : p0 + (1 - p0) * k * k;
+}
+
+/** Segundos (época) de um instante ISO ("2026-11-16T01:00:05Z"), ou null. */
+export function epocaDe(instante) {
+  const ms = Date.parse(instante ?? '');
+  return Number.isFinite(ms) ? Math.round(ms / 1000) : null;
+}
+
 export function velocidadePassaroDaFlecha() {
   return (FLECHA_BTC.xAlvo - FLECHA_BTC.xNascimento) / FLECHA_BTC.tempo;
 }
@@ -183,7 +210,7 @@ export function criarFeedPreco({
   const url = urlBinance(simbolo);
   const f = {
     alvo: null, exibido: null, variacao24h: null, simulado: false, geracao: 0, fonte: null,
-    historico: [], t: 0, ultimaBinance: -Infinity, proximaConsulta: 0, buscando: false, falhas: 0,
+    historico: [], ticks: [], t: 0, ultimaBinance: -Infinity, proximaConsulta: 0, buscando: false, falhas: 0,
     ligado: false, socket: null, proximaConexao: 0, cancelarAssinatura: null,
   };
 
@@ -212,6 +239,14 @@ export function criarFeedPreco({
     const v = Number(cotacao.variacao24h);
     if (Number.isFinite(v)) f.variacao24h = v;
     registrar(preco);
+    // horário do tick (o servidor manda): o jogo sabe qual tick encerra cada contrato
+    const epoca = epocaDe(cotacao.atualizadoEm);
+    if (epoca !== null) {
+      const ultimo = f.ticks[f.ticks.length - 1];
+      if (ultimo && ultimo.epoca === epoca) ultimo.preco = preco;
+      else if (!ultimo || epoca > ultimo.epoca) f.ticks.push({ epoca, preco });
+      if (f.ticks.length > 30) f.ticks.shift();
+    }
     return true;
   }
 
@@ -299,6 +334,8 @@ export function criarFeedPreco({
     },
     /** Preço atual (suavizado), ou null antes da primeira cotação. */
     preco: () => f.exibido,
+    /** Preço do tick daquele segundo (época), ou null se ele ainda não chegou (ou já saiu da memória). */
+    precoNoTick: epoca => f.ticks.find(t => t.epoca === epoca)?.preco ?? null,
     /** Pixels por dólar para a oscilação recente. */
     escala: () => escalaBtc(f.historico, f.exibido),
     variacao24h: () => f.variacao24h,

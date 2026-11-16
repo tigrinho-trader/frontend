@@ -98,8 +98,8 @@ export function slidesTutorial(regras = {}) {
             binária de 5 ticks).</li>
           <li>A operação <b>abre no instante em que a flecha sai do arco</b>: a flecha sai e o pássaro nasce quando o
             contrato começa, já no preço real de entrada (a linha do alvo mostra "entrada").</li>
-          <li>Ele termina 5 ticks depois da entrada. Se a flecha chegar antes, ela <b>espera no alvo</b>: o pássaro
-            morre só se o contrato ganhou.</li>
+          <li>Ele termina 5 ticks depois da entrada: o pássaro <b>para na altura desse tick</b> (é o preço que decide),
+            segue devagar até o resultado chegar e então acelera até o alvo. Ele morre só se o contrato ganhou.</li>
         </ul>`,
     },
     {

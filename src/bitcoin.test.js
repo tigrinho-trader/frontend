@@ -5,7 +5,7 @@ import {
   alturaBtc, alvoBinario, LARGURA_FAIXA_ALVO, MAX_ACERTOS_FLECHA, naFaixaDoAlvo,
   alvoFlechaBtc, criarFeedBtc, direcaoDaPrevisao, escalaBtc, lerMensagemBinance, precoPrevisto, textoResultadoEstudo,
   toleranciaEmDolares, velocidadeFlechaBtc,
-  velocidadePassaroDaFlecha,
+  velocidadePassaroDaFlecha, progressoDoVoo, epocaDe,
 } from "./bitcoin.js";
 import {
   VALOR_FLECHA_PADRAO, ARROW_BY_ID, BIRD_TYPES, RANGES, arrowCost, arrowPosition, coinsForHit, pickBirdType,
@@ -504,5 +504,52 @@ describe("placar da partida", () => {
     expect(sem(reaisComSinal(total))).toBe("−R$ 0,18");
     expect(sem(reaisComSinal(0.004))).toBe("+R$ 0,0040");
     expect(reaisComSinal("x")).toBe("R$ 0,00");
+  });
+});
+
+describe("voo da flecha de mercado pelo tempo do contrato", () => {
+  it("anda em ritmo constante até 85% durante os 5 s do contrato", () => {
+    expect(progressoDoVoo(0)).toBe(0);
+    expect(progressoDoVoo(2.5)).toBeCloseTo(0.425, 6);
+    expect(progressoDoVoo(5)).toBeCloseTo(0.85, 6);
+  });
+
+  it("sem resultado continua cada vez mais devagar, sem parar e sem chegar ao alvo", () => {
+    const a = progressoDoVoo(5.3), b = progressoDoVoo(5.8), c = progressoDoVoo(30);
+    expect(a).toBeGreaterThan(0.85);
+    expect(b).toBeGreaterThan(a);
+    expect(b - a).toBeLessThan(a - 0.85 + 0.1);
+    expect(c).toBeLessThanOrEqual(0.97);
+    expect(progressoDoVoo(1e6)).toBeLessThan(1);
+    expect(c).toBeGreaterThan(0.969);
+  });
+
+  it("com o resultado acelera e chega ao alvo em 0,35 s, mas nunca antes do fim do contrato", () => {
+    // resultado 0,7 s depois do fim: sai de ~0,93 e chega em 5,7 + 0,35
+    const noResultado = progressoDoVoo(5.7, 5.7);
+    expect(noResultado).toBeCloseTo(progressoDoVoo(5.7), 6);
+    expect(progressoDoVoo(5.8, 5.7)).toBeGreaterThan(noResultado);
+    expect(progressoDoVoo(6.05, 5.7)).toBe(1);
+    // resultado antes do fim do contrato (operação que fechou cedo): espera o contrato acabar
+    expect(progressoDoVoo(4, 3)).toBeCloseTo(progressoDoVoo(4), 6);
+    expect(progressoDoVoo(5.35, 3)).toBe(1);
+  });
+
+  it("horário do tick em segundos e o preço de cada tick no feed", () => {
+    expect(epocaDe("2026-11-16T01:00:05Z")).toBe(1794790805);
+    expect(epocaDe("2026-11-16T01:00:05.400Z")).toBe(1794790805);
+    expect(epocaDe(null)).toBeNull();
+    expect(epocaDe("x")).toBeNull();
+
+    let ouvinte = null;
+    const feed = criarFeedPreco({ simbolo: "1HZ100V", precoSimulado: 1000, buscarReserva: async () => ({}),
+      assinar: (simbolo, fn) => { ouvinte = fn; return () => {}; }, usarBinance: false });
+    feed.ligar();
+    feed.atualizar(0.016);
+    ouvinte({ simbolo: "1HZ100V", preco: 1348.71, atualizadoEm: "2026-11-16T01:00:00Z" });
+    ouvinte({ simbolo: "1HZ100V", preco: 1348.97, atualizadoEm: "2026-11-16T01:00:05Z" });
+    expect(feed.precoNoTick(epocaDe("2026-11-16T01:00:05Z"))).toBe(1348.97);
+    expect(feed.precoNoTick(epocaDe("2026-11-16T01:00:00Z"))).toBe(1348.71);
+    expect(feed.precoNoTick(epocaDe("2026-11-16T01:00:06Z"))).toBeNull();     // ainda não chegou
   });
 });
