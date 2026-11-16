@@ -1323,3 +1323,38 @@ h3.secao {
 .modo-rodada .modo.ativo { color: #fff; background: #8b5a2b; border-color: #5e3b1a; }
 .arrow-qty .n.infinito { font-size: calc(var(--s) * 26px); min-width: calc(var(--s) * 60px); text-align: center; }
 #wrap[data-infinita="1"] #btn-comprar-flechas { display: none !important; }
+
+/* Loja do campo compacta: precisa caber inteira na janela, sem rolagem */
+#buy .card.shop { padding-top: calc(var(--s) * 12px); padding-bottom: calc(var(--s) * 14px); }
+#buy .modo-rodada { margin: 0; }
+#buy .modo-rodada .modo { font-size: calc(var(--s) * 17px); padding: calc(var(--s) * 2px) calc(var(--s) * 16px); }
+#buy .sub { font-size: calc(var(--s) * 16px); line-height: 1.25; margin: calc(var(--s) * 4px) 0 calc(var(--s) * 8px); }
+#buy .arrow-shop { gap: calc(var(--s) * 5px); margin-bottom: calc(var(--s) * 6px); }
+/* flecha de mercado: nome e quantidade em cima; os níveis embaixo, na largura toda (não quebram em duas linhas) */
+#buy .arrow-row.mercado:not(.em-breve) {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: calc(var(--s) * 12px);
+  row-gap: calc(var(--s) * 3px);
+  padding-top: calc(var(--s) * 4px);
+  padding-bottom: calc(var(--s) * 6px);
+}
+#buy .arrow-row.mercado:not(.em-breve) > img { margin-top: 0; }
+#buy .arrow-row.mercado > .niveis { grid-column: 2 / -1; margin-top: 0; }
+#buy .arrow-row.em-breve {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(var(--s) * 4px) calc(var(--s) * 16px);
+  padding: calc(var(--s) * 5px) calc(var(--s) * 12px);
+  font-size: calc(var(--s) * 15px);
+  font-weight: 900;
+}
+#buy .em-breve-rotulo { font-weight: 700; }
+#buy .em-breve-item { display: inline-flex; align-items: center; gap: calc(var(--s) * 4px); }
+#buy .arrow-row.em-breve img { width: calc(var(--s) * 48px); height: calc(var(--s) * 16px); }
+#buy .buy-summary { margin-bottom: calc(var(--s) * 8px); font-size: calc(var(--s) * 17px); line-height: 1.2; }
+#buy .buy-total { font-size: calc(var(--s) * 24px); }
+#buy .buy-after { font-size: calc(var(--s) * 14px); }
+#buy .erro-caixa { margin-bottom: calc(var(--s) * 8px); }

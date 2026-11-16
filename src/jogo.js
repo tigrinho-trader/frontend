@@ -591,6 +591,17 @@ function efeitoDaLinha(typeId) {
   };
 }
 
+/** As flechas de mercado ainda em desenvolvimento, numa linha só (a loja precisa caber sem rolagem). */
+function htmlEmDesenvolvimento(r) {
+  const lista = flechasEmDesenvolvimento(r);
+  if (!lista.length) return '';
+  return `
+      <div class="arrow-row mercado em-desenvolvimento em-breve" title="Em desenvolvimento">
+        <span class="em-breve-rotulo">Flechas em desenvolvimento:</span>
+        ${lista.map(t => `<span class="em-breve-item"><img src="${arrowIcon(t, 1)}" alt="">${t.name}</span>`).join('')}
+      </div>`;
+}
+
 /** Algum valor personalizado digitado está inválido? (não deixa pagar) */
 const temValorInvalido = () => tiposNoCampo(game.range).some(t => t.mercado && game.valoresInvalidos[t.id]);
 
@@ -611,7 +622,7 @@ function renderBuy() {
     const canAdd = left >= cost && count + nGuard < MAX_ARROWS;
     const tem = guard[t.id] ? ` · <b class="guardadas">+${guard[t.id]} guardada${guard[t.id] === 1 ? '' : 's'}</b>` : '';
     const info = t.mercado
-      ? `valor da flecha <span class="coin"></span><b class="mult">${textoValor(cost)}</b> · previsão em 5 s${htmlNiveis(t)}`
+      ? `valor da flecha <span class="coin"></span><b class="mult">${textoValor(cost)}</b> · previsão em 5 s`
       : `grátis · treino${tem}`;
     const efeito = efeitoDaLinha(t.id);
     return `
@@ -630,15 +641,9 @@ function renderBuy() {
           <button class="step sm" data-type="${t.id}" data-d="1" ${canAdd ? '' : 'disabled'}>+</button>
           <button class="chip" data-type="${t.id}" data-d="5" ${canAdd ? '' : 'disabled'}>+5</button>
         </div>
+        ${t.mercado ? htmlNiveis(t) : ''}
       </div>`;
-  }).join('') + flechasEmDesenvolvimento(r).map(t => `
-      <div class="arrow-row mercado em-desenvolvimento" title="Em desenvolvimento">
-        <img src="${arrowIcon(t, 1)}" alt="">
-        <div class="arrow-info">
-          <b class="arrow-name">${t.name}</b>
-          <span>em desenvolvimento</span>
-        </div>
-      </div>`).join('');
+  }).join('') + htmlEmDesenvolvimento(r);
   game.efeito = null;   // já tocou: redesenhar a loja não repete o efeito
 
   $('buy-fee').textContent = entradaLivre(r) ? 'livre por tempo limitado' : textoValor(r.fee);
@@ -672,7 +677,7 @@ function renderBuyInfinito() {
     const niveis = game.regras.niveis.map(textoValor);
     const info = t.mercado
       ? `começa com <span class="coin"></span><b class="mult">${textoValor(cost)}</b> · na rodada os 3 níveis `
-        + `(${niveis.join(', ')}), troque pela tecla · paga ao soltar${htmlNiveis(t)}`
+        + `(${niveis.join(', ')}), troque pela tecla · paga ao soltar`
       : 'grátis · treino';
     const efeito = efeitoDaLinha(t.id);
     return `
@@ -685,15 +690,9 @@ function renderBuyInfinito() {
           <span>${info}</span>
         </div>
         <div class="arrow-qty"><span class="n infinito" title="Infinitas">∞</span></div>
+        ${t.mercado ? htmlNiveis(t) : ''}
       </div>`;
-  }).join('') + flechasEmDesenvolvimento(r).map(t => `
-      <div class="arrow-row mercado em-desenvolvimento" title="Em desenvolvimento">
-        <img src="${arrowIcon(t, 1)}" alt="">
-        <div class="arrow-info">
-          <b class="arrow-name">${t.name}</b>
-          <span>em desenvolvimento</span>
-        </div>
-      </div>`).join('');
+  }).join('') + htmlEmDesenvolvimento(r);
   game.efeito = null;
   $('buy-fee').textContent = entradaLivre(r) ? 'livre por tempo limitado' : textoValor(r.fee);
   $('buy-arrows-label').textContent = 'flechas pagas ao soltar';
