@@ -55,6 +55,7 @@ describe("tutorial", () => {
 
   it("lembra quando o trade abre e como cancelar", () => {
     expect(texto(slidesTutorial(), "Quando o trade acontece")).toContain("abre no instante em que a flecha sai do arco");
+    expect(texto(slidesTutorial(), "Quando o trade acontece")).toContain("ela espera no alvo: o pássaro morre só se o contrato ganhou");
     expect(texto(slidesTutorial(), "Cancelar o tiro")).toContain("Puxe para a frente");
   });
 

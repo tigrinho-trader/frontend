@@ -1094,12 +1094,16 @@ function updateMercadoSpawner(dt) {
   }
 }
 
-/** Altura do pássaro de mercado pela variação do preço desde que ele nasceu, com rastro e inclinação. */
+/**
+ * Altura do pássaro de mercado pela variação do preço desde que ele nasceu, com rastro e inclinação. O pássaro de
+ * uma flecha conta do preço real de entrada do contrato (assim que a compra confirma) e, no fim, fica no preço de
+ * saída do contrato (`precoFinal`).
+ */
 function voarMercado(b, dt) {
   const m = b.mercado;
   const feed = feeds[m.ativo];
-  const preco = feed.preco();
-  if (m.geracao !== feed.geracao()) {
+  const preco = m.precoFinal ?? feed.preco();
+  if (m.precoFinal == null && m.geracao !== feed.geracao()) {
     // o preço saltou (cotação real ⇄ simulada): continua de onde está
     m.geracao = feed.geracao();
     m.precoInicial = preco;
@@ -1160,7 +1164,7 @@ function updateBirds(dt) {
       b.flap += dt * (b.type.r < 20 ? 18 : 13);
       b.blink -= dt;
       if (b.blink < -0.12) b.blink = rand(1.5, 4);
-      b.x += b.vx * dt;
+      if (!b.mercado?.parado) b.x += b.vx * dt;   // o da flecha espera no alvo o contrato terminar
       if (b.mercado) voarMercado(b, dt);
       else b.y = b.baseY + b.amp * Math.sin(b.phase + b.t * b.freq);
       if (b.type.shiny && Math.random() < dt * 30) spark(b.x - b.dir * b.type.r, b.y + rand(-8, 8));
@@ -1346,6 +1350,8 @@ function updateArrows(dt) {
         ar.dead = true;
         reportarTiro(ar);
       }
+    } else if (ar.state === 'aguardando') {
+      ar.espera += dt;   // flecha de mercado no alvo: o contrato ainda não terminou na corretora
     } else {
       ar.life += dt;
       if (ar.life > 3) ar.dead = true;
@@ -1355,12 +1361,18 @@ function updateArrows(dt) {
 }
 
 /**
- * Flecha no fim dos 5 s. Madeira: acerta qualquer pássaro na faixa escolhida da coluna (até 5). Mercado: vale o
- * pássaro da flecha, se ele chegou do lado escolhido.
+ * Flecha no fim dos 5 s. Madeira: acerta qualquer pássaro na faixa escolhida da coluna (até 5). Mercado: quem
+ * decide é o contrato na corretora (tick de entrada e de saída reais, não o preço da tela): com o resultado já
+ * pronto, decide agora; senão a flecha e o pássaro esperam no alvo até ele chegar.
  */
 function chegarNoAlvo(ar) {
   ar.x = ar.alvo.x;
   ar.y = ar.alvo.y;
+  if (ar.alvo.ativo && ar.estudo) {
+    if (ar.veredito) resolverFlechaDeMercado(ar);
+    else esperarVeredito(ar);
+    return;
+  }
   if (!ar.alvo.ativo) {
     const naFaixa = game.birds
       .filter(b => b.state === 'flying' && !b.mercado?.daFlecha && naFaixaDoAlvo(ar.alvo.binaria, b))
@@ -1368,7 +1380,7 @@ function chegarNoAlvo(ar) {
       .slice(0, MAX_ACERTOS_FLECHA);
     for (const b of naFaixa) hitBird(ar, b);
   } else if (ar.alvo.binaria) {
-    // sobe ou desce: vale o pássaro desta flecha, se ele chegou do lado escolhido
+    // sem servidor (não virou operação): vale o pássaro desta flecha, se ele chegou do lado escolhido
     const b = ar.passaro;
     if (b && b.state === 'flying' && acertaBinario(ar.alvo.binaria, b)) {
       ar.x = b.x;
@@ -1380,16 +1392,58 @@ function chegarNoAlvo(ar) {
       if (b.state === 'flying' && acertaNoAlvo(ar.alvo, b)) hitBird(ar, b);
     }
   }
+  anelDoAlvo(ar);
+  if (!ar.hits) addText(ar.x, ar.y - 40, ar.alvo.ativo ? 'passou!' : 'nenhum pássaro na faixa', '#ffe0b2', 26);
+  ar.dead = true;
+  reportarTiro(ar);
+}
+
+function anelDoAlvo(ar) {
   game.particles.push({
     kind: 'ring', x: ar.x, y: ar.y,
     size: ar.alvo.ativo ? BIRD_TYPES[ar.alvo.ativo].r + FLECHA_BTC.raio : LARGURA_FAIXA_ALVO / 2,
     vx: 0, vy: 0, rot: 0, vr: 0, g: 0, life: 0, max: 0.4, color: ar.alvo.ativo ? ATIVOS[ar.alvo.ativo].cor : '#ffe0b2',
   });
   for (let i = 0; i < 6; i++) spark(ar.x + rand(-12, 12), ar.y + rand(-12, 12), '#ffcc80');
-  if (!ar.hits) addText(ar.x, ar.y - 40, ar.alvo.ativo ? 'passou!' : 'nenhum pássaro na faixa', '#ffe0b2', 26);
+}
+
+/** A flecha chegou antes do fim do contrato: ela e o pássaro esperam no alvo (o pássaro segue o preço). */
+function esperarVeredito(ar) {
+  ar.state = 'aguardando';
+  ar.espera = 0;
+  ar.trail = [];
+  if (ar.passaro?.mercado) ar.passaro.mercado.parado = true;
+  addText(FLECHA_BTC.xAlvo - 70, BTC_ALTURA.max + 30, 'fechando na corretora…', '#ffe0b2', 20, false, 1.6);
+}
+
+/**
+ * Decide o pássaro pelo contrato: ele vai para o preço de saída real; ganhou, morre; perdeu, passa; empate ou
+ * operação que não abriu, passa com o valor devolvido. Assim "o pássaro morreu" é sempre "a flecha ganhou".
+ */
+function resolverFlechaDeMercado(ar) {
+  const { op, resultado } = ar.veredito;
+  const b = ar.passaro;
+  if (b?.mercado) {
+    const entrada = Number(op?.precoEntradaContrato);
+    const saida = Number(op?.precoSaidaContrato);
+    if (entrada > 0) b.mercado.precoInicial = entrada;
+    if (saida > 0) b.mercado.precoFinal = saida;
+    b.mercado.parado = false;
+    if (b.state === 'flying') voarMercado(b, 0);
+  }
+  ar.x = ar.alvo.x;
+  ar.y = ar.alvo.y;
+  if (resultado.cor === 'ganho' && b && b.state === 'flying') {
+    ar.x = b.x;
+    ar.y = b.y;
+    hitBird(ar, b);
+  } else {
+    addText(ar.x, ar.y - 40, ar.veredito.textoPassaro, '#ffe0b2', 26);
+  }
+  anelDoAlvo(ar);
+  ar.state = 'resolvida';
   ar.dead = true;
-  reportarTiro(ar);
-  if (ar.alvo.ativo) acompanharEstudo(ar);
+  if (!ar.veredito.mostrado) mostrarEstudo(resultado);
 }
 
 /**
@@ -1410,25 +1464,27 @@ function registrarNoEstudo(ar) {
       valor: ar.valor,
     }, op => {
       ar.reportado = true;
-      const resultado = textoResultadoEstudo(op, ar.valor);
-      mostrarEstudo(resultado || {
-        texto: 'Flecha registrada',
-        detalhe: 'Aguardando o resultado da operação…',
-        cor: 'neutro',
-      });
+      aplicarEntrada(ar, op);
+      if (!textoResultadoEstudo(op, ar.valor)) {
+        mostrarEstudo({ texto: 'Flecha registrada', detalhe: 'Aguardando a operação na corretora…', cor: 'neutro' });
+      }
     }).catch(erro => {
       ar.reportado = true;      // a operação não entrou: a flecha continua com o jogador no servidor
       reconciliar();
       return { erro };
     }),
   };
+  acompanharEstudo(ar);
 }
 
-// A Deriv pode levar alguns segundos além dos 5 ticks para confirmar o contrato.
-// Não deixe a interface silenciosa enquanto o backend ainda está liquidando.
-const ESPERA_RESULTADO_MS = 1000, TENTATIVAS_RESULTADO = 30;
+// Consulta a operação desde o disparo: a entrada real chega ~1 s depois e o fim, 5 ticks depois da entrada (a Deriv
+// pode levar mais alguns segundos para confirmar). Não deixe a interface silenciosa enquanto o backend liquida.
+const ESPERA_RESULTADO_MS = 400, TENTATIVAS_RESULTADO = 75;
 
-/** Quando a flecha chega: espera o servidor liquidar a operação e mostra quantas moedas ela rendeu. */
+/**
+ * Do disparo até a liquidação: quando a compra confirma, o marco e o pássaro passam para o preço real de entrada;
+ * quando o contrato termina, o resultado decide o pássaro (agora, se a flecha já chegou, ou na chegada).
+ */
 async function acompanharEstudo(ar) {
   if (!ar.estudo?.pedido) return;
   const registro = await ar.estudo.pedido;
@@ -1436,27 +1492,30 @@ async function acompanharEstudo(ar) {
     if (!tratadoPeloApp(registro.erro)) {
       mostrarEstudo({ texto: 'Flecha não registrada', detalhe: mensagemErro(registro.erro), cor: 'neutro' });
     }
+    receberVeredito(ar, null, { cor: 'neutro' }, 'não registrada');
     return;
   }
-  let ultimoErro = null;
+  let op = registro, ultimoErro = null;
   for (let i = 0; i < TENTATIVAS_RESULTADO; i++) {
-    const op = i === 0 && registro.moedasPagas !== null && registro.moedasPagas !== undefined
-      ? registro
-      : await esperar(ESPERA_RESULTADO_MS).then(() => api.operacaoEstudo(registro.id)).catch(erro => {
-        ultimoErro = erro;
-        return null;
-      });
-    const resultado = textoResultadoEstudo(op, ar.valor);
-    if (resultado) {
-      contarNoPlacar(game.placarPartida, ar.alvo.ativo, op);
-      game.reaisPartida = somarResultadoReais(game.reaisPartida, op);
-      game.apostasPartida = Math.round((game.apostasPartida + lucroDaAposta(op, ar.valor)) * 100) / 100;
-      mostrarEstudo(resultado);
-      // as moedas entram pelo servidor: durante a rodada, na sessão; depois dela, direto na carteira
-      if (sessaoCtl) sessaoCtl.atualizar().catch(() => {});
-      else atualizarCarteira().catch(() => {});
-      return;
+    if (op) {
+      aplicarEntrada(ar, op);
+      const resultado = textoResultadoEstudo(op, ar.valor);
+      if (resultado) {
+        contarNoPlacar(game.placarPartida, ar.alvo.ativo, op);
+        game.reaisPartida = somarResultadoReais(game.reaisPartida, op);
+        game.apostasPartida = Math.round((game.apostasPartida + lucroDaAposta(op, ar.valor)) * 100) / 100;
+        // as moedas entram pelo servidor: durante a rodada, na sessão; depois dela, direto na carteira
+        if (sessaoCtl) sessaoCtl.atualizar().catch(() => {});
+        else atualizarCarteira().catch(() => {});
+        receberVeredito(ar, op, resultado);
+        return;
+      }
     }
+    await esperar(ESPERA_RESULTADO_MS);
+    op = await api.operacaoEstudo(registro.id).catch(erro => {
+      ultimoErro = erro;
+      return null;
+    });
   }
   mostrarEstudo({
     texto: 'Resultado pendente',
@@ -1465,6 +1524,32 @@ async function acompanharEstudo(ar) {
       : 'A operação foi registrada, mas ainda não foi liquidada. Consulte o histórico em instantes.',
     cor: 'neutro',
   });
+  receberVeredito(ar, null, { cor: 'neutro' }, 'resultado pendente');
+}
+
+/** A compra confirmou: o marco e o pássaro da flecha passam a contar do preço real de entrada do contrato. */
+function aplicarEntrada(ar, op) {
+  if (ar.entradaReal || !op) return;
+  const entrada = Number(op.precoEntradaContrato);
+  if (!(entrada > 0)) return;
+  ar.entradaReal = entrada;
+  if (ar.previsao) ar.previsao = { ...ar.previsao, agora: entrada, real: true };
+  const m = ar.passaro?.mercado;
+  if (m && m.precoFinal == null) m.precoInicial = entrada;
+}
+
+/**
+ * Guarda o resultado do contrato na flecha e decide o pássaro se ela já está esperando no alvo (senão, decide quando
+ * chegar). Operação que não abriu mostra o aviso na hora.
+ */
+function receberVeredito(ar, op, resultado, textoSemOperacao = 'valor devolvido') {
+  const fechada = op?.status === 'FECHADA';
+  const textoPassaro = resultado.cor === 'perda' ? 'passou!'
+    : fechada ? 'empate: valor devolvido'
+    : op ? 'não abriu: valor devolvido' : textoSemOperacao;
+  ar.veredito = { op, resultado, textoPassaro, mostrado: !op || !fechada };
+  if (op && !fechada) mostrarEstudo(resultado);
+  if (ar.state === 'aguardando') resolverFlechaDeMercado(ar);
 }
 
 const esperar = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -2043,7 +2128,9 @@ function drawRegua(previsao) {
   ctx.fillStyle = '#ff8a80';
   ctx.fillText('▼ cai', x - 50, BTC_ALTURA.max);
   if (precoReferencia !== null) {
-    outlinedText(`agora ${dolares(precoReferencia, previsao.casas)}`, x - 50, FLECHA_BTC.nivel + 5, "800 13px Nunito, sans-serif",
+    // até a compra confirmar, o preço da tela; depois, o preço real de entrada do contrato
+    outlinedText(`${previsao.real ? 'entrada' : 'agora'} ${dolares(precoReferencia, previsao.casas)}`, x - 50,
+      FLECHA_BTC.nivel + 5, "800 13px Nunito, sans-serif",
       '#ffffff', 'rgba(40,20,5,0.8)', 3);
   }
   ctx.restore();
@@ -2124,6 +2211,8 @@ function drawArrows() {
     if (ar.alvo && ar.state === 'flying') {
       const falta = FLECHA_BTC.tempo - ar.t;
       drawAlvoMercado(ar.alvo, falta / FLECHA_BTC.tempo, Math.max(1, Math.ceil(falta)), ar.previsao);
+    } else if (ar.alvo && ar.state === 'aguardando') {
+      drawAlvoMercado(ar.alvo, 0, '…', ar.previsao);   // esperando o tick de saída do contrato
     }
     // Rastro (mais largo e mais forte nas flechas de nível maior)
     if (ar.trail.length > 1) {

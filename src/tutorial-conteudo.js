@@ -94,8 +94,10 @@ export function slidesTutorial(regras = {}) {
           <li><b>Mirar também não</b>: enquanto você segura e escolhe sobe ou desce, nada é enviado.</li>
           <li>A operação (uma opção binária de 5 ticks na corretora) <b>abre no instante em que a flecha sai do
             arco</b>.</li>
-          <li>O preço de entrada é o do tick seguinte na corretora, que pode ser um pouco diferente do "agora" da
-            tela.</li>
+          <li>O contrato começa no <b>tick seguinte</b> da corretora (~1 s depois): a linha do alvo troca "agora"
+            por "entrada", o preço real em que ele começou.</li>
+          <li>Ele termina 5 ticks depois da entrada. Se a flecha chegar antes, ela <b>espera no alvo</b>: o pássaro
+            morre só se o contrato ganhou.</li>
         </ul>`,
     },
     {

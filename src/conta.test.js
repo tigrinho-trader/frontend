@@ -1134,6 +1134,77 @@ describe("rodada com lotes de flechas de mercado", () => {
     expect(chamadas.filter((c) => c.chave === "POST /jogos/flecha/estudo/operacoes")).toHaveLength(1);
   });
 
+  // o resultado da flecha de mercado vem do contrato na corretora (tick de entrada e de saída reais)
+  const operacao = (extra = {}) => ({
+    id: "op-1", simbolo: "BTCUSDT", modo: "REAL", status: "ABERTA", moedasPagas: null,
+    precoEntradaContrato: 100050, entradaEm: "2026-11-16T01:00:01Z", ...extra,
+  });
+  const ganhou = operacao({
+    status: "FECHADA", moedasPagas: 18.94, resultadoBinarioBrl: 10, resultadoLiquidoBrl: 8.94,
+    precoSaidaContrato: 100080, saidaEm: "2026-11-16T01:00:06Z",
+  });
+  const perdeu = operacao({
+    status: "FECHADA", moedasPagas: 0, resultadoBinarioBrl: -10, resultadoLiquidoBrl: -10,
+    precoSaidaContrato: 100020, saidaEm: "2026-11-16T01:00:06Z",
+  });
+  const umaConsulta = () => new Promise((r) => setTimeout(r, 600));   // o jogo consulta a cada 400 ms
+  const CINCO_SEGUNDOS = 330;                                          // quadros de 16 ms
+
+  it("a flecha chega antes do fim do contrato: espera no alvo e só então o resultado decide o pássaro", async () => {
+    await entrarComLotes([{ flecha: "btc", valor: 10, quantidade: 3 }]);
+    let agora = operacao();
+    rotas["POST /jogos/flecha/estudo/operacoes"] = [201, operacao()];
+    rotas["GET /jogos/flecha/estudo/operacoes/op-1"] = () => [200, agora];
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "2" }));
+    atirar();
+    await estabilizar();
+    expect($("aviso").textContent).toBe("Flecha registrada · Aguardando a operação na corretora…");
+
+    quadros(CINCO_SEGUNDOS);            // a flecha chegou, mas o contrato ainda não terminou
+    await umaConsulta();
+    await estabilizar();
+    expect(chamadas.some((c) => c.chave === "GET /jogos/flecha/estudo/operacoes/op-1")).toBe(true);
+    expect($("aviso").textContent).toBe("Flecha registrada · Aguardando a operação na corretora…");
+
+    agora = ganhou;                     // tick de saída acima da entrada: o contrato ganhou
+    await umaConsulta();
+    await estabilizar();
+    quadros();
+    expect($("aviso").textContent).toContain("+8,94 moedas");
+    expect($("aviso").textContent).toContain("acertou");
+  });
+
+  it("o contrato termina antes de a flecha chegar: o resultado só aparece quando ela chega", async () => {
+    await entrarComLotes([{ flecha: "btc", valor: 10, quantidade: 3 }]);
+    rotas["POST /jogos/flecha/estudo/operacoes"] = [201, operacao()];
+    rotas["GET /jogos/flecha/estudo/operacoes/op-1"] = [200, perdeu];
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "2" }));
+    atirar();
+    await estabilizar();
+    await umaConsulta();
+    await estabilizar();
+    expect($("aviso").textContent).toBe("Flecha registrada · Aguardando a operação na corretora…");
+
+    quadros(CINCO_SEGUNDOS);
+    expect($("aviso").textContent).toContain("−10 moedas");
+    expect($("aviso").textContent).toContain("errou");
+  });
+
+  it("operação recusada pela corretora avisa na hora (o valor volta)", async () => {
+    await entrarComLotes([{ flecha: "btc", valor: 10, quantidade: 3 }]);
+    rotas["POST /jogos/flecha/estudo/operacoes"] = [201, operacao({ status: "ABRINDO", precoEntradaContrato: null })];
+    rotas["GET /jogos/flecha/estudo/operacoes/op-1"] = [200, operacao({
+      status: "RECUSADA", motivo: "Deriv recusou a opção: saldo insuficiente", moedasPagas: 10, precoEntradaContrato: null,
+    })];
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "2" }));
+    atirar();
+    await estabilizar();
+    await umaConsulta();
+    await estabilizar();
+    expect($("aviso").textContent).toContain("Moedas devolvidas");
+    expect($("aviso").textContent).toContain("saldo insuficiente");
+  });
+
   it("'Voltar ao jogo' fecha a compra sem comprar", async () => {
     await entrarComLotes([{ flecha: "btc", valor: 10, quantidade: 3 }]);
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "f" }));
