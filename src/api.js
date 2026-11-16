@@ -213,10 +213,14 @@ export const operacaoEstudo = idOperacao => requisitar('GET', `/jogos/flecha/est
 export const regrasFlecha = () => requisitar('GET', '/jogos/flecha/regras', { publico: true });
 /** Sessão ABERTA do usuário, ou null (204). */
 export const sessaoAtual = () => requisitar('GET', '/jogos/flecha/sessoes/atual');
-/** Abre a sessão: `flechas` = comuns ({ wood: n }); `mercado` = lotes [{ flecha, valor, quantidade }]. */
-export const abrirSessao = (campo, flechas, mercado = []) => requisitar('POST', '/jogos/flecha/sessoes', {
-  corpo: { campo, flechas, mercado },
-});
+/**
+ * Abre a sessão: `flechas` = comuns ({ wood: n }); `mercado` = lotes [{ flecha, valor, quantidade }].
+ * `{ infinita: true }`: modo infinito (só a entrada é cobrada; cada flecha de mercado é paga ao soltar).
+ */
+export const abrirSessao = (campo, flechas, mercado = [], { infinita = false } = {}) =>
+  requisitar('POST', '/jogos/flecha/sessoes', {
+    corpo: infinita ? { campo, flechas, mercado, infinita: true } : { campo, flechas, mercado },
+  });
 export const registrarTiro = (sessaoId, flecha, acertos) =>
   requisitar('POST', `/jogos/flecha/sessoes/${id(sessaoId)}/tiros`, { corpo: { flecha, acertos } });
 /** Compra flechas durante a rodada; `valor` só nas de mercado (o valor de cada flecha do lote). */

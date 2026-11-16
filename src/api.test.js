@@ -152,6 +152,8 @@ describe("rotas", () => {
     });
     await api.abrirSessao("vilarejo", { wood: 5 });
     expect(ultimaChamada().corpo).toEqual({ campo: "vilarejo", flechas: { wood: 5 }, mercado: [] });
+    await api.abrirSessao("bosque", { wood: 10 }, [], { infinita: true });   // modo infinito
+    expect(ultimaChamada().corpo).toEqual({ campo: "bosque", flechas: { wood: 10 }, mercado: [], infinita: true });
 
     await api.registrarTiro(id, "gold", ["red", "big"]);
     expect(ultimaChamada().url).toBe(`/api/jogos/flecha/sessoes/${id}/tiros`);

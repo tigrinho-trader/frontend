@@ -68,6 +68,8 @@ export function slidesTutorial(regras = {}) {
           ${semVenda.length ? `<li>${listar(semVenda)}: flecha em desenvolvimento (ainda não é vendida).</li>` : ''}
           <li>Até 40 flechas na aljava. A tecla de cada espaço (1, 2, 3...) troca a flecha na mão; <b>F</b> compra mais
             sem sair do campo.</li>
+          <li><b>Modo infinito</b> (escolha na entrada do campo): não compra nada antes. Cada flecha de mercado é paga
+            quando você solta: perdeu, sai das moedas; ganhou, as moedas sobem.</li>
         </ul>`,
     },
     {
@@ -92,10 +94,10 @@ export function slidesTutorial(regras = {}) {
       html: `<ul>
           <li><b>Comprar flechas não é o trade</b>: só separa o dinheiro da rodada.</li>
           <li><b>Mirar também não</b>: enquanto você segura e escolhe sobe ou desce, nada é enviado.</li>
-          <li>A operação (uma opção binária de 5 ticks na corretora) <b>abre no instante em que a flecha sai do
-            arco</b>.</li>
-          <li>O contrato começa no <b>tick seguinte</b> da corretora (~1 s depois): a linha do alvo troca "agora"
-            por "entrada", o preço real em que ele começou.</li>
+          <li>Ao soltar, o arqueiro <b>segura a flecha no arco</b> enquanto a compra é feita na corretora (uma opção
+            binária de 5 ticks).</li>
+          <li>A operação <b>abre no instante em que a flecha sai do arco</b>: a flecha sai e o pássaro nasce quando o
+            contrato começa, já no preço real de entrada (a linha do alvo mostra "entrada").</li>
           <li>Ele termina 5 ticks depois da entrada. Se a flecha chegar antes, ela <b>espera no alvo</b>: o pássaro
             morre só se o contrato ganhou.</li>
         </ul>`,

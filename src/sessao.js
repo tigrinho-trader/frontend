@@ -77,8 +77,10 @@ export function criarControladorSessao({
      * Abre a sessão no servidor (POST /sessoes): `flechas` = comuns ({ wood: n }), `mercado` = lotes
      * [{ flecha, valor, quantidade }]. Lança o ErroApi em caso de 409/422.
      */
-    async abrir(campo, flechas, mercado = []) {
-      const nova = await api.abrirSessao(campo, flechas, mercado);
+    async abrir(campo, flechas, mercado = [], { infinita = false } = {}) {
+      const nova = infinita
+        ? await api.abrirSessao(campo, flechas, mercado, { infinita: true })
+        : await api.abrirSessao(campo, flechas, mercado);
       ultimoTiro = null;
       aplicar(nova);
       return nova;

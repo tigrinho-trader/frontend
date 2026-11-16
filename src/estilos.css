@@ -1313,3 +1313,13 @@ h3.secao {
 .card.resultado .broke { margin-bottom: calc(var(--s) * 6px); }
 .card.resultado .btn { min-width: calc(var(--s) * 190px); margin: calc(var(--s) * 4px);
   padding: calc(var(--s) * 9px) calc(var(--s) * 22px); font-size: calc(var(--s) * 24px); }
+
+/* Modo da rodada na loja: pré-pago (compra as flechas antes) ou infinito (cada flecha é paga ao soltar) */
+.modo-rodada { display: inline-flex; gap: calc(var(--s) * 6px); margin: calc(var(--s) * 2px) 0 calc(var(--s) * 4px);
+  padding: calc(var(--s) * 4px); background: rgba(139, 90, 43, 0.15); border-radius: calc(var(--s) * 14px); }
+.modo-rodada .modo { font-family: 'Lilita One', 'Nunito', sans-serif; font-size: calc(var(--s) * 18px); color: #6b4a2e;
+  background: transparent; border: calc(var(--s) * 3px) solid transparent; border-radius: calc(var(--s) * 10px);
+  padding: calc(var(--s) * 4px) calc(var(--s) * 18px); cursor: pointer; }
+.modo-rodada .modo.ativo { color: #fff; background: #8b5a2b; border-color: #5e3b1a; }
+.arrow-qty .n.infinito { font-size: calc(var(--s) * 26px); min-width: calc(var(--s) * 60px); text-align: center; }
+#wrap[data-infinita="1"] #btn-comprar-flechas { display: none !important; }

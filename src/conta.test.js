@@ -1158,13 +1158,13 @@ describe("rodada com lotes de flechas de mercado", () => {
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "2" }));
     atirar();
     await estabilizar();
-    expect($("aviso").textContent).toBe("Flecha registrada · Aguardando a operação na corretora…");
+    expect($("aviso").textContent).toMatch(/^Contrato aberto · entrada .*100\.050.* · fecha em 5 ticks$/);
 
     quadros(CINCO_SEGUNDOS);            // a flecha chegou, mas o contrato ainda não terminou
     await umaConsulta();
     await estabilizar();
     expect(chamadas.some((c) => c.chave === "GET /jogos/flecha/estudo/operacoes/op-1")).toBe(true);
-    expect($("aviso").textContent).toBe("Flecha registrada · Aguardando a operação na corretora…");
+    expect($("aviso").textContent).toMatch(/^Contrato aberto · entrada .*100\.050.* · fecha em 5 ticks$/);
 
     agora = ganhou;                     // tick de saída acima da entrada: o contrato ganhou
     await umaConsulta();
@@ -1183,7 +1183,7 @@ describe("rodada com lotes de flechas de mercado", () => {
     await estabilizar();
     await umaConsulta();
     await estabilizar();
-    expect($("aviso").textContent).toBe("Flecha registrada · Aguardando a operação na corretora…");
+    expect($("aviso").textContent).toMatch(/^Contrato aberto · entrada .*100\.050.* · fecha em 5 ticks$/);
 
     quadros(CINCO_SEGUNDOS);
     expect($("aviso").textContent).toContain("−10 moedas");
@@ -1203,6 +1203,61 @@ describe("rodada com lotes de flechas de mercado", () => {
     await estabilizar();
     expect($("aviso").textContent).toContain("Moedas devolvidas");
     expect($("aviso").textContent).toContain("saldo insuficiente");
+  });
+
+  it("compra recusada na hora: a flecha nem sai do arco e o aviso aparece", async () => {
+    await entrarComLotes([{ flecha: "btc", valor: 10, quantidade: 3 }]);
+    rotas["POST /jogos/flecha/estudo/operacoes"] = [201, operacao({
+      status: "RECUSADA", motivo: "Deriv recusou a opção: saldo insuficiente", moedasPagas: 10, precoEntradaContrato: null,
+    })];
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "2" }));
+    atirar();
+    await estabilizar();
+    expect($("aviso").textContent).toContain("Moedas devolvidas");
+    expect($("aviso").textContent).toContain("saldo insuficiente");
+    await umaConsulta();
+    // sem flecha no ar: nada para acompanhar
+    expect(chamadas.some((c) => c.chave === "GET /jogos/flecha/estudo/operacoes/op-1")).toBe(false);
+  });
+
+  it("modo infinito: entra só pagando a entrada e cada flecha de mercado é paga ao soltar", async () => {
+    rotas["POST /jogos/flecha/sessoes"] = [201, sessao({ campo: "bosque", flechas: { wood: 10 }, mercado: [], infinita: true })];
+    vi.stubGlobal("requestAnimationFrame", (fn) => { quadro = fn; return 1; });
+    vi.stubGlobal("EventSource", EventSourceFalso);
+    HTMLCanvasElement.prototype.setPointerCapture = () => {};
+    HTMLCanvasElement.prototype.getBoundingClientRect = () => ({ left: 0, top: 0, width: 1280, height: 720 });
+    await iniciarApp({ todosOsAtivos: true });
+    $("btn-play").click();
+    $("range-grid").querySelector('button[data-range="1"]').click();
+    $("modo-infinito").click();
+    expect($("modo-infinito").classList.contains("ativo")).toBe(true);
+    expect($("buy-arrows").textContent).toBe("∞");
+    expect($("arrow-shop").textContent).toContain("paga ao soltar");
+    expect($("btn-enter").disabled).toBe(false);
+    $("btn-enter").click();
+    await estabilizar();
+    expect(chamadas.find((c) => c.chave === "POST /jogos/flecha/sessoes").corpo)
+      .toEqual({ campo: "bosque", flechas: { wood: 10 }, mercado: [], infinita: true });
+    expect($("wrap").dataset.state).toBe("playing");
+    expect($("wrap").dataset.infinita).toBe("1");
+    quadros();
+    fonteCotacoes.emitir({ simbolo: "BTCUSDT", preco: 100000 });
+    quadros();
+
+    rotas["POST /jogos/flecha/estudo/operacoes"] = [201, operacao()];
+    rotas["GET /jogos/flecha/estudo/operacoes/op-1"] = [200, operacao()];
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "2" }));   // a flecha bitcoin (infinita)
+    for (let i = 0; i < 3; i++) {
+      atirar();
+      await estabilizar();
+    }
+    const ops = chamadas.filter((c) => c.chave === "POST /jogos/flecha/estudo/operacoes");
+    expect(ops).toHaveLength(3);                                        // não acaba
+    expect(ops[0].corpo).toMatchObject({ simbolo: "BTCUSDT", tipo: "BINARIA" });
+    expect(ops[0].corpo.valor).toBeGreaterThan(0);
+    // sem "+ Flechas" e sem compra durante a rodada
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "f" }));
+    expect($("wrap").dataset.state).toBe("playing");
   });
 
   it("'Voltar ao jogo' fecha a compra sem comprar", async () => {

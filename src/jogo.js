@@ -133,6 +133,9 @@ const game = {
   selected: 'wood',         // espaço da aljava na mão do arqueiro: "wood" ou o lote de mercado ("btc@20")
   lotes: [],                // flechas de mercado da rodada, em lotes: [{ flecha, valor, quantidade }]
   saidaArmada: null,        // botão de sair já clicado uma vez com flechas de mercado sobrando (pede o 2º clique)
+  modoInfinito: false,      // escolha na loja: pré-pago (compra antes) ou infinito (cada flecha paga ao soltar)
+  infinita: false,          // a rodada aberta está no modo infinito
+  lancando: null,           // flecha de mercado presa no arco enquanto o servidor compra o contrato
   shotsFired: 0,
   totalShots: 0,            // tiros em todas as rodadas (para a dica do primeiro tiro)
   hits: 0,
@@ -204,7 +207,7 @@ const fmtPercentual = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 
 const textoTaxaDevolucao = () => `${fmtPercentual.format(game.regras.taxaDevolucao * 100)}%`;
 
 /** Flechas de mercado que sobraram e quanto volta delas se o jogador sair agora (null se não sobrou nenhuma). */
-const sobraAoSair = () => devolucaoAoSair(game.lotes, game.regras.taxaDevolucao);
+const sobraAoSair = () => (game.infinita ? null : devolucaoAoSair(game.lotes, game.regras.taxaDevolucao));
 
 /**
  * Aviso de saída na pausa e na tela de compra: quantas flechas de mercado sobraram, quanto volta e quanto se perde
@@ -337,6 +340,15 @@ function novaSessao() {
 // Flechas que já saíram do arco mas ainda não foram informadas ao servidor
 const naoReportadas = () => game.arrows.filter(a => !a.reportado);
 
+/**
+ * Modo infinito: um "lote" infinito por flecha de mercado do campo, com o valor escolhido na loja (o servidor compra
+ * cada flecha na hora do tiro).
+ */
+function lotesInfinitos(range = game.range, valores = game.valores) {
+  return tiposNoCampo(range).filter(t => t.mercado)
+    .map(t => ({ flecha: t.id, valor: centavos(valores[t.id] ?? game.valorPadrao), quantidade: Infinity }));
+}
+
 /** Ajusta o HUD aos números do servidor (mais as estimativas do que ainda não foi confirmado). */
 function reconciliar() {
   const est = sessaoCtl?.estado();
@@ -357,6 +369,11 @@ function reconciliar() {
     game.quiver[t.id] = Math.max(0, (est.flechas[t.id] || 0) - noAr);
   }
   for (const t of ARROW_TYPES) game.bought[t.id] = Number(est.compradas[t.id]) || 0;
+  if (game.infinita) {
+    // modo infinito: nada acaba; cada flecha de mercado é comprada pelo servidor ao soltar
+    game.lotes = lotesInfinitos();
+    for (const t of ARROW_TYPES) game.quiver[t.id] = Infinity;
+  }
   ensureSelection();
   game.wallet = centavos(game.saldoBase - game.spent + game.earned);
   if (game.state === 'refill') fillRefill();
@@ -572,6 +589,11 @@ function efeitoDaLinha(typeId) {
 const temValorInvalido = () => tiposNoCampo(game.range).some(t => t.mercado && game.valoresInvalidos[t.id]);
 
 function renderBuy() {
+  if (game.modoInfinito) {
+    renderBuyInfinito();
+    return;
+  }
+  marcarModoNaLoja();
   const r = game.range, order = game.order, valores = game.valores;
   const arrowsCost = orderCost(order, r, valores), total = centavos(r.fee + arrowsCost), count = countArrows(order);
   const guard = guardadasNoCampo(r), nGuard = countArrows(guard);
@@ -620,6 +642,64 @@ function renderBuy() {
   $('buy-after').textContent = moedas(left);
   $('btn-enter').disabled = count + nGuard === 0 || left < 0 || game.ocupado || temValorInvalido();
   $('btn-enter').textContent = game.ocupado ? 'Entrando...' : total > 0 ? 'Pagar e entrar' : 'Entrar';
+}
+
+/** Botões Pré-pago / Infinito da loja e o texto de cada modo. */
+function marcarModoNaLoja() {
+  $('modo-prepago').classList.toggle('ativo', !game.modoInfinito);
+  $('modo-infinito').classList.toggle('ativo', game.modoInfinito);
+  $('modo-prepago').setAttribute('aria-pressed', String(!game.modoInfinito));
+  $('modo-infinito').setAttribute('aria-pressed', String(game.modoInfinito));
+  $('buy-explica').textContent = game.modoInfinito
+    ? 'Flechas infinitas: não compra nada antes. Cada flecha de mercado é paga quando você solta (perdeu, sai das moedas; ganhou, as moedas sobem). Escolha o valor de cada flecha.'
+    : 'Monte sua aljava: a madeira é grátis para treinar. Nas flechas de mercado, escolha o valor de cada flecha: Nível 1, 2, 3 ou Personalizado.';
+}
+
+/** Loja no modo infinito: só o valor de cada flecha de mercado; a entrada é o único custo para entrar. */
+function renderBuyInfinito() {
+  marcarModoNaLoja();
+  const r = game.range, valores = game.valores;
+  const left = centavos(game.wallet - r.fee);
+  $('buy-title').textContent = r.name;
+  $('arrow-shop').innerHTML = tiposNoCampo(r).map(t => {
+    const cost = arrowCost(t, r, valores);
+    const info = t.mercado
+      ? `valor da flecha <span class="coin"></span><b class="mult">${textoValor(cost)}</b> · paga ao soltar${htmlNiveis(t)}`
+      : 'grátis · treino';
+    const efeito = efeitoDaLinha(t.id);
+    return `
+      <div class="arrow-row active${t.mercado ? ' mercado' : ''}${efeito.classe}" data-linha="${t.id}"
+        title="${escaparHtml(t.desc)}">
+        ${efeito.html}
+        <img src="${arrowIcon(t, visualDe(t, cost))}" alt="">
+        <div class="arrow-info">
+          <b class="arrow-name">${t.name}</b>
+          <span>${info}</span>
+        </div>
+        <div class="arrow-qty"><span class="n infinito" title="Infinitas">∞</span></div>
+      </div>`;
+  }).join('') + flechasEmDesenvolvimento(r).map(t => `
+      <div class="arrow-row mercado em-desenvolvimento" title="Em desenvolvimento">
+        <img src="${arrowIcon(t, 1)}" alt="">
+        <div class="arrow-info">
+          <b class="arrow-name">${t.name}</b>
+          <span>em desenvolvimento</span>
+        </div>
+      </div>`).join('');
+  game.efeito = null;
+  $('buy-fee').textContent = entradaLivre(r) ? 'livre por tempo limitado' : textoValor(r.fee);
+  $('buy-arrows-label').textContent = 'flechas pagas ao soltar';
+  $('buy-arrows').textContent = '∞';
+  $('buy-total').textContent = textoValor(r.fee);
+  $('buy-after').textContent = moedas(left);
+  $('btn-enter').disabled = left < 0 || game.ocupado || temValorInvalido();
+  $('btn-enter').textContent = game.ocupado ? 'Entrando...' : r.fee > 0 ? 'Pagar a entrada e entrar' : 'Entrar';
+}
+
+function escolherModo(infinito) {
+  if (game.ocupado || game.modoInfinito === infinito) return;
+  game.modoInfinito = infinito;
+  renderBuy();
 }
 
 function updateOrder(typeId, delta) {
@@ -760,8 +840,9 @@ function ensureSelection() {
 
 async function enterRange() {
   const range = game.range, order = game.order, valores = { ...game.valores };
-  const total = centavos(range.fee + orderCost(order, range, valores));
-  if (total > game.wallet || countArrows(order) + countArrows(guardadasNoCampo(range)) === 0
+  const infinita = game.modoInfinito;
+  const total = infinita ? centavos(range.fee) : centavos(range.fee + orderCost(order, range, valores));
+  if (total > game.wallet || (!infinita && countArrows(order) + countArrows(guardadasNoCampo(range)) === 0)
     || game.ocupado || sessaoCtl || temValorInvalido()) return;
   audio();
 
@@ -771,7 +852,8 @@ async function enterRange() {
   mostrarErroCompra(null);
   renderBuy();
   try {
-    await ctl.abrir(range.slug, comunsDoPedido(order), mercadoDoPedido(order, valores));
+    if (infinita) await ctl.abrir(range.slug, { wood: 10 }, [], { infinita: true });
+    else await ctl.abrir(range.slug, comunsDoPedido(order), mercadoDoPedido(order, valores));
   } catch (e) {
     if (!tratadoPeloApp(e)) mostrarErroCompra(e);
     return;
@@ -786,10 +868,13 @@ async function enterRange() {
   game.saldoBase = game.wallet;
   sfx.pay();
   game.spent = total;
-  game.quiver = { ...order };
-  game.bought = { ...order };
-  game.lotes = mercadoDoPedido(order, valores);
-  game.selected = 'wood';
+  game.infinita = infinita;
+  wrap.dataset.infinita = infinita ? '1' : '0';
+  game.lancando = null;
+  game.quiver = infinita ? emptyQuiver() : { ...order };
+  game.bought = infinita ? emptyQuiver() : { ...order };
+  game.lotes = infinita ? lotesInfinitos(range, valores) : mercadoDoPedido(order, valores);
+  game.selected = infinita ? (game.lotes[0] ? chaveLote(game.lotes[0].flecha, game.lotes[0].valor) : 'wood') : 'wood';
   ensureSelection();
   game.shotsFired = 0;
   game.hits = 0;
@@ -881,7 +966,7 @@ function openRefill() {
 
 /** Botão "+ Flechas" do HUD: compra mais flechas a qualquer momento da rodada. */
 function abrirCompraNoJogo() {
-  if (game.state !== 'playing' || game.encerrando || !sessaoCtl) return;
+  if (game.state !== 'playing' || game.encerrando || !sessaoCtl || game.infinita) return;
   openRefill();
 }
 
@@ -1273,12 +1358,40 @@ function previsaoMercado(alvo) {
 function shoot() {
   ensureSelection();
   const espaco = selecionado();
-  if (!espaco || espaco.n <= 0) return;
+  if (!espaco || espaco.n <= 0 || game.lancando) return;
   const v = planoDoTiro();
   if (v.alvo.ativo && feeds[v.alvo.ativo].preco() === null) {
     addText(LAUNCH.x + 160, LAUNCH.y - 120, `esperando a cotação do ${ATIVOS[v.alvo.ativo].nome}...`, '#ffe0b2', 24);
     return;
   }
+  if (game.infinita && espaco.valor !== null && availableToBuy() < espaco.valor) {
+    addText(LAUNCH.x + 160, LAUNCH.y - 120, 'moedas insuficientes para esta flecha', '#ff8a80', 24);
+    return;
+  }
+  const previsao = previsaoDoAlvo(v.alvo);
+  game.quiver[espaco.id]--;
+  if (espaco.valor !== null) {
+    const lote = game.lotes.find(l => l.flecha === espaco.id && l.valor === espaco.valor);
+    if (lote) lote.quantidade--;
+    game.lotes = game.lotes.filter(l => l.quantidade > 0);
+  }
+  ensureSelection();
+  game.shotsFired++;
+  game.totalShots++;
+  if (v.alvo.ativo && sessaoCtl) {
+    segurarNoArco(v, espaco, previsao);
+    return;
+  }
+  const ar = lancarFlecha(v, espaco, previsao);
+  if (v.alvo.ativo) {
+    // sem rodada no servidor: o pássaro nasce agora e a tela decide
+    ar.passaro = spawnPassaroMercado(v.alvo.ativo, { daFlecha: true });
+    ar.reportado = true;
+  }
+}
+
+/** A flecha sai do arco agora: começa o voo de 5 s até a coluna do alvo. */
+function lancarFlecha(v, espaco, previsao) {
   game.arrows.push({
     x0: LAUNCH.x, y0: LAUNCH.y, vx0: v.vx, vy0: v.vy, g: v.g, alvo: v.alvo, t: 0,
     x: LAUNCH.x, y: LAUNCH.y, px: LAUNCH.x, py: LAUNCH.y,
@@ -1295,22 +1408,61 @@ function shoot() {
     reportado: false,     // já foi informada ao servidor?
   });
   const ar = game.arrows[game.arrows.length - 1];
-  ar.previsao = previsaoDoAlvo(v.alvo);
-  if (v.alvo.ativo) {
-    // no instante do disparo nasce o pássaro que chega no alvo junto com a flecha
-    ar.passaro = spawnPassaroMercado(v.alvo.ativo, { daFlecha: true });
-    registrarNoEstudo(ar);
-  }
-  game.quiver[espaco.id]--;
-  if (espaco.valor !== null) {
-    const lote = game.lotes.find(l => l.flecha === espaco.id && l.valor === espaco.valor);
-    if (lote) lote.quantidade--;
-    game.lotes = game.lotes.filter(l => l.quantidade > 0);
-  }
-  ensureSelection();
-  game.shotsFired++;
-  game.totalShots++;
+  ar.previsao = previsao;
   sfx.shoot();
+  return ar;
+}
+
+/**
+ * Flecha de mercado com a rodada no servidor: o arqueiro segura a flecha no arco enquanto o servidor compra o contrato
+ * na corretora. Ela só sai, e o pássaro só nasce, quando a compra confirma, já no preço real de entrada. Assim o voo
+ * de 5 s começa junto com o contrato e o pássaro não fica parado no fim esperando o resultado.
+ */
+function segurarNoArco(v, espaco, previsao) {
+  const lancando = { v, espaco, previsao, power: game.aim.power, angle: game.aim.angle, desde: game.time };
+  game.lancando = lancando;
+  sessaoCtl.registrarMercado({
+    direcao: previsao.direcao,
+    simbolo: ATIVOS[v.alvo.ativo].simbolo,
+    tipo: 'BINARIA',
+    precoAgora: Math.round(previsao.agora * 100) / 100,
+    valor: espaco.valor,
+  }).then(op => soltarComprada(lancando, op), erro => compraNaoFeita(lancando, erro));
+}
+
+/** A compra respondeu: recusada volta para a aljava; aberta solta a flecha e o pássaro do preço de entrada. */
+function soltarComprada(lancando, op) {
+  if (game.lancando === lancando) game.lancando = null;
+  if (op?.status === 'RECUSADA' || op?.status === 'FALHOU') {
+    reconciliar();
+    addText(LAUNCH.x + 140, LAUNCH.y - 110, 'a compra não saiu: a flecha voltou', '#ffe0b2', 24);
+    mostrarEstudo(textoResultadoEstudo(op, lancando.espaco.valor)
+      || { texto: 'Moedas devolvidas', detalhe: op.motivo || 'operação não aconteceu', cor: 'neutro' });
+    return;
+  }
+  const ar = lancarFlecha(lancando.v, lancando.espaco, lancando.previsao);
+  ar.reportado = true;
+  ar.passaro = spawnPassaroMercado(lancando.v.alvo.ativo, { daFlecha: true });
+  aplicarEntrada(ar, op);
+  const entrada = Number(op?.precoEntradaContrato);
+  mostrarEstudo({
+    texto: 'Contrato aberto',
+    detalhe: entrada > 0 ? `entrada ${dolares(entrada, ATIVOS[lancando.v.alvo.ativo].casas)} · fecha em 5 ticks`
+      : 'aguardando a corretora',
+    cor: 'neutro',
+  });
+  ar.estudo = { pedido: Promise.resolve(op) };
+  acompanharEstudo(ar);
+}
+
+/** A compra nem foi registrada (sem saldo, rede): a flecha volta para a aljava. */
+function compraNaoFeita(lancando, erro) {
+  if (game.lancando === lancando) game.lancando = null;
+  reconciliar();
+  if (!tratadoPeloApp(erro)) {
+    addText(LAUNCH.x + 140, LAUNCH.y - 110, 'a flecha voltou para a aljava', '#ffe0b2', 24);
+    mostrarEstudo({ texto: 'Flecha não registrada', detalhe: mensagemErro(erro), cor: 'neutro' });
+  }
 }
 
 function updateArrows(dt) {
@@ -1445,37 +1597,6 @@ function resolverFlechaDeMercado(ar) {
   ar.state = 'resolvida';
   ar.dead = true;
   if (!ar.veredito.mostrado) mostrarEstudo(resultado);
-}
-
-/**
- * No disparo: registra a flecha de mercado com o valor do lote dela (o servidor desconta a flecha desse lote e abre a
- * operação na hora). Até a resposta, o HUD conta a flecha como "no ar"; depois, vale o número do servidor.
- */
-function registrarNoEstudo(ar) {
-  if (!sessaoCtl) {
-    ar.reportado = true;
-    return;
-  }
-  ar.estudo = {
-    pedido: sessaoCtl.registrarMercado({
-      direcao: ar.previsao.direcao,
-      simbolo: ATIVOS[ar.alvo.ativo].simbolo,
-      tipo: 'BINARIA',
-      precoAgora: Math.round(ar.previsao.agora * 100) / 100,
-      valor: ar.valor,
-    }, op => {
-      ar.reportado = true;
-      aplicarEntrada(ar, op);
-      if (!textoResultadoEstudo(op, ar.valor)) {
-        mostrarEstudo({ texto: 'Flecha registrada', detalhe: 'Aguardando a operação na corretora…', cor: 'neutro' });
-      }
-    }).catch(erro => {
-      ar.reportado = true;      // a operação não entrou: a flecha continua com o jogador no servidor
-      reconciliar();
-      return { erro };
-    }),
-  };
-  acompanharEstudo(ar);
 }
 
 // Consulta a operação desde o disparo: a entrada real chega ~1 s depois e o fim, 5 ticks depois da entrada (a Deriv
@@ -2243,8 +2364,10 @@ function drawArrows() {
 
 function drawArcher() {
   const a = game.aim;
-  const ang = a.angle;
-  const pull = a.active ? a.power : 0;
+  const lanc = game.lancando;
+  // segurando a flecha enquanto a compra não confirma: arco puxado, tremendo de leve
+  const ang = lanc ? lanc.angle : a.angle;
+  const pull = a.active ? a.power : lanc ? Math.max(0.6, lanc.power) * (0.97 + 0.03 * Math.sin(game.time * 28)) : 0;
   const stringBack = -22 - pull * 38;
   const handX = LAUNCH.x + Math.cos(ang) * stringBack;
   const handY = LAUNCH.y + Math.sin(ang) * stringBack;
@@ -2392,7 +2515,7 @@ function drawArcher() {
   ctx.lineWidth = 1.4;
   ctx.beginPath(); ctx.moveTo(tipX, -tipY); ctx.lineTo(stringBack, 0); ctx.lineTo(tipX, tipY); ctx.stroke();
 
-  const naMao = selecionado();
+  const naMao = lanc ? { id: lanc.espaco.id, valor: lanc.espaco.valor, n: 1 } : selecionado();
   if (naMao?.n > 0 && game.state === 'playing' && !game.pending) {
     ctx.save();
     ctx.translate(stringBack + ARROW_LEN, 0);
@@ -2754,7 +2877,7 @@ function drawHUD() {
     drawArrowShape(type, ctx, visual);
     ctx.restore();
     ctx.textAlign = 'right';
-    outlinedText(`${n}`, s.x + s.w - 4, s.y + s.h - 6, "19px 'Lilita One', sans-serif", n > 0 && n <= 2 ? '#ff8a80' : '#ffffff', '#4a2a10', 4);
+    outlinedText(n === Infinity ? '∞' : `${n}`, s.x + s.w - 4, s.y + s.h - 6, "19px 'Lilita One', sans-serif", n > 0 && n <= 2 ? '#ff8a80' : '#ffffff', '#4a2a10', 4);
     ctx.textAlign = 'left';
     ctx.font = '900 11px Nunito, sans-serif';
     ctx.fillStyle = 'rgba(255,240,215,0.85)';
@@ -2899,6 +3022,7 @@ function render() {
 
   if (!inLobby()) {
     drawArcher();
+    drawLancando();
     drawArrows();
   }
   sc.drawFront(ctx, game.time);
@@ -2934,8 +3058,24 @@ function updateAim() {
   a.cancelar = mira.cancelar;   // puxou para a frente: soltar cancela o tiro
 }
 
+/** Enquanto o servidor compra o contrato, um aviso sobre o arqueiro (a flecha só sai quando a compra confirma). */
+function drawLancando() {
+  if (!game.lancando || game.state !== 'playing') return;
+  const pulso = 0.6 + 0.4 * Math.sin(game.time * 8);
+  ctx.save();
+  ctx.globalAlpha = pulso;
+  ctx.textAlign = 'center';
+  outlinedText('comprando na corretora…', LAUNCH.x + 30, LAUNCH.y - 92, "18px 'Lilita One', sans-serif",
+    '#ffe57f', '#4a2a10', 4);
+  ctx.restore();
+}
+
 canvas.addEventListener('pointerdown', e => {
   if (!canAim()) return;
+  if (game.lancando) {
+    addText(LAUNCH.x + 140, LAUNCH.y - 120, 'espere a flecha sair do arco', '#ffe0b2', 20);
+    return;
+  }
   audio(); // navegadores só liberam som depois de uma interação
   const p = toGameCoords(e);
 
@@ -3052,6 +3192,8 @@ $('refill-options').addEventListener('click', e => {
   if (btn && !btn.disabled) buyMoreArrows(btn.dataset.type);
 });
 $('btn-refill-end').addEventListener('click', () => pedirSaida('btn-refill-end'));
+$('modo-prepago').addEventListener('click', () => escolherModo(false));
+$('modo-infinito').addEventListener('click', () => escolherModo(true));
 $('btn-refill-voltar').addEventListener('click', () => {
   if (game.state === 'refill' && arrowsLeft() > 0) setState('playing');
 });
