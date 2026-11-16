@@ -224,11 +224,10 @@ function mostrarRepasse(sit) {
   const fila = `${sit.naFila} compra${sit.naFila === 1 ? '' : 's'} na fila · ${fmtReais.format(Number(sit.valorNaFila) || 0)}`;
   const minimo = sit.minimoReais === null || sit.minimoReais === undefined ? ''
     : ` · saque mínimo da Binance: ${fmtReais.format(Number(sit.minimoReais))}`;
-  $('repasse-fila').textContent = fila + minimo;
-  $('repasse-liberar').hidden = !sit.bloqueadoAte;
-  if (sit.bloqueadoAte) $('repasse-bloqueado-ate').textContent = fmtData.format(new Date(sit.bloqueadoAte));
-  armado = false;
-  $('btn-repasse-liberar').textContent = 'Conferi, liberar agora';
+  const tentaDeNovo = sit.bloqueadoAte
+    ? ` · tenta de novo às ${new Intl.DateTimeFormat('pt-BR', { timeStyle: 'medium' }).format(new Date(sit.bloqueadoAte))}`
+    : '';
+  $('repasse-fila').textContent = fila + minimo + tentaDeNovo;
   const linhas = $('repasse-linhas');
   linhas.innerHTML = '';
   for (const r of sit.repasses) {
@@ -236,7 +235,7 @@ function mostrarRepasse(sit) {
     const celulas = [
       fmtData.format(new Date(r.criadoEm)),
       fmtReais.format(Number(r.valorReais) || 0),
-      `${ETAPAS[r.etapa] || r.etapa}${r.conferido ? ' (conferido)' : ''}`,
+      ETAPAS[r.etapa] || r.etapa,
       r.erro || (r.ondeEstaODinheiro ? `no momento: ${r.ondeEstaODinheiro}` : ''),
     ];
     celulas.forEach((texto, i) => {
@@ -259,33 +258,10 @@ function mostrarRepasse(sit) {
 }
 
 export async function carregarRepasse() {
-  $('repasse-msg').textContent = '';
   try {
     mostrarRepasse(await pedir('GET', '/painel/carteira/repasse'));
   } catch (erro) {
     if (erro.status !== 401) $('repasse-motivo').textContent = `Não deu para carregar: ${erro.message}`;
-  }
-}
-
-// liberar pede dois cliques: o primeiro só arma (o dinheiro vai se mover)
-let armado = false;
-async function liberarRepasse() {
-  if (!armado) {
-    armado = true;
-    $('btn-repasse-liberar').textContent = 'Clique de novo para liberar';
-    return;
-  }
-  $('btn-repasse-liberar').disabled = true;
-  try {
-    const r = await pedir('POST', '/painel/carteira/repasse/liberar');
-    mostrarRepasse(r.situacao);
-    $('repasse-msg').textContent = r.liberado
-      ? 'Liberado: o próximo ciclo (até 15 s) já leva a fila para a Binance.'
-      : 'Nada para liberar: a última tentativa não é uma falha (ou já foi conferida).';
-  } catch (erro) {
-    if (erro.status !== 401) $('repasse-msg').textContent = erro.message;
-  } finally {
-    $('btn-repasse-liberar').disabled = false;
   }
 }
 
@@ -375,7 +351,6 @@ for (const b of document.querySelectorAll('.periodo')) {
 }
 $('form-regras').addEventListener('submit', salvarRegras);
 $('btn-repasse-atualizar').addEventListener('click', carregarRepasse);
-$('btn-repasse-liberar').addEventListener('click', liberarRepasse);
 $('btn-padrao-regras').addEventListener('click', () => salvarRegras(null, {}));
 $('cfg-taxaPoupanca').addEventListener('input', () => {
   const f = paraFracao($('cfg-taxaPoupanca').value);

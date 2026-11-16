@@ -214,9 +214,6 @@ label, .rotulo-grupo { display: block; margin: 12px 0 4px; font-size: 0.9rem; }
 .repasse-estado { display: grid; gap: 4px; max-width: 760px; margin: 14px 0; background: var(--pergaminho);
   border: 2px solid var(--borda); border-radius: 14px; padding: 12px 14px; }
 .repasse-estado b { font-size: 1.05rem; }
-.repasse-liberar { max-width: 760px; margin: 0 0 14px; background: #fff3e0; border: 3px solid var(--ouro);
-  border-radius: 14px; padding: 12px 16px; }
-.repasse-liberar p { margin: 0 0 10px; }
 .tabela-repasses { min-width: 640px; }
 .tabela-repasses .falhou { color: var(--vermelho); }
 .tabela-repasses .concluido { color: var(--verde); }
