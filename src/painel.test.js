@@ -39,6 +39,16 @@ const SITUACAO = {
     atualizadoEm: "2026-11-16T15:30:00Z", erro: "passou do prazo de 3h parado em AGUARDANDO_DERIV" }],
 };
 
+const FINANCEIRO = {
+  em: "2026-11-16T15:00:00Z", dias: 7, cotacaoUsdt: 5.5, totalReais: 409.83, sobra: 309.83,
+  asaas: { dados: { saldo: 300, caixaLivre: 260.79, entradas: 40, saidas: 39.21, taxas: 0.79, movimentos: [
+    { quando: "2026-11-16", descricao: "Compra de moedas", valor: 40, moeda: "BRL", situacao: "Pix recebido" }] }, erro: null },
+  binance: { dados: null, erro: "Binance respondeu 401: IP nao autorizado" },
+  ponte: { dados: { endereco: "0x57dEdD9cb2408193bA442deA32601a9096354CcF", usdt: 0, bnb: 0.00097, gasOk: true }, erro: null },
+  deriv: { dados: { carteiraUsdt: 2, carteira: { USDT: 2 }, options: 14.15, moedaOptions: "USD" }, erro: null },
+  jogo: { moedasPerfis: 100, perfis: 1, poupanca: 5, naFilaRepasse: 2, valorFilaRepasse: 80, repasse: "Juntando" },
+};
+
 async function abrirPainel({ comToken = false } = {}) {
   document.documentElement.innerHTML = HTML.replace(/<script[\s\S]*?<\/script>/g, "");
   sessionStorage.clear();
@@ -67,6 +77,7 @@ beforeEach(() => {
       { valor: 0.95, saldoApos: 4.15, descricao: "Poupança de uma flecha vencedora (1HZ100V)", criadaEm: "2026-11-16T01:00:00Z" }] }],
     "GET /painel/jogo/config": [200, { atual: { ...AMBIENTE, taxaPoupanca: 0.05 }, ambiente: AMBIENTE }],
     "GET /painel/carteira/repasse": [200, SITUACAO],
+    "GET /painel/carteira/financeiro": [200, FINANCEIRO],
     "PUT /painel/jogo/config": (init) => [200, { atual: { ...AMBIENTE, ...JSON.parse(init.body),
       niveis: JSON.parse(init.body).niveis || AMBIENTE.niveis }, ambiente: AMBIENTE }],
   };
@@ -93,6 +104,8 @@ describe("painel do super-admin", () => {
     expect($("tela-painel").hidden).toBe(false);
     expect($("login-senha").value).toBe("");                         // a senha não fica no campo
     expect(sessionStorage.getItem("painel-token")).toBe("tok-1");
+    document.querySelector('.aba[data-aba="resultados"]').click();   // abre no Financeiro
+    await estabilizar();
     expect(chamadas.find((c) => c.chave === "GET /painel/jogo/resultados").url).toContain("dias=7");
     expect(chamadas.find((c) => c.chave === "GET /painel/jogo/resultados").auth).toBe("Bearer tok-1");
 
@@ -118,7 +131,7 @@ describe("painel do super-admin", () => {
   });
 
   it("token vencido volta para o login", async () => {
-    rotas["GET /painel/jogo/resultados"] = [401, { detail: "Entre no painel do super-admin de novo" }];
+    rotas["GET /painel/carteira/financeiro"] = [401, { detail: "Entre no painel do super-admin de novo" }];
     await abrirPainel({ comToken: true });
     expect($("tela-login").hidden).toBe(false);
     expect($("login-erro").textContent).toContain("Entre de novo");
@@ -128,6 +141,8 @@ describe("painel do super-admin", () => {
   it("período muda a consulta", async () => {
     await abrirPainel();
     await entrar();
+    document.querySelector('.aba[data-aba="resultados"]').click();
+    await estabilizar();
     document.querySelector('.periodo[data-dias="0"]').click();
     await estabilizar();
     const ultimas = chamadas.filter((c) => c.chave === "GET /painel/jogo/resultados");
@@ -187,6 +202,30 @@ describe("painel do super-admin", () => {
     expect($("repasse-fila").textContent).toContain("tenta de novo às");
     expect($("repasse-linhas").textContent).toContain("passou do prazo de 3h");
     expect($("repasse-linhas").textContent).toContain("Falhou");
+  });
+
+  it("Financeiro abre primeiro: total, sobra, cada lugar e quem não respondeu", async () => {
+    await abrirPainel();
+    await entrar();
+    expect($("aba-financeiro").hidden).toBe(false);
+    const sem = (t) => t.replace(/\s/g, " ");
+    expect(chamadas.find((c) => c.chave === "GET /painel/carteira/financeiro").url).toContain("dias=7");
+    expect(sem($("fin-total").textContent)).toBe("R$ 409,83");
+    expect(sem($("fin-moedas").textContent)).toBe("R$ 100,00");
+    expect(sem($("fin-sobra").textContent)).toBe("+R$ 309,83");
+    expect(sem($("fin-asaas-valor").textContent)).toBe("R$ 300,00");
+    expect(sem($("fin-asaas-linhas").textContent)).toContain("Livre para saques PixR$ 260,79");
+    expect($("fin-binance-erro").hidden).toBe(false);                   // a Binance não respondeu
+    expect($("fin-binance-erro").textContent).toContain("IP nao autorizado");
+    expect(sem($("fin-deriv-valor").textContent)).toBe("R$ 88,82");    // (2 + 14,15) x 5,50 = 88,825
+    expect($("fin-ponte-linhas").textContent).toContain("0x57dE…4CcF");
+    expect(sem($("fin-fluxo").textContent)).toContain("Pix recebidos no AsaasR$ 40,00");
+    expect($("fin-asaas-movimentos").textContent).toContain("Compra de moedas");
+    expect($("fin-binance-movimentos").textContent).toContain("Nada no período");
+
+    document.querySelector('[data-dias-fin="30"]').click();
+    await estabilizar();
+    expect(chamadas.filter((c) => c.chave === "GET /painel/carteira/financeiro").at(-1).url).toContain("dias=30");
   });
 
   it("conversões de porcentagem e exemplo da poupança", async () => {

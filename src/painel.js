@@ -74,7 +74,7 @@ function mostrarPainel() {
   $('tela-login').hidden = true;
   $('tela-painel').hidden = false;
   $('painel-usuario').textContent = $('login-usuario').value || 'super-admin-oscar';
-  abrirAba('resultados');
+  abrirAba('financeiro');
 }
 
 function sair(mensagem = '') {
@@ -110,11 +110,143 @@ let dias = 7;
 
 function abrirAba(nome) {
   for (const b of document.querySelectorAll('.aba')) b.classList.toggle('ativa', b.dataset.aba === nome);
-  for (const s of ['resultados', 'poupanca', 'repasse', 'regras']) $(`aba-${s}`).hidden = s !== nome;
-  if (nome === 'resultados') carregarResultados();
+  for (const s of ['financeiro', 'resultados', 'poupanca', 'repasse', 'regras']) $(`aba-${s}`).hidden = s !== nome;
+  if (nome === 'financeiro') carregarFinanceiro();
+  else if (nome === 'resultados') carregarResultados();
   else if (nome === 'poupanca') carregarPoupanca();
   else if (nome === 'repasse') carregarRepasse();
   else carregarRegras();
+}
+
+// ---------------------------------------------------------------- financeiro
+let diasFinanceiro = 7;
+const num = v => Number(v) || 0;
+const fmtUsdt = v => `${new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 }).format(num(v))} USDT`;
+const fmtCripto = (v, moeda) => `${new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 6 }).format(num(v))} ${moeda}`;
+const emReais = (usdt, cotacao) => (cotacao ? fmtReais.format(num(usdt) * num(cotacao)) : '—');
+
+/** Um lugar do painel (Asaas, Binance...): o valor em reais, as linhas de detalhe e, se não respondeu, o erro. */
+function mostrarLugar(id, parte, valor, linhas) {
+  const ok = Boolean(parte?.dados);
+  $(`lugar-${id}`).classList.toggle('indisponivel', !ok);
+  $(`fin-${id}-valor`).textContent = ok ? valor : '—';
+  $(`fin-${id}-erro`).hidden = ok;
+  $(`fin-${id}-erro`).textContent = ok ? '' : `Não respondeu: ${parte?.erro || 'sem resposta'}`;
+  const dl = $(`fin-${id}-linhas`);
+  dl.innerHTML = '';
+  if (!ok) return;
+  for (const [rotulo, texto] of linhas) {
+    const dt = document.createElement('dt');
+    dt.textContent = rotulo;
+    const dd = document.createElement('dd');
+    dd.textContent = texto;
+    dl.append(dt, dd);
+  }
+}
+
+function linhasMovimentos(tbody, movimentos, comSituacao) {
+  tbody.innerHTML = '';
+  for (const m of movimentos) {
+    const tr = document.createElement('tr');
+    const quando = document.createElement('td');
+    quando.textContent = (m.quando || '').replace('T', ' ').slice(0, 16);
+    const oque = document.createElement('td');
+    oque.textContent = m.descricao || '';
+    if (!comSituacao && m.situacao) {
+      const s = document.createElement('small');
+      s.textContent = m.situacao;
+      oque.appendChild(s);
+    }
+    const valor = document.createElement('td');
+    valor.className = `num ${classeSinal(m.valor)}`.trim();
+    valor.textContent = m.moeda === 'BRL' ? reaisComSinal(m.valor) : `${comSinal(m.valor)} ${m.moeda}`;
+    tr.append(quando, oque, valor);
+    if (comSituacao) {
+      const s = document.createElement('td');
+      s.textContent = m.situacao || '';
+      tr.appendChild(s);
+    }
+    tbody.appendChild(tr);
+  }
+  if (!movimentos.length) {
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = comSituacao ? 4 : 3;
+    td.textContent = 'Nada no período.';
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+  }
+}
+
+export async function carregarFinanceiro() {
+  $('fin-nota').textContent = 'Consultando o Asaas, a Binance, a carteira ponte e a Deriv…';
+  try {
+    const f = await pedir('GET', `/painel/carteira/financeiro?dias=${diasFinanceiro}`);
+    const cot = f.cotacaoUsdt;
+    $('fin-total').textContent = fmtReais.format(num(f.totalReais));
+    $('fin-moedas').textContent = fmtReais.format(num(f.jogo.moedasPerfis));
+    $('fin-perfis').textContent = `${f.jogo.perfis} perfi${f.jogo.perfis === 1 ? 'l' : 's'} · o que o jogo deve aos jogadores`;
+    $('fin-sobra').textContent = reaisComSinal(f.sobra);
+    $('fin-sobra').className = classeSinal(f.sobra);
+    $('fin-poupanca').textContent = fmtReais.format(num(f.jogo.poupanca));
+    const quando = new Intl.DateTimeFormat('pt-BR', { timeStyle: 'medium' }).format(new Date(f.em));
+    $('fin-nota').textContent = `Atualizado às ${quando}`
+      + (cot ? ` · USDT a ${fmtReais.format(num(cot))} (a conta Options, em dólar, entra pela mesma cotação)` : ' · sem cotação do USDT')
+      + ` · fila do repasse: ${f.jogo.naFilaRepasse} (${fmtReais.format(num(f.jogo.valorFilaRepasse))})`;
+
+    const a = f.asaas.dados;
+    mostrarLugar('asaas', f.asaas, a && fmtReais.format(num(a.saldo)), a ? [
+      ['Livre para saques Pix', fmtReais.format(num(a.caixaLivre))],
+      ['Reservado para a corretora', fmtReais.format(num(a.saldo) - num(a.caixaLivre))],
+    ] : []);
+    const b = f.binance.dados;
+    mostrarLugar('binance', f.binance, b && (cot ? fmtReais.format(num(b.brl) + num(b.usdt) * num(cot)) : fmtReais.format(num(b.brl))), b ? [
+      ['Reais', fmtReais.format(num(b.brl))],
+      ['USDT', `${fmtUsdt(b.usdt)} (${emReais(b.usdt, cot)})`],
+      ['BNB', fmtCripto(b.bnb, 'BNB')],
+    ] : []);
+    const p = f.ponte.dados;
+    mostrarLugar('ponte', f.ponte, p && emReais(p.usdt, cot), p ? [
+      ['USDT parado', fmtUsdt(p.usdt)],
+      ['BNB para o gás', `${fmtCripto(p.bnb, 'BNB')} · ${p.gasOk ? 'ok' : 'FALTA'}`],
+      ['Endereço', `${p.endereco.slice(0, 6)}…${p.endereco.slice(-4)}`],
+    ] : []);
+    const d = f.deriv.dados;
+    mostrarLugar('deriv', f.deriv, d && emReais(num(d.carteiraUsdt) + num(d.options), cot), d ? [
+      ['Conta Options', `${new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(num(d.options))} ${d.moedaOptions}`],
+      ['Carteira (ainda não foi para a Options)', fmtUsdt(d.carteiraUsdt)],
+    ] : []);
+
+    const fluxo = [];
+    if (a) {
+      fluxo.push(['Pix recebidos no Asaas', fmtReais.format(num(a.entradas)), 'compras de moedas e recargas']);
+      fluxo.push(['Pix enviados pelo Asaas', fmtReais.format(num(a.saidas)), 'repasses e saques Pix']);
+      fluxo.push(['Taxas do Asaas', fmtReais.format(num(a.taxas)), 'recebimento e transferências']);
+    }
+    if (b) {
+      fluxo.push(['Depósitos na Binance', fmtReais.format(num(b.depositosBrl)), 'Pix em reais']);
+      fluxo.push(['USDT comprado', fmtUsdt(b.usdtComprado), `por ${fmtReais.format(num(b.reaisEmUsdt))}`]);
+      fluxo.push(['USDT sacado', fmtUsdt(b.usdtSacado), 'para a carteira ponte']);
+    }
+    $('fin-fluxo').innerHTML = '';
+    for (const [rotulo, valor, sub] of fluxo) {
+      const div = document.createElement('div');
+      div.className = 'cartao-numero';
+      const r = document.createElement('span');
+      r.className = 'rotulo';
+      r.textContent = rotulo;
+      const v = document.createElement('b');
+      v.textContent = valor;
+      const s = document.createElement('small');
+      s.textContent = sub;
+      div.append(r, v, s);
+      $('fin-fluxo').appendChild(div);
+    }
+    linhasMovimentos($('fin-asaas-movimentos'), a?.movimentos || [], false);
+    linhasMovimentos($('fin-binance-movimentos'), b?.movimentos || [], true);
+  } catch (erro) {
+    if (erro.status !== 401) $('fin-nota').textContent = `Não deu para carregar: ${erro.message}`;
+  }
 }
 
 // ---------------------------------------------------------------- resultados por perfil
@@ -342,14 +474,22 @@ async function salvarRegras(evento, corpo = corpoDasRegras()) {
 $('form-login').addEventListener('submit', entrar);
 $('btn-sair').addEventListener('click', () => sair());
 for (const b of document.querySelectorAll('.aba')) b.addEventListener('click', () => abrirAba(b.dataset.aba));
-for (const b of document.querySelectorAll('.periodo')) {
+for (const b of document.querySelectorAll('.periodo[data-dias]')) {
   b.addEventListener('click', () => {
     dias = Number(b.dataset.dias);
-    for (const o of document.querySelectorAll('.periodo')) o.classList.toggle('ativo', o === b);
+    for (const o of document.querySelectorAll('.periodo[data-dias]')) o.classList.toggle('ativo', o === b);
     carregarResultados();
   });
 }
 $('form-regras').addEventListener('submit', salvarRegras);
+$('btn-financeiro-atualizar').addEventListener('click', carregarFinanceiro);
+for (const b of document.querySelectorAll('[data-dias-fin]')) {
+  b.addEventListener('click', () => {
+    diasFinanceiro = Number(b.dataset.diasFin);
+    for (const o of document.querySelectorAll('[data-dias-fin]')) o.classList.toggle('ativo', o === b);
+    carregarFinanceiro();
+  });
+}
 $('btn-repasse-atualizar').addEventListener('click', carregarRepasse);
 $('btn-padrao-regras').addEventListener('click', () => salvarRegras(null, {}));
 $('cfg-taxaPoupanca').addEventListener('input', () => {

@@ -33,7 +33,8 @@
         <span class="marca-sub" id="painel-usuario"></span>
       </div>
       <nav class="abas" role="tablist">
-        <button type="button" class="aba ativa" data-aba="resultados" role="tab">Resultados</button>
+        <button type="button" class="aba ativa" data-aba="financeiro" role="tab">Financeiro</button>
+        <button type="button" class="aba" data-aba="resultados" role="tab">Resultados</button>
         <button type="button" class="aba" data-aba="poupanca" role="tab">Poupança</button>
         <button type="button" class="aba" data-aba="repasse" role="tab">Repasse</button>
         <button type="button" class="aba" data-aba="regras" role="tab">Regras</button>
@@ -41,8 +42,73 @@
       <button type="button" class="botao secundario pequeno" id="btn-sair">Sair</button>
     </header>
 
+    <!-- Financeiro: dinheiro no Asaas, na Binance, na carteira ponte e na Deriv -->
+    <section class="secao" id="aba-financeiro">
+      <div class="linha-titulo">
+        <h2>Dinheiro nas contas</h2>
+        <div class="acoes-linha">
+          <div class="periodos" role="group" aria-label="Período do fluxo">
+            <button type="button" class="periodo" data-dias-fin="1">Hoje</button>
+            <button type="button" class="periodo ativo" data-dias-fin="7">7 dias</button>
+            <button type="button" class="periodo" data-dias-fin="30">30 dias</button>
+          </div>
+          <button type="button" class="botao secundario pequeno" id="btn-financeiro-atualizar">Atualizar</button>
+        </div>
+      </div>
+      <div class="cartoes-resumo">
+        <div class="cartao-numero destaque"><span class="rotulo">Total nas contas</span><b id="fin-total">—</b><small>Asaas + Binance + carteira ponte + Deriv, em reais</small></div>
+        <div class="cartao-numero"><span class="rotulo">Moedas dos perfis</span><b id="fin-moedas">—</b><small id="fin-perfis">o que o jogo deve aos jogadores</small></div>
+        <div class="cartao-numero"><span class="rotulo">Sobra</span><b id="fin-sobra">—</b><small>total − moedas dos perfis</small></div>
+        <div class="cartao-numero"><span class="rotulo">Poupança</span><b id="fin-poupanca">—</b><small>já está dentro do total</small></div>
+      </div>
+      <p class="nota" id="fin-nota"></p>
+
+      <div class="lugares">
+        <article class="lugar" id="lugar-asaas">
+          <h3>Asaas</h3><b class="valor" id="fin-asaas-valor">—</b>
+          <dl id="fin-asaas-linhas"></dl><p class="erro-lugar" id="fin-asaas-erro" hidden></p>
+        </article>
+        <article class="lugar" id="lugar-binance">
+          <h3>Binance</h3><b class="valor" id="fin-binance-valor">—</b>
+          <dl id="fin-binance-linhas"></dl><p class="erro-lugar" id="fin-binance-erro" hidden></p>
+        </article>
+        <article class="lugar" id="lugar-ponte">
+          <h3>Carteira ponte</h3><b class="valor" id="fin-ponte-valor">—</b>
+          <dl id="fin-ponte-linhas"></dl><p class="erro-lugar" id="fin-ponte-erro" hidden></p>
+        </article>
+        <article class="lugar" id="lugar-deriv">
+          <h3>Deriv</h3><b class="valor" id="fin-deriv-valor">—</b>
+          <dl id="fin-deriv-linhas"></dl><p class="erro-lugar" id="fin-deriv-erro" hidden></p>
+        </article>
+      </div>
+
+      <h3>Entrou e saiu no período</h3>
+      <div class="cartoes-resumo fluxo" id="fin-fluxo"></div>
+
+      <div class="movimentos-lado">
+        <div>
+          <h3>Movimentos no Asaas</h3>
+          <div class="tabela-rolagem">
+            <table class="tabela tabela-movimentos">
+              <thead><tr><th>Data</th><th>O quê</th><th class="num">Valor</th></tr></thead>
+              <tbody id="fin-asaas-movimentos"></tbody>
+            </table>
+          </div>
+        </div>
+        <div>
+          <h3>Movimentos na Binance</h3>
+          <div class="tabela-rolagem">
+            <table class="tabela tabela-movimentos">
+              <thead><tr><th>Quando</th><th>O quê</th><th class="num">Valor</th><th>Situação</th></tr></thead>
+              <tbody id="fin-binance-movimentos"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- Resultados por perfil -->
-    <section class="secao" id="aba-resultados">
+    <section class="secao" id="aba-resultados" hidden>
       <div class="linha-titulo">
         <h2>Ganhos e perdas por perfil</h2>
         <div class="periodos" role="group" aria-label="Período">
