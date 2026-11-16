@@ -6,6 +6,7 @@ import {
   alvoFlechaBtc, criarFeedBtc, direcaoDaPrevisao, escalaBtc, lerMensagemBinance, precoPrevisto, textoResultadoEstudo,
   toleranciaEmDolares, velocidadeFlechaBtc,
   velocidadePassaroDaFlecha, progressoDoVoo, progressoDoPassaro, epocaDe,
+  duracaoDoAtivo, textoDuracao, rotuloDuracao, textoContagem,
 } from "./bitcoin.js";
 import {
   VALOR_FLECHA_PADRAO, ARROW_BY_ID, BIRD_TYPES, RANGES, arrowCost, arrowPosition, coinsForHit, pickBirdType,
@@ -416,18 +417,20 @@ describe("modo sobe ou desce (binário)", () => {
 
 });
 
-describe("ativos de mercado: bitcoin, ethereum e ouro", () => {
+describe("ativos de mercado: bitcoin, ethereum, ouro, prata e V100", () => {
   const sem = (t) => t.replace(/\s/g, " ");
 
   it("cada ativo tem par na Binance, pássaro e flecha próprios", () => {
-    expect(LISTA_ATIVOS.map((a) => a.simbolo)).toEqual(["BTCUSDT", "ETHUSDT", "PAXGUSDT", "1HZ100V"]);
+    expect(LISTA_ATIVOS.map((a) => a.simbolo)).toEqual(["BTCUSDT", "ETHUSDT", "frxXAUUSD", "frxXAGUSD", "1HZ100V"]);
     for (const a of LISTA_ATIVOS) {
       expect(ATIVO_POR_SIMBOLO[a.simbolo]).toBe(a);
       expect(BIRD_TYPES[a.id]).toMatchObject({ coins: 0, mercado: a.id });
       expect(ARROW_BY_ID[a.id]).toMatchObject({ precoFixo: null, mercado: a.id });
       for (const r of RANGES) expect(r.pool[a.id]).toBeUndefined();   // fora do sorteio dos campos
     }
-    expect(ARROW_BY_ID.ouro.name).toBe("Ouro PAXG");                    // não confunde com a flecha de ouro
+    expect(ARROW_BY_ID.ouro.name).toBe("Ouro");
+    expect(ARROW_BY_ID.prata.name).toBe("Prata");
+    expect(ATIVO_POR_SIMBOLO.PAXGUSDT).toBe(ATIVOS.ouro);               // operações antigas do ouro PAXG
     expect(ATIVOS.btc.casas).toBe(0);
     expect(ATIVOS.eth.casas).toBe(2);
   });
@@ -562,5 +565,56 @@ describe("voo da flecha de mercado pelo tempo do contrato", () => {
     expect(feed.precoNoTick(epocaDe("2026-11-16T01:00:05Z"))).toBe(1348.97);
     expect(feed.precoNoTick(epocaDe("2026-11-16T01:00:00Z"))).toBe(1348.71);
     expect(feed.precoNoTick(epocaDe("2026-11-16T01:00:06Z"))).toBeNull();     // ainda não chegou
+  });
+});
+
+describe("ouro e prata: contrato de 5 minutos na Deriv", () => {
+  it("cada ativo tem o prazo do contrato e o texto dele", () => {
+    expect(duracaoDoAtivo("ouro")).toBe(300);
+    expect(duracaoDoAtivo("prata")).toBe(300);
+    expect(duracaoDoAtivo("v100")).toBe(5);
+    expect(duracaoDoAtivo("btc")).toBe(FLECHA_BTC.tempo);
+    expect(textoDuracao("ouro")).toBe("5 min");
+    expect(textoDuracao("v100")).toBe("5 s");
+    expect(rotuloDuracao("prata")).toBe("5min");
+    expect(rotuloDuracao(undefined)).toBe("5s");                        // madeira: o voo de sempre
+    expect([ATIVOS.ouro.provedor, ATIVOS.prata.provedor]).toEqual(["deriv", "deriv"]);
+    expect(ATIVOS.ouro.ticks).toBeUndefined();                          // termina pela hora, não por ticks
+    expect(ATIVOS.v100.ticks).toBe(5);
+  });
+
+  it("contagem no alvo: segundos e, a partir de 1 min, m:ss", () => {
+    expect(textoContagem(299.2)).toBe("5:00");
+    expect(textoContagem(254)).toBe("4:14");
+    expect(textoContagem(59.5)).toBe("1:00");
+    expect(textoContagem(4.2)).toBe("5");
+    expect(textoContagem(0)).toBe("1");
+  });
+
+  it("a flecha do ouro leva os 5 min do contrato e o pássaro chega junto", () => {
+    const opcoes = { duracao: 300 };
+    expect(progressoDoVoo(150, null, opcoes)).toBeCloseTo(0.425, 6);     // metade do contrato: metade dos 85%
+    expect(progressoDoVoo(300, null, opcoes)).toBeCloseTo(0.85, 6);
+    expect(progressoDoVoo(5, null, opcoes)).toBeLessThan(0.02);         // em 5 s quase não saiu do lugar
+    // o resultado chegou 2 s depois do fim: acelera e chega ao alvo
+    expect(progressoDoVoo(302 + 0.35, 302, opcoes)).toBe(1);
+    expect(progressoDoPassaro(0.2, null, FLECHA_BTC.atrasoPassaro, 300)).toBe(0);
+    expect(progressoDoPassaro(150, null, FLECHA_BTC.atrasoPassaro, 300)).toBeGreaterThan(0.42);
+    expect(progressoDoPassaro(302.35, 302, FLECHA_BTC.atrasoPassaro, 300)).toBe(1);
+  });
+
+  it("o tick de saída é o último até a expiração, assim que chega um tick nela ou depois", () => {
+    let ouvinte = null;
+    const feed = criarFeedPreco({ simbolo: "frxXAUUSD", precoSimulado: 3870, buscarReserva: async () => ({}),
+      assinar: (simbolo, fn) => { ouvinte = fn; return () => {}; }, usarBinance: false });
+    feed.ligar();
+    feed.atualizar(0.016);
+    const expira = epocaDe("2026-11-16T14:05:00Z");
+    ouvinte({ simbolo: "frxXAUUSD", preco: 3870.1, atualizadoEm: "2026-11-16T14:04:58Z" });
+    expect(feed.precoAteEpoca(expira)).toBeNull();                      // ainda pode vir o tick das 14:05:00
+    ouvinte({ simbolo: "frxXAUUSD", preco: 3870.4, atualizadoEm: "2026-11-16T14:05:01Z" });
+    expect(feed.precoAteEpoca(expira)).toBe(3870.1);                    // não houve tick às 14:05:00: vale o anterior
+    ouvinte({ simbolo: "frxXAUUSD", preco: 3871, atualizadoEm: "2026-11-16T14:06:00Z" });
+    expect(feed.precoAteEpoca(epocaDe("2026-11-16T14:05:01Z"))).toBe(3870.4);   // tick exatamente na hora
   });
 });

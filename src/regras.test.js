@@ -92,28 +92,29 @@ describe("campos de tiro", () => {
   });
 
   it("campos mais caros têm mais criptomoedas", () => {
-    expect(RANGES.map((r) => r.ativos)).toEqual([["btc"], ["btc", "eth"], ["btc", "eth", "ouro", "v100"], ["btc", "eth", "ouro", "v100"]]);
+    expect(RANGES.map((r) => r.ativos)).toEqual([["btc"], ["btc", "eth"], ["btc", "eth", "ouro", "prata", "v100"],
+      ["btc", "eth", "ouro", "prata", "v100"]]);
   });
 
-  it("só a V100 está liberada: bitcoin, ethereum e ouro estão em desenvolvimento", () => {
-    expect(["btc", "eth", "ouro"].every(emDesenvolvimento)).toBe(true);
-    expect(emDesenvolvimento("v100")).toBe(false);
-    expect(ARROW_TYPES.map((t) => t.id)).toEqual(["wood", "btc", "eth", "ouro", "v100"]);   // ferro, ouro e diamante saíram
+  it("V100, ouro e prata estão liberados (Deriv); bitcoin e ethereum estão em desenvolvimento", () => {
+    expect(["btc", "eth"].every(emDesenvolvimento)).toBe(true);
+    expect(["v100", "ouro", "prata"].some(emDesenvolvimento)).toBe(false);
+    expect(ARROW_TYPES.map((t) => t.id)).toEqual(["wood", "btc", "eth", "ouro", "prata", "v100"]);   // ferro, ouro e diamante saíram
     expect(tiposNoCampo(vilarejo).map((t) => t.id)).toEqual(["wood"]);
     expect(tiposNoCampo(bosque).map((t) => t.id)).toEqual(["wood"]);
-    expect(tiposNoCampo(pico).map((t) => t.id)).toEqual(["wood", "v100"]);
+    expect(tiposNoCampo(pico).map((t) => t.id)).toEqual(["wood", "ouro", "prata", "v100"]);
     expect(tiposNoCampo(null).map((t) => t.id)).toEqual(["wood"]);
-    expect(ativosLiberados(real)).toEqual(["v100"]);
-    expect(flechasEmDesenvolvimento(pico).map((t) => t.id)).toEqual(["btc", "eth", "ouro"]);   // a loja mostra, sem vender
+    expect(ativosLiberados(real)).toEqual(["ouro", "prata", "v100"]);
+    expect(flechasEmDesenvolvimento(pico).map((t) => t.id)).toEqual(["btc", "eth"]);   // a loja mostra, sem vender
     expect(flechasEmDesenvolvimento(vilarejo).map((t) => t.id)).toEqual(["btc"]);
   });
 
   it("bitcoin e ethereum voam e mostram a cotação nos campos deles; só a flecha não é vendida", () => {
     expect(ativosVisiveis(vilarejo)).toEqual(["btc"]);
     expect(ativosVisiveis(bosque)).toEqual(["btc", "eth"]);
-    expect(ativosVisiveis(pico)).toEqual(["btc", "eth", "v100"]);   // o ouro ainda não aparece
-    expect(ativosVisiveis(real)).toEqual(["btc", "eth", "v100"]);
-    expect(tiposNoCampo(pico).map((t) => t.id)).toEqual(["wood", "v100"]);
+    expect(ativosVisiveis(pico)).toEqual(["btc", "eth", "ouro", "prata", "v100"]);
+    expect(ativosVisiveis(real)).toEqual(["btc", "eth", "ouro", "prata", "v100"]);
+    expect(tiposNoCampo(pico).map((t) => t.id)).toEqual(["wood", "ouro", "prata", "v100"]);
   });
 
   it("campos sem a V100 (Vilarejo e Bosque) estão em desenvolvimento: não dá para entrar", () => {
@@ -136,7 +137,7 @@ describe("campos de tiro", () => {
     it("no campo aparecem a madeira e as flechas das criptos dele", () => {
       expect(tiposNoCampo(vilarejo).map((t) => t.id)).toEqual(["wood", "btc"]);
       expect(tiposNoCampo(bosque).map((t) => t.id)).toEqual(["wood", "btc", "eth"]);
-      expect(tiposNoCampo(pico).map((t) => t.id)).toEqual(["wood", "btc", "eth", "ouro", "v100"]);
+      expect(tiposNoCampo(pico).map((t) => t.id)).toEqual(["wood", "btc", "eth", "ouro", "prata", "v100"]);
       expect(flechasEmDesenvolvimento(pico)).toEqual([]);
     });
   });

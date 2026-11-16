@@ -1336,10 +1336,13 @@ h3.secao {
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   column-gap: calc(var(--s) * 12px);
-  row-gap: calc(var(--s) * 3px);
-  padding-top: calc(var(--s) * 4px);
-  padding-bottom: calc(var(--s) * 6px);
+  row-gap: calc(var(--s) * 2px);
+  padding-top: calc(var(--s) * 3px);
+  padding-bottom: calc(var(--s) * 4px);
 }
+/* com ouro, prata e V100 sao 3 linhas de mercado: nome e texto um pouco menores para tudo caber sem rolagem */
+#buy .arrow-info { font-size: calc(var(--s) * 14px); }
+#buy .arrow-info .arrow-name { font-size: calc(var(--s) * 20px); }
 #buy .arrow-row.mercado:not(.em-breve) > img { margin-top: 0; }
 #buy .arrow-row.mercado > .niveis { grid-column: 2 / -1; margin-top: 0; }
 #buy .arrow-row.em-breve {
@@ -1357,7 +1360,14 @@ h3.secao {
 #buy .buy-summary { margin-bottom: calc(var(--s) * 8px); font-size: calc(var(--s) * 17px); line-height: 1.2; }
 #buy .buy-total { font-size: calc(var(--s) * 24px); }
 #buy .buy-after { font-size: calc(var(--s) * 14px); }
-#buy .erro-caixa { margin-bottom: calc(var(--s) * 8px); }
+#buy .erro-caixa {
+  margin: 0 0 calc(var(--s) * 6px);
+  padding: calc(var(--s) * 4px) calc(var(--s) * 12px);
+  font-size: calc(var(--s) * 15px);
+}
+#buy .erro-caixa .mini { padding: calc(var(--s) * 2px) calc(var(--s) * 10px); }
+/* com o aviso de erro na tela, o "saldo depois" sai (o erro já diz o que falta): continua sem rolagem */
+#buy .card.shop:has(#buy-erro:not([hidden])) .buy-after { display: none; }
 /* Trocar campo: no canto da loja, sem ocupar altura */
 #buy .card.shop { position: relative; }
 #buy .trocar-campo {
@@ -1368,3 +1378,5 @@ h3.secao {
   padding: calc(var(--s) * 5px) calc(var(--s) * 12px);
   font-size: calc(var(--s) * 14px);
 }
+#buy h2 { font-size: calc(var(--s) * 40px); }
+#buy .btn { padding: calc(var(--s) * 9px) calc(var(--s) * 26px); font-size: calc(var(--s) * 25px); }

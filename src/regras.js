@@ -29,7 +29,8 @@ export const BIRD_TYPES = {
   // Nenhum pássaro paga moedas ao ser acertado: moeda só vem da aposta das flechas de mercado.
   btc:    { name: 'Bitcoin',  r: 23, color: '#f7931a', belly: '#ffe0b2', speed: 190, coins: 0, btc: true, mercado: 'btc' },
   eth:    { name: 'Ethereum', r: 23, color: '#627eea', belly: '#e3e8ff', speed: 190, coins: 0, mercado: 'eth' },
-  ouro:   { name: 'Ouro PAXG', r: 23, color: '#c9a227', belly: '#fff1c1', speed: 190, coins: 0, mercado: 'ouro', shiny: true },
+  ouro:   { name: 'Ouro', r: 23, color: '#c9a227', belly: '#fff1c1', speed: 190, coins: 0, mercado: 'ouro', shiny: true },
+  prata:  { name: 'Prata', r: 23, color: '#90a4ae', belly: '#eceff1', speed: 190, coins: 0, mercado: 'prata', shiny: true },
   v100:   { name: 'Volatilidade 100', r: 23, color: '#d32f2f', belly: '#ffe1e1', speed: 190, coins: 0, mercado: 'v100' },
 };
 
@@ -60,14 +61,14 @@ export const RANGES = [
   },
   {
     slug: 'pico', name: 'Pico das Águias', theme: 'peak', fee: 0, arrowPrice: 8, mult: 10, tier: 3,
-    ativos: ['btc', 'eth', 'ouro', 'v100'],
+    ativos: ['btc', 'eth', 'ouro', 'prata', 'v100'],
     desc: 'Pássaros velozes e voo em ondas. Mais dourados.',
     speedMul: 1.3, wobbleChance: 0.4, wobbleAmp: 50, spawnEvery: 1.1, maxBirds: 5,
     pool: { red: 3, big: 1, yellow: 3, blue: 3, gold: 0.8 },
   },
   {
     slug: 'reserva-real', name: 'Reserva Real', theme: 'royal', fee: 0, arrowPrice: 20, mult: 25, tier: 4,
-    ativos: ['btc', 'eth', 'ouro', 'v100'],
+    ativos: ['btc', 'eth', 'ouro', 'prata', 'v100'],
     desc: 'Só para mestres: pássaros muito rápidos e imprevisíveis.',
     speedMul: 1.45, wobbleChance: 0.6, wobbleAmp: 65, spawnEvery: 0.9, maxBirds: 6,
     pool: { red: 2, big: 1, yellow: 3, blue: 4, gold: 1.2 },
@@ -111,10 +112,16 @@ export const ARROW_TYPES = [
     fletch: ['#ffffff', '#627eea'], trail: '98,126,234', headSize: 1.25, glow: 'rgba(98,126,234,0.9)',
   },
   {
-    id: 'ouro', name: 'Ouro PAXG', price: 1, precoFixo: null, coins: 2, especial: 'ouro', mercado: 'ouro',
-    desc: 'Você escolhe o valor: o ouro sobe ou desce em 5 s? Acertou, volta o valor mais o lucro da operação; errou, perde o valor.',
+    id: 'ouro', name: 'Ouro', price: 1, precoFixo: null, coins: 2, especial: 'ouro', mercado: 'ouro',
+    desc: 'Você escolhe o valor: o ouro sobe ou desce em 5 min? A flecha leva os 5 min do contrato até o alvo. Acertou, volta o valor mais o lucro da operação; errou, perde o valor.',
     shaft: ['#4a3410', '#c9a227'], head: ['#fffbe6', '#e6c35c', '#8a6d10'], headStroke: '#5c4708',
     fletch: ['#ffffff', '#c9a227'], trail: '201,162,39', headSize: 1.25, glow: 'rgba(230,195,92,0.9)',
+  },
+  {
+    id: 'prata', name: 'Prata', price: 1, precoFixo: null, coins: 2, especial: 'prata', mercado: 'prata',
+    desc: 'Você escolhe o valor: a prata sobe ou desce em 5 min? A flecha leva os 5 min do contrato até o alvo. Acertou, volta o valor mais o lucro da operação; errou, perde o valor.',
+    shaft: ['#37474f', '#b0bec5'], head: ['#ffffff', '#cfd8dc', '#546e7a'], headStroke: '#37474f',
+    fletch: ['#ffffff', '#b0bec5'], trail: '176,190,197', headSize: 1.25, glow: 'rgba(207,216,220,0.9)',
   },
   {
     id: 'v100', name: 'Volatilidade 100', price: 1, precoFixo: null, coins: 2, especial: 'v100', mercado: 'v100',
@@ -162,15 +169,15 @@ export const orderCost = (order, range, valores = {}) =>
   centavos(ARROW_TYPES.reduce((s, t) => s + (order[t.id] || 0) * arrowCost(t, range, valores), 0));
 
 /**
- * Ativos com a FLECHA ainda em desenvolvimento: a loja mostra marcada, sem vender. Só a flecha da Volatilidade 100 é
- * vendida. Tirar um ativo daqui volta a vender a flecha dele (a lógica é a mesma).
+ * Ativos com a FLECHA ainda em desenvolvimento: a loja mostra marcada, sem vender. São vendidas as da Volatilidade
+ * 100, do ouro e da prata (Deriv). Tirar um ativo daqui volta a vender a flecha dele (a lógica é a mesma).
  */
-export const ATIVOS_EM_DESENVOLVIMENTO = new Set(['btc', 'eth', 'ouro']);
+export const ATIVOS_EM_DESENVOLVIMENTO = new Set(['btc', 'eth']);
 /**
- * Ativos ainda sem pássaro e sem cotação no jogo. Bitcoin e ethereum já voam nos campos deles e mostram a cotação
- * (só a flecha não é vendida); o ouro ainda não aparece.
+ * Ativos ainda sem pássaro e sem cotação no jogo (hoje nenhum: bitcoin e ethereum voam nos campos deles e mostram a
+ * cotação, só a flecha não é vendida).
  */
-export const ATIVOS_SEM_COTACAO = new Set(['ouro']);
+export const ATIVOS_SEM_COTACAO = new Set();
 export const emDesenvolvimento = ativo => ATIVOS_EM_DESENVOLVIMENTO.has(ativo);
 export const semCotacao = ativo => ATIVOS_SEM_COTACAO.has(ativo);
 /** Ativos do campo com a flecha à venda. */

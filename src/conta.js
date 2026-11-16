@@ -6,7 +6,7 @@ import * as api from './api.js';
 import { ErroApi, configurarApi } from './api.js';
 import {
   setState, atualizarCarteira, estadoAtual, saldoAtual, voltarDaCompra, carregarRegras, definirValorPadrao, iconeFlecha,
-  regrasAtuais, valorPadraoAtual,
+  regrasAtuais, valorPadraoAtual, pararConsultasDoJogo,
 } from './jogo.js';
 import {
   LIMITES_PADRAO, PACOTES, TEXTO_STATUS_FINAL, htmlPacotes, mensagemErroCompra, moedasDoValor, pacotesDoServidor,
@@ -664,6 +664,7 @@ function pararAcompanhamento() {
 export function pararAcompanhamentos() {
   pararAcompanhamento();
   pararConsultaSaque();
+  pararConsultasDoJogo();
 }
 
 function desenharCreditos() {

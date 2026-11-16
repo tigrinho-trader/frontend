@@ -77,7 +77,8 @@ export function slidesTutorial(regras = {}) {
       html: `<ul>
           <li><b>Puxe para trás e solte.</b></li>
           <li>Mire <b>acima da linha do meio para SOBE</b> e <b>abaixo para DESCE</b>.</li>
-          <li>A flecha leva <b>5 s</b> até a faixa na coluna da direita.</li>
+          <li>A flecha leva o tempo do contrato até a faixa na coluna da direita: <b>5 s</b> na Volatilidade 100 e
+            <b>5 min</b> no ouro e na prata.</li>
           <li><b>Madeira</b>: acerta os pássaros que estiverem na faixa escolhida quando ela chegar. Escolha um pássaro
             e acompanhe no olho.</li>
           <li><b>Mercado</b>: acerta se o preço andou para o lado que você escolheu.</li>
@@ -95,11 +96,15 @@ export function slidesTutorial(regras = {}) {
           <li><b>Comprar flechas não é o trade</b>: só separa o dinheiro da rodada.</li>
           <li><b>Mirar também não</b>: enquanto você segura e escolhe sobe ou desce, nada é enviado.</li>
           <li>Ao soltar, o arqueiro <b>segura a flecha no arco</b> enquanto a compra é feita na corretora (uma opção
-            binária de 5 ticks).</li>
+            binária: 5 ticks na Volatilidade 100, 5 minutos no ouro e na prata, o menor prazo que a corretora oferece
+            para eles).</li>
           <li>A operação <b>abre no instante em que a flecha sai do arco</b>: a flecha sai e o pássaro nasce quando o
             contrato começa, já no preço real de entrada (a linha do alvo mostra "entrada").</li>
-          <li>Ele termina 5 ticks depois da entrada: o pássaro <b>para na altura desse tick</b> (é o preço que decide),
-            segue devagar até o resultado chegar e então acelera até o alvo. Ele morre só se o contrato ganhou.</li>
+          <li>Ele termina no fim do prazo (5 ticks depois da entrada, ou 5 min depois da compra no ouro e na prata):
+            o pássaro <b>para na altura desse tick</b> (é o preço que decide), segue devagar até o resultado chegar e
+            então acelera até o alvo. Ele morre só se o contrato ganhou.</li>
+          <li>Ouro e prata só operam com o mercado aberto (dias úteis): com ele fechado, a compra é recusada e a flecha
+            volta para a aljava. Saindo do campo com um contrato aberto, o resultado vai direto para a carteira.</li>
         </ul>`,
     },
     {

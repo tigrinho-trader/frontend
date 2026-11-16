@@ -305,7 +305,7 @@ describe("perfil", () => {
     expect($("saldo-moedas").textContent).toBe("900");
     expect($("saldo-referencia").textContent.replace(/\s/g, " ")).toBe("Valor de referência: R$ 900,00 (1 moeda = R$ 1)");
     const aljava = $("saldo-aljava").textContent;
-    expect(aljava).toContain("Mercado (qualquer campo): 2 bitcoin, 1 ouro paxg");
+    expect(aljava).toContain("Mercado (qualquer campo): 2 bitcoin, 1 ouro");
     expect(aljava).toContain("Campo do Vilarejo: 3 madeira");
     expect(aljava).not.toContain("Bosque");
     expect($("saldo-extrato").textContent).toContain("Bônus inicial");
@@ -421,7 +421,8 @@ describe("jogo com o servidor", () => {
     const cartoes = [...$("range-grid").querySelectorAll(".range")].map((c) => c.textContent.replace(/\s+/g, " "));
     expect(cartoes.every((t) => t.includes("Entrada livre por tempo limitado"))).toBe(true);
     expect(cartoes[0]).toContain("Bitcoin (flecha em desenvolvimento)");
-    expect(cartoes[2]).toContain("Ouro (em desenvolvimento)");
+    expect(cartoes[2]).toContain("Au Ouro, Ag Prata, V Volatilidade 100");   // ouro e prata liberados (Deriv)
+    expect(cartoes[2]).not.toContain("Ouro (em desenvolvimento)");
     expect(cartoes[2]).toContain("Volatilidade 100");
     expect(cartoes[2]).not.toContain("Volatilidade 100 (em desenvolvimento)");
     // campos sem a V100 (Vilarejo e Bosque) estão em desenvolvimento: não dá para entrar
@@ -1058,8 +1059,8 @@ describe("rodada com lotes de flechas de mercado", { timeout: 15000 }, () => {
     $("game").dispatchEvent(e);
   }
 
-  async function entrarComLotes(mercado) {
-    rotas["POST /jogos/flecha/sessoes"] = [201, sessao({ campo: "bosque", flechas: { wood: 10, btc: 3 }, mercado })];
+  async function entrarComLotes(mercado, { campo = "bosque", range = "1", flechas = { wood: 10, btc: 3 } } = {}) {
+    rotas["POST /jogos/flecha/sessoes"] = [201, sessao({ campo, flechas, mercado })];
     vi.stubGlobal("requestAnimationFrame", (fn) => { quadro = fn; return 1; });
     vi.stubGlobal("EventSource", EventSourceFalso);
     HTMLCanvasElement.prototype.setPointerCapture = () => {};
@@ -1067,7 +1068,7 @@ describe("rodada com lotes de flechas de mercado", { timeout: 15000 }, () => {
     await iniciarApp({ todosOsAtivos: true });
     $("btn-play").click();
     $("btn-buy-campos").click();   // o Jogar abre a loja da Reserva Real
-    $("range-grid").querySelector('button[data-range="1"]').click();
+    $("range-grid").querySelector(`button[data-range="${range}"]`).click();
     $("modo-prepago").click();
     $("btn-enter").click();
     await estabilizar();
@@ -1245,6 +1246,34 @@ describe("rodada com lotes de flechas de mercado", { timeout: 15000 }, () => {
     expect($("aviso").textContent).toContain("errou");
   });
 
+  it("flecha de ouro: contrato de 5 min, consulta devagar e não chega ao alvo antes do fim", async () => {
+    await entrarComLotes([{ flecha: "ouro", valor: 10, quantidade: 2 }],
+      { campo: "pico", range: "2", flechas: { wood: 10, ouro: 2 } });
+    fonteCotacoes.emitir({ simbolo: "frxXAUUSD", preco: 3870 });
+    quadros();
+    rotas["POST /jogos/flecha/estudo/operacoes"] = [201, operacao({
+      simbolo: "frxXAUUSD", precoEntradaContrato: 3870.12, entradaEm: "2026-11-16T14:00:01Z",
+      expiraEm: "2026-11-16T14:05:00Z",
+    })];
+    rotas["GET /jogos/flecha/estudo/operacoes/op-1"] = [200, operacao({ simbolo: "frxXAUUSD", status: "FECHADA",
+      moedasPagas: 0, resultadoBinarioBrl: -10, resultadoLiquidoBrl: -10, precoSaidaContrato: 3869 })];
+    // espaços da aljava: 1 madeira, 2 bitcoin, 3 ethereum, 4 ouro (os ativos todos liberados no teste)
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "4" }));
+    atirar();
+    await estabilizar();
+    const post = chamadas.find((c) => c.chave === "POST /jogos/flecha/estudo/operacoes");
+    expect(post.corpo.simbolo).toBe("frxXAUUSD");
+    expect($("aviso").textContent).toMatch(/^Contrato aberto · entrada .*3\.870,12 · fecha em 5 min$/);
+
+    // contrato longo: consulta a cada 5 s, não a cada meio segundo
+    await umaConsulta();
+    expect(chamadas.some((c) => c.chave === "GET /jogos/flecha/estudo/operacoes/op-1")).toBe(false);
+    // 5 s de jogo depois a flecha ainda voa: o resultado só aparece no fim dos 5 min
+    quadros(CINCO_SEGUNDOS + ARRANCADA);
+    expect($("aviso").textContent).toContain("Contrato aberto");
+    expect($("aviso").textContent).not.toContain("errou");
+  });
+
   it("operação recusada pela corretora avisa na hora (o valor volta)", async () => {
     await entrarComLotes([{ flecha: "btc", valor: 10, quantidade: 3 }]);
     rotas["POST /jogos/flecha/estudo/operacoes"] = [201, operacao({ status: "ABRINDO", precoEntradaContrato: null })];
@@ -1290,7 +1319,7 @@ describe("rodada com lotes de flechas de mercado", { timeout: 15000 }, () => {
     expect($("modo-infinito").classList.contains("ativo")).toBe(true);
     expect($("buy-arrows").textContent).toBe("∞");
     expect($("arrow-shop").textContent).toContain("paga ao soltar");
-    expect($("arrow-shop").textContent.replace(/\s+/g, " ")).toContain("na rodada os 3 níveis (10, 20, 30)");
+    expect($("buy-explica").textContent).toContain("Na rodada você tem os 3 níveis (10, 20, 30)");
     expect($("btn-enter").disabled).toBe(false);
     $("btn-enter").click();
     await estabilizar();

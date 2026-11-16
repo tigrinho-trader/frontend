@@ -7,16 +7,37 @@ import { VALOR_FLECHA_PADRAO, clamp } from './regras.js';
 
 /**
  * Ativos com pássaro e flecha próprios. `casas`: casas decimais do preço na tela. `nasceACada`: segundos entre um
- * pássaro avulso e o próximo. Só o bitcoin pode operar com dinheiro real (o resto do estudo é simulado).
+ * pássaro avulso e o próximo. `provedor: 'deriv'`: a cotação vem da Deriv pelo servidor. `duracao`: segundos do
+ * contrato (o tempo de voo da flecha; sem ele, FLECHA_BTC.tempo). `ticks`: contrato por ticks (termina N ticks depois
+ * da entrada); sem ele, o contrato termina na hora de expiração que a corretora informa (ouro e prata: 5 min).
  */
 export const ATIVOS = {
-  btc: { id: 'btc', simbolo: 'BTCUSDT', nome: 'Bitcoin', marca: '₿', cor: '#f7931a', casas: 0, nasceACada: 3, precoSimulado: 100000 },
-  eth: { id: 'eth', simbolo: 'ETHUSDT', nome: 'Ethereum', marca: 'Ξ', cor: '#627eea', casas: 2, nasceACada: 6, precoSimulado: 3000 },
-  ouro: { id: 'ouro', simbolo: 'PAXGUSDT', nome: 'Ouro', marca: 'Au', cor: '#c9a227', casas: 2, nasceACada: 6, precoSimulado: 2600 },
-  v100: { id: 'v100', simbolo: '1HZ100V', nome: 'Volatilidade 100', marca: 'V', cor: '#d32f2f', casas: 2, nasceACada: 3, precoSimulado: 1000, provedor: 'deriv' },
+  btc: { id: 'btc', simbolo: 'BTCUSDT', nome: 'Bitcoin', marca: '₿', cor: '#f7931a', casas: 0, nasceACada: 3, precoSimulado: 100000, ticks: 5 },
+  eth: { id: 'eth', simbolo: 'ETHUSDT', nome: 'Ethereum', marca: 'Ξ', cor: '#627eea', casas: 2, nasceACada: 6, precoSimulado: 3000, ticks: 5 },
+  ouro: { id: 'ouro', simbolo: 'frxXAUUSD', nome: 'Ouro', marca: 'Au', cor: '#c9a227', casas: 2, nasceACada: 6, precoSimulado: 3870, provedor: 'deriv', duracao: 300 },
+  prata: { id: 'prata', simbolo: 'frxXAGUSD', nome: 'Prata', marca: 'Ag', cor: '#90a4ae', casas: 4, nasceACada: 6, precoSimulado: 47, provedor: 'deriv', duracao: 300 },
+  v100: { id: 'v100', simbolo: '1HZ100V', nome: 'Volatilidade 100', marca: 'V', cor: '#d32f2f', casas: 2, nasceACada: 3, precoSimulado: 1000, provedor: 'deriv', duracao: 5, ticks: 5 },
 };
 export const LISTA_ATIVOS = Object.values(ATIVOS);
-export const ATIVO_POR_SIMBOLO = Object.fromEntries(LISTA_ATIVOS.map(a => [a.simbolo, a]));
+export const ATIVO_POR_SIMBOLO = {
+  ...Object.fromEntries(LISTA_ATIVOS.map(a => [a.simbolo, a])),
+  PAXGUSDT: ATIVOS.ouro,   // operações antigas do ouro (PAXG na Binance), antes de ele ir para a Deriv
+};
+
+/** Segundos do contrato do ativo: o tempo de voo da flecha dele (5 s na V100; 5 min no ouro e na prata). */
+export const duracaoDoAtivo = ativo => ATIVOS[ativo]?.duracao ?? FLECHA_BTC.tempo;
+/** "5 s", "5 min": o prazo do contrato para os textos. */
+export function textoDuracao(ativo) {
+  const s = duracaoDoAtivo(ativo);
+  return s >= 60 ? `${Math.round(s / 60)} min` : `${s} s`;
+}
+/** Rótulo curto do prazo no alvo enquanto se mira: "5s", "5min". */
+export const rotuloDuracao = ativo => textoDuracao(ativo).replace(' ', '');
+/** Contagem que falta no alvo: segundos (1, 2...) ou, a partir de 1 min, "4:59". */
+export function textoContagem(falta) {
+  const s = Math.max(1, Math.ceil(falta));
+  return s >= 60 ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` : String(s);
+}
 
 /** Stream combinado da Binance para um par. aggTrade: cada negociação; miniTicker: a cada segundo, com 24 h. */
 export function urlBinance(simbolo) {
@@ -107,10 +128,11 @@ export function progressoDoVoo(idade, resultadoEm = null, {
  * Progresso (0 a 1) do pássaro da flecha de mercado: ele sai {@code atraso} s depois da flecha e anda um pouco mais
  * rápido, de modo que chega ao alvo junto com ela (as mesmas fases de {@link progressoDoVoo}).
  */
-export function progressoDoPassaro(idade, resultadoEm = null, atraso = FLECHA_BTC.atrasoPassaro) {
+export function progressoDoPassaro(idade, resultadoEm = null, atraso = FLECHA_BTC.atrasoPassaro,
+  duracao = FLECHA_BTC.tempo) {
   if (idade <= atraso) return 0;
-  const inicio = progressoDoVoo(atraso, resultadoEm);
-  const p = progressoDoVoo(idade, resultadoEm);
+  const inicio = progressoDoVoo(atraso, resultadoEm, { duracao });
+  const p = progressoDoVoo(idade, resultadoEm, { duracao });
   if (p >= 1 || inicio >= 1) return 1;
   return Math.max(0, (p - inicio) / (1 - inicio));
 }
@@ -349,6 +371,17 @@ export function criarFeedPreco({
     preco: () => f.exibido,
     /** Preço do tick daquele segundo (época), ou null se ele ainda não chegou (ou já saiu da memória). */
     precoNoTick: epoca => f.ticks.find(t => t.epoca === epoca)?.preco ?? null,
+    /**
+     * Preço de saída de um contrato que termina numa hora (ouro, prata): o último tick até `epoca`, assim que já
+     * chegou um tick nela ou depois (antes disso ainda pode vir o tick da própria hora). Null enquanto não dá para
+     * saber.
+     */
+    precoAteEpoca: epoca => {
+      const ultimo = f.ticks[f.ticks.length - 1];
+      if (!ultimo || ultimo.epoca < epoca) return null;
+      for (let i = f.ticks.length - 1; i >= 0; i--) if (f.ticks[i].epoca <= epoca) return f.ticks[i].preco;
+      return null;
+    },
     /** Pixels por dólar para a oscilação recente. */
     escala: () => escalaBtc(f.historico, f.exibido),
     variacao24h: () => f.variacao24h,

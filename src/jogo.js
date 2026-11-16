@@ -23,6 +23,7 @@ import {
   LARGURA_FAIXA_ALVO, MAX_ACERTOS_FLECHA, naFaixaDoAlvo,
   lucroDaAposta, moedasComSinal, precoPrevisto, textoResultadoEstudo, progressoDoVoo, progressoDoPassaro, epocaDe,
   toleranciaEmDolares, velocidadeFlechaBtc, velocidadePassaroDaFlecha,
+  duracaoDoAtivo, textoDuracao, rotuloDuracao, textoContagem,
 } from './bitcoin.js';
 
 // ---------------------------------------------------------------------------
@@ -623,7 +624,7 @@ function renderBuy() {
     const canAdd = left >= cost && count + nGuard < MAX_ARROWS;
     const tem = guard[t.id] ? ` · <b class="guardadas">+${guard[t.id]} guardada${guard[t.id] === 1 ? '' : 's'}</b>` : '';
     const info = t.mercado
-      ? `valor da flecha <span class="coin"></span><b class="mult">${textoValor(cost)}</b> · previsão em 5 s`
+      ? `valor da flecha <span class="coin"></span><b class="mult">${textoValor(cost)}</b> · previsão em ${textoDuracao(t.mercado)}`
       : `grátis · treino${tem}`;
     const efeito = efeitoDaLinha(t.id);
     return `
@@ -662,9 +663,10 @@ function marcarModoNaLoja() {
   $('modo-infinito').classList.toggle('ativo', game.modoInfinito);
   $('modo-prepago').setAttribute('aria-pressed', String(!game.modoInfinito));
   $('modo-infinito').setAttribute('aria-pressed', String(game.modoInfinito));
+  const niveis = game.regras.niveis.map(textoValor).join(', ');
   $('buy-explica').textContent = game.modoInfinito
-    ? 'Flechas infinitas: não compra nada antes. Cada flecha de mercado é paga quando você solta (perdeu, sai das moedas; ganhou, as moedas sobem). Escolha o valor de cada flecha.'
-    : 'Monte sua aljava: a madeira é grátis para treinar. Nas flechas de mercado, escolha o valor de cada flecha: Nível 1, 2, 3 ou Personalizado.';
+    ? `Flechas infinitas: nada é comprado antes; cada flecha de mercado é paga quando você solta. Na rodada você tem os 3 níveis (${niveis}) e troca pela tecla.`
+    : 'Madeira é grátis para treinar; nas de mercado, escolha o valor de cada flecha.';
 }
 
 /** Loja no modo infinito: só o valor de cada flecha de mercado; a entrada é o único custo para entrar. */
@@ -675,10 +677,9 @@ function renderBuyInfinito() {
   $('buy-title').textContent = r.name;
   $('arrow-shop').innerHTML = tiposNoCampo(r).map(t => {
     const cost = arrowCost(t, r, valores);
-    const niveis = game.regras.niveis.map(textoValor);
     const info = t.mercado
-      ? `começa com <span class="coin"></span><b class="mult">${textoValor(cost)}</b> · na rodada os 3 níveis `
-        + `(${niveis.join(', ')}), troque pela tecla · paga ao soltar`
+      ? `começa com <span class="coin"></span><b class="mult">${textoValor(cost)}</b> · previsão em `
+        + `${textoDuracao(t.mercado)} · paga ao soltar`
       : 'grátis · treino';
     const efeito = efeitoDaLinha(t.id);
     return `
@@ -1032,6 +1033,8 @@ async function endSession() {
   game.pending = null;
   // Flechas ainda no ar contam com os pássaros que já acertaram
   for (const ar of game.arrows) reportarTiro(ar);
+  // contratos ainda abertos (ouro e prata levam 5 min) seguem na corretora: o resultado vai direto para a carteira
+  const noContrato = game.arrows.filter(a => a.guiada && !a.veredito).length;
   marcarEncerrando(true);
 
   const ctl = sessaoCtl;
@@ -1061,6 +1064,11 @@ async function endSession() {
   sessaoCtl = null;
   const saldoBase = game.saldoBase;
   game.wallet = Math.max(0, centavos(saldoBase + netCarteira));
+
+  if (noContrato) {
+    avisar(`${noContrato} flecha${noContrato === 1 ? '' : 's'} de mercado ainda no contrato: o resultado vai direto `
+      + 'para a sua carteira quando ele fechar.', 'info', 8000);
+  }
 
   const title = $('res-title');
   title.textContent = net > 0 ? 'Lucro!' : net < 0 ? 'Prejuízo...' : 'Empatou!';
@@ -1198,9 +1206,9 @@ function updateMercadoSpawner(dt) {
 function voarMercado(b, dt) {
   const m = b.mercado;
   const feed = feeds[m.ativo];
-  if (m.precoFinal == null && m.saidaEpoca != null) {
+  if (m.precoFinal == null && (m.saidaEpoca != null || m.expiraEpoca != null)) {
     // chegou o tick que encerra o contrato: o pássaro para nessa altura (é o preço que decide)
-    const naSaida = feed.precoNoTick(m.saidaEpoca);
+    const naSaida = m.saidaEpoca != null ? feed.precoNoTick(m.saidaEpoca) : feed.precoAteEpoca(m.expiraEpoca);
     if (naSaida !== null) m.precoFinal = naSaida;
   }
   const preco = m.precoFinal ?? feed.preco();
@@ -1456,20 +1464,22 @@ function soltarComprada(lancando, op) {
       || { texto: 'Moedas devolvidas', detalhe: op.motivo || 'operação não aconteceu', cor: 'neutro' });
     return;
   }
+  const ativo = lancando.v.alvo.ativo;
   const ar = lancarFlecha(lancando.v, lancando.espaco, lancando.previsao);
   ar.reportado = true;
   ar.guiada = true;
   ar.idade = 0;
-  ar.passaro = spawnPassaroMercado(lancando.v.alvo.ativo, { daFlecha: true });
+  ar.duracao = duracaoDoAtivo(ativo);   // a flecha voa o tempo do contrato: 5 s na V100, 5 min no ouro e na prata
+  ar.passaro = spawnPassaroMercado(ativo, { daFlecha: true });
   ar.passaro.mercado.guiado = true;
-  // o contrato acaba 5 ticks (1 por segundo) depois do tick de entrada
-  const entradaEm = epocaDe(op?.entradaEm);
-  if (entradaEm !== null) ar.passaro.mercado.saidaEpoca = entradaEm + 5;
+  marcarFimDoContrato(ar, op);
   aplicarEntrada(ar, op);
   const entrada = Number(op?.precoEntradaContrato);
+  const ticks = ATIVOS[ativo].ticks;
   mostrarEstudo({
     texto: 'Contrato aberto',
-    detalhe: entrada > 0 ? `entrada ${dolares(entrada, ATIVOS[lancando.v.alvo.ativo].casas)} · fecha em 5 ticks`
+    detalhe: entrada > 0
+      ? `entrada ${dolares(entrada, ATIVOS[ativo].casas)} · fecha em ${ticks ? `${ticks} ticks` : textoDuracao(ativo)}`
       : 'aguardando a corretora',
     cor: 'neutro',
   });
@@ -1495,12 +1505,13 @@ function updateArrows(dt) {
       if (ar.guiada) {
         // flecha de mercado com contrato: anda pelo tempo do contrato e acelera quando o resultado chega
         ar.idade += dt;
-        ar.t = progressoDoVoo(ar.idade, ar.resultadoEm) * FLECHA_BTC.tempo;
+        const duracao = ar.duracao ?? FLECHA_BTC.tempo;
+        ar.t = progressoDoVoo(ar.idade, ar.resultadoEm, { duracao }) * FLECHA_BTC.tempo;
         const b = ar.passaro;
         if (b?.mercado?.guiado && b.state === 'flying') {
           // o pássaro sai um pouco depois da flecha e chega junto com ela
-          b.x = FLECHA_BTC.xNascimento
-            + progressoDoPassaro(ar.idade, ar.resultadoEm) * (FLECHA_BTC.xAlvo - FLECHA_BTC.xNascimento);
+          b.x = FLECHA_BTC.xNascimento + progressoDoPassaro(ar.idade, ar.resultadoEm, FLECHA_BTC.atrasoPassaro, duracao)
+            * (FLECHA_BTC.xAlvo - FLECHA_BTC.xNascimento);
         }
       } else {
         ar.t += dt;
@@ -1637,10 +1648,17 @@ function resolverFlechaDeMercado(ar) {
   if (!ar.veredito.mostrado) mostrarEstudo(resultado);
 }
 
-// Consulta a operação desde o disparo: a entrada real chega ~1 s depois e o fim, 5 ticks depois da entrada (a Deriv
-// pode levar mais alguns segundos para confirmar). Não deixe a interface silenciosa enquanto o backend liquida.
-// No começo do contrato não há o que ver: a cada 500 ms; perto do fim e depois, a cada 200 ms.
+// Consulta a operação desde o disparo: a entrada real chega ~1 s depois e o fim no prazo do contrato (5 ticks na V100,
+// 5 min no ouro e na prata; a Deriv pode levar mais alguns segundos para confirmar). Não deixe a interface silenciosa
+// enquanto o backend liquida. No começo do contrato não há o que ver: a cada 500 ms (5 s nos contratos longos, até
+// perto do fim); perto do fim e depois, a cada 200 ms.
 const ESPERA_RESULTADO_MS = 500, ESPERA_RESULTADO_FIM_MS = 200, TENTATIVAS_RESULTADO = 150;
+const ESPERA_CONTRATO_LONGO_MS = 5000;
+/** O app foi embora (testes): as consultas de resultado que ainda estavam esperando param. */
+let consultasParadas = false;
+export function pararConsultasDoJogo() {
+  consultasParadas = true;
+}
 
 /**
  * Do disparo até a liquidação: quando a compra confirma, o marco e o pássaro passam para o preço real de entrada;
@@ -1657,8 +1675,12 @@ async function acompanharEstudo(ar) {
     return;
   }
   let op = registro, ultimoErro = null;
-  for (let i = 0; i < TENTATIVAS_RESULTADO; i++) {
+  const duracao = ar.duracao ?? FLECHA_BTC.tempo;
+  const longo = duracao > 30;
+  const tentativas = TENTATIVAS_RESULTADO + (longo ? Math.ceil(duracao / (ESPERA_CONTRATO_LONGO_MS / 1000)) : 0);
+  for (let i = 0; i < tentativas; i++) {
     if (op) {
+      marcarFimDoContrato(ar, op);
       aplicarEntrada(ar, op);
       const resultado = textoResultadoEstudo(op, ar.valor);
       if (resultado) {
@@ -1671,7 +1693,10 @@ async function acompanharEstudo(ar) {
         return;
       }
     }
-    await esperar((ar.idade ?? 0) < FLECHA_BTC.tempo - 0.6 ? ESPERA_RESULTADO_MS : ESPERA_RESULTADO_FIM_MS);
+    const idade = ar.idade ?? 0;
+    await esperar(longo && idade < duracao - 5 ? ESPERA_CONTRATO_LONGO_MS
+      : idade < duracao - 0.6 ? ESPERA_RESULTADO_MS : ESPERA_RESULTADO_FIM_MS);
+    if (consultasParadas) return;
     op = await api.operacaoEstudo(registro.id).catch(erro => {
       ultimoErro = erro;
       return null;
@@ -1685,6 +1710,23 @@ async function acompanharEstudo(ar) {
     cor: 'neutro',
   });
   receberVeredito(ar, null, { cor: 'neutro' }, 'resultado pendente');
+}
+
+/**
+ * Onde o contrato termina, para o pássaro parar no tick de saída: por ticks (V100: N ticks depois do de entrada) ou
+ * pela hora de expiração que a corretora informa (ouro e prata: o último tick até ela).
+ */
+function marcarFimDoContrato(ar, op) {
+  const m = ar.passaro?.mercado;
+  if (!m || !op || m.saidaEpoca != null || m.expiraEpoca != null) return;
+  const ticks = ATIVOS[m.ativo]?.ticks;
+  if (ticks) {
+    const entradaEm = epocaDe(op.entradaEm);
+    if (entradaEm !== null) m.saidaEpoca = entradaEm + ticks;
+  } else {
+    const expira = epocaDe(op.expiraEm);
+    if (expira !== null) m.expiraEpoca = expira;
+  }
 }
 
 /** A compra confirmou: o marco e o pássaro da flecha passam a contar do preço real de entrada do contrato. */
@@ -2312,7 +2354,7 @@ function drawAlvoMercado(alvo, resto, contagem, previsao) {
   ctx.stroke();
   ctx.textAlign = 'center';
   if (contagem === null) {
-    outlinedText(`${FLECHA_BTC.tempo}s`, alvo.x, alvo.y - raio - 12, "20px 'Lilita One', sans-serif", '#ffe0b2', '#5d3000', 4);
+    outlinedText(rotuloDuracao(alvo.ativo), alvo.x, alvo.y - raio - 12, "20px 'Lilita One', sans-serif", '#ffe0b2', '#5d3000', 4);
   } else {
     // anel que se fecha conforme a flecha se aproxima
     ctx.lineWidth = 5;
@@ -2356,7 +2398,7 @@ function drawAlvoBinario(alvo, contagem, previsao) {
   ctx.textAlign = 'center';
   outlinedText(sobe ? '▲ SOBE' : '▼ DESCE', FLECHA_BTC.xAlvo, alvo.y + 8, "21px 'Lilita One', sans-serif",
     sobe ? '#b9f6ca' : '#ff8a80', '#2a1a08', 4);
-  outlinedText(contagem === null ? `${FLECHA_BTC.tempo}s` : String(contagem), FLECHA_BTC.xAlvo, alvo.y + 40,
+  outlinedText(contagem === null ? rotuloDuracao(alvo.ativo) : String(contagem), FLECHA_BTC.xAlvo, alvo.y + 40,
     "24px 'Lilita One', sans-serif", '#ffe0b2', '#5d3000', 5);
   ctx.restore();
 }
@@ -2364,8 +2406,10 @@ function drawAlvoBinario(alvo, contagem, previsao) {
 function drawArrows() {
   for (const ar of game.arrows) {
     if (ar.alvo && ar.state === 'flying') {
-      const falta = FLECHA_BTC.tempo - ar.t;
-      drawAlvoMercado(ar.alvo, falta / FLECHA_BTC.tempo, Math.max(1, Math.ceil(falta)), ar.previsao);
+      // flecha de mercado: o que falta do contrato (4:59 no ouro); a de madeira, o voo de 5 s
+      const total = ar.guiada ? ar.duracao ?? FLECHA_BTC.tempo : FLECHA_BTC.tempo;
+      const falta = Math.max(0, ar.guiada ? total - ar.idade : FLECHA_BTC.tempo - ar.t);
+      drawAlvoMercado(ar.alvo, falta / total, textoContagem(falta), ar.previsao);
     } else if (ar.alvo && ar.state === 'aguardando') {
       drawAlvoMercado(ar.alvo, 0, '…', ar.previsao);   // esperando o tick de saída do contrato
     }

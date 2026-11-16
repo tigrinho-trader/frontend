@@ -50,7 +50,8 @@ describe("tutorial", () => {
     expect(campos).toContain("Liberados: Pico das Águias e Reserva Real");
     expect(campos).toContain("Em desenvolvimento (ainda não dá para entrar): Campo do Vilarejo e Bosque dos Arqueiros");
     expect(campos).toContain("livre por tempo limitado");
-    expect(texto(slidesTutorial(), "Flechas")).toContain("Bitcoin, Ethereum e Ouro PAXG: flecha em desenvolvimento");
+    expect(texto(slidesTutorial(), "Flechas")).toContain("Bitcoin e Ethereum: flecha em desenvolvimento");
+    expect(texto(slidesTutorial(), "Como atirar")).toContain("5 min no ouro e na prata");
   });
 
   it("lembra quando o trade abre e como cancelar", () => {
