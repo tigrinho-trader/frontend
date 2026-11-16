@@ -35,6 +35,7 @@
       <nav class="abas" role="tablist">
         <button type="button" class="aba ativa" data-aba="resultados" role="tab">Resultados</button>
         <button type="button" class="aba" data-aba="poupanca" role="tab">Poupança</button>
+        <button type="button" class="aba" data-aba="repasse" role="tab">Repasse</button>
         <button type="button" class="aba" data-aba="regras" role="tab">Regras</button>
       </nav>
       <button type="button" class="botao secundario pequeno" id="btn-sair">Sair</button>
@@ -82,6 +83,35 @@
       </div>
       <h3>Últimos movimentos</h3>
       <ul class="movimentos" id="poupanca-movimentos"></ul>
+    </section>
+
+    <!-- Repasse das compras de moedas: Asaas -> Binance -> carteira ponte -> Deriv -->
+    <section class="secao" id="aba-repasse" hidden>
+      <div class="linha-titulo">
+        <h2>Repasse para a corretora</h2>
+        <button type="button" class="botao secundario pequeno" id="btn-repasse-atualizar">Atualizar</button>
+      </div>
+      <p class="nota">Cada Pix de compra de moedas vai do Asaas para a Binance, vira USDT, passa pela carteira ponte e
+        entra na conta Options da Deriv. Um repasse por vez.</p>
+      <div class="repasse-estado" id="repasse-estado">
+        <span class="rotulo">Situação</span>
+        <b id="repasse-motivo">—</b>
+        <small id="repasse-fila">—</small>
+      </div>
+      <div class="repasse-liberar" id="repasse-liberar" hidden>
+        <p>A última tentativa falhou. Por segurança, os repasses novos esperam até
+          <b id="repasse-bloqueado-ate">—</b>, para dar tempo de conferir onde o dinheiro ficou (veja o erro na tabela).
+          Se já conferiu, libere agora.</p>
+        <button type="button" class="botao" id="btn-repasse-liberar">Conferi, liberar agora</button>
+        <p class="msg" id="repasse-msg" role="status"></p>
+      </div>
+      <h3>Últimos repasses</h3>
+      <div class="tabela-rolagem">
+        <table class="tabela tabela-repasses">
+          <thead><tr><th>Quando</th><th class="num">Valor</th><th>Etapa</th><th>Onde está o dinheiro / erro</th></tr></thead>
+          <tbody id="repasse-linhas"></tbody>
+        </table>
+      </div>
     </section>
 
     <!-- Regras do jogo (por cima do .env) -->

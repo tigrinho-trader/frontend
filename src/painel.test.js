@@ -32,6 +32,13 @@ const RESUMO = {
     poupado: 4.15, taxasDevolucao: 0.4, lucro: -13.95, resultadoRealBrl: -14.6, sessoes: 3 },
 };
 
+const SITUACAO = {
+  ativo: true, naFila: 1, valorNaFila: 39.21, minimoReais: 28.9, bloqueadoAte: "2026-11-16T21:30:00Z",
+  motivo: "A ultima tentativa falhou: os repasses novos esperam ate a falha ser conferida (ou ate o horario)",
+  repasses: [{ id: "r1", etapa: "FALHOU", ondeEstaODinheiro: null, valorReais: 40, criadoEm: "2026-11-15T20:00:00Z",
+    atualizadoEm: "2026-11-16T15:30:00Z", erro: "passou do prazo de 3h parado em AGUARDANDO_DERIV", conferido: false }],
+};
+
 async function abrirPainel({ comToken = false } = {}) {
   document.documentElement.innerHTML = HTML.replace(/<script[\s\S]*?<\/script>/g, "");
   sessionStorage.clear();
@@ -59,6 +66,9 @@ beforeEach(() => {
     "GET /painel/carteira/poupanca": [200, { saldo: 4.15, movimentos: [
       { valor: 0.95, saldoApos: 4.15, descricao: "Poupança de uma flecha vencedora (1HZ100V)", criadaEm: "2026-11-16T01:00:00Z" }] }],
     "GET /painel/jogo/config": [200, { atual: { ...AMBIENTE, taxaPoupanca: 0.05 }, ambiente: AMBIENTE }],
+    "GET /painel/carteira/repasse": [200, SITUACAO],
+    "POST /painel/carteira/repasse/liberar": [200, { liberado: true, situacao: { ...SITUACAO, bloqueadoAte: null,
+      motivo: "Na fila: o proximo ciclo (ate 15 s) inicia o repasse" } }],
     "PUT /painel/jogo/config": (init) => [200, { atual: { ...AMBIENTE, ...JSON.parse(init.body),
       niveis: JSON.parse(init.body).niveis || AMBIENTE.niveis }, ambiente: AMBIENTE }],
   };
@@ -167,6 +177,27 @@ describe("painel do super-admin", () => {
     await estabilizar();
     expect(chamadas.some((c) => c.chave === "PUT /painel/jogo/config")).toBe(false);
     expect($("regras-msg").textContent).toContain("três níveis");
+  });
+
+  it("aba Repasse mostra por que está parado e libera com dois cliques depois de conferir", async () => {
+    await abrirPainel();
+    await entrar();
+    document.querySelector('.aba[data-aba="repasse"]').click();
+    await estabilizar();
+    expect($("repasse-motivo").textContent).toContain("falhou");
+    expect($("repasse-fila").textContent.replace(/\s/g, " ")).toContain("1 compra na fila · R$ 39,21");
+    expect($("repasse-liberar").hidden).toBe(false);
+    expect($("repasse-linhas").textContent).toContain("passou do prazo de 3h");
+
+    $("btn-repasse-liberar").click();                                 // 1º clique só arma
+    await estabilizar();
+    expect(chamadas.some((c) => c.chave === "POST /painel/carteira/repasse/liberar")).toBe(false);
+    expect($("btn-repasse-liberar").textContent).toBe("Clique de novo para liberar");
+    $("btn-repasse-liberar").click();
+    await estabilizar();
+    expect(chamadas.some((c) => c.chave === "POST /painel/carteira/repasse/liberar")).toBe(true);
+    expect($("repasse-msg").textContent).toContain("Liberado");
+    expect($("repasse-liberar").hidden).toBe(true);
   });
 
   it("conversões de porcentagem e exemplo da poupança", async () => {
