@@ -341,13 +341,19 @@ function novaSessao() {
 const naoReportadas = () => game.arrows.filter(a => !a.reportado);
 
 /**
- * Modo infinito: um "lote" infinito por flecha de mercado do campo, com o valor escolhido na loja (o servidor compra
- * cada flecha na hora do tiro).
+ * Modo infinito: para cada flecha de mercado do campo, um "lote" infinito de cada nível (Nível 1, 2 e 3) e mais o
+ * valor escolhido na loja, se for personalizado. O servidor compra cada flecha na hora do tiro.
  */
 function lotesInfinitos(range = game.range, valores = game.valores) {
-  return tiposNoCampo(range).filter(t => t.mercado)
-    .map(t => ({ flecha: t.id, valor: centavos(valores[t.id] ?? game.valorPadrao), quantidade: Infinity }));
+  const niveis = game.regras.niveis.map(centavos);
+  return tiposNoCampo(range).filter(t => t.mercado).flatMap(t => {
+    const escolhido = valorEscolhido(t.id, valores);
+    return [...new Set([...niveis, escolhido])].map(valor => ({ flecha: t.id, valor, quantidade: Infinity }));
+  });
 }
+
+/** Valor de uma flecha de mercado escolhido na loja (ou o padrão do Arsenal). */
+const valorEscolhido = (typeId, valores = game.valores) => centavos(valores[typeId] ?? game.valorPadrao);
 
 /** Ajusta o HUD aos números do servidor (mais as estimativas do que ainda não foi confirmado). */
 function reconciliar() {
@@ -663,8 +669,10 @@ function renderBuyInfinito() {
   $('buy-title').textContent = r.name;
   $('arrow-shop').innerHTML = tiposNoCampo(r).map(t => {
     const cost = arrowCost(t, r, valores);
+    const niveis = game.regras.niveis.map(textoValor);
     const info = t.mercado
-      ? `valor da flecha <span class="coin"></span><b class="mult">${textoValor(cost)}</b> · paga ao soltar${htmlNiveis(t)}`
+      ? `começa com <span class="coin"></span><b class="mult">${textoValor(cost)}</b> · na rodada os 3 níveis `
+        + `(${niveis.join(', ')}), troque pela tecla · paga ao soltar${htmlNiveis(t)}`
       : 'grátis · treino';
     const efeito = efeitoDaLinha(t.id);
     return `
@@ -874,7 +882,9 @@ async function enterRange() {
   game.quiver = infinita ? emptyQuiver() : { ...order };
   game.bought = infinita ? emptyQuiver() : { ...order };
   game.lotes = infinita ? lotesInfinitos(range, valores) : mercadoDoPedido(order, valores);
-  game.selected = infinita ? (game.lotes[0] ? chaveLote(game.lotes[0].flecha, game.lotes[0].valor) : 'wood') : 'wood';
+  // no infinito começa com a flecha de mercado no valor escolhido na loja; as teclas trocam de nível
+  const deMercado = tiposNoCampo(range).find(t => t.mercado);
+  game.selected = infinita && deMercado ? chaveLote(deMercado.id, valorEscolhido(deMercado.id, valores)) : 'wood';
   ensureSelection();
   game.shotsFired = 0;
   game.hits = 0;

@@ -1234,6 +1234,7 @@ describe("rodada com lotes de flechas de mercado", () => {
     expect($("modo-infinito").classList.contains("ativo")).toBe(true);
     expect($("buy-arrows").textContent).toBe("∞");
     expect($("arrow-shop").textContent).toContain("paga ao soltar");
+    expect($("arrow-shop").textContent.replace(/\s+/g, " ")).toContain("na rodada os 3 níveis (10, 20, 30)");
     expect($("btn-enter").disabled).toBe(false);
     $("btn-enter").click();
     await estabilizar();
@@ -1247,15 +1248,15 @@ describe("rodada com lotes de flechas de mercado", () => {
 
     rotas["POST /jogos/flecha/estudo/operacoes"] = [201, operacao()];
     rotas["GET /jogos/flecha/estudo/operacoes/op-1"] = [200, operacao()];
-    window.dispatchEvent(new KeyboardEvent("keydown", { key: "2" }));   // a flecha bitcoin (infinita)
-    for (let i = 0; i < 3; i++) {
+    // aljava: 1 madeira, 2 bitcoin Nível 3 (30), 3 Nível 2 (20), 4 Nível 1 (10), todas infinitas
+    for (const [tecla, valor] of [["2", 30], ["3", 20], ["4", 10], ["4", 10]]) {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: tecla }));
       atirar();
       await estabilizar();
+      expect(chamadas.filter((c) => c.chave === "POST /jogos/flecha/estudo/operacoes").at(-1).corpo)
+        .toMatchObject({ simbolo: "BTCUSDT", tipo: "BINARIA", valor });
     }
-    const ops = chamadas.filter((c) => c.chave === "POST /jogos/flecha/estudo/operacoes");
-    expect(ops).toHaveLength(3);                                        // não acaba
-    expect(ops[0].corpo).toMatchObject({ simbolo: "BTCUSDT", tipo: "BINARIA" });
-    expect(ops[0].corpo.valor).toBeGreaterThan(0);
+    expect(chamadas.filter((c) => c.chave === "POST /jogos/flecha/estudo/operacoes")).toHaveLength(4);   // não acaba
     // sem "+ Flechas" e sem compra durante a rodada
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "f" }));
     expect($("wrap").dataset.state).toBe("playing");
