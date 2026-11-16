@@ -133,7 +133,8 @@ const game = {
   selected: 'wood',         // espaço da aljava na mão do arqueiro: "wood" ou o lote de mercado ("btc@20")
   lotes: [],                // flechas de mercado da rodada, em lotes: [{ flecha, valor, quantidade }]
   saidaArmada: null,        // botão de sair já clicado uma vez com flechas de mercado sobrando (pede o 2º clique)
-  modoInfinito: false,      // escolha na loja: pré-pago (compra antes) ou infinito (cada flecha paga ao soltar)
+  modoInfinito: true,       // escolha na loja: infinito (padrão: cada flecha paga ao soltar) ou pré-pago (compra antes)
+  voltarDaLoja: 'ranges',   // para onde o Voltar da loja leva: o menu (veio do Jogar) ou a escolha de campo
   infinita: false,          // a rodada aberta está no modo infinito
   lancando: null,           // flecha de mercado presa no arco enquanto o servidor compra o contrato
   shotsFired: 0,
@@ -3187,16 +3188,28 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden && game.state === 'playing') togglePause();
 });
 
+// O Jogar vai direto para a loja da Reserva Real; se ela não estiver liberada, mostra a escolha de campo
+const CAMPO_DO_JOGAR = 'reserva-real';
 $('btn-play').addEventListener('click', () => {
   audio();
-  setState('ranges');
+  const campo = RANGES.find(r => r.slug === CAMPO_DO_JOGAR);
+  if (campo && canEnter(campo)) {
+    game.voltarDaLoja = 'menu';
+    openBuy(campo);
+  } else {
+    setState('ranges');
+  }
   atualizarCarteira().catch(() => {});   // saldo pode ter mudado (depósito, outra aba)
 });
 $('btn-ranges-back').addEventListener('click', () => setState('menu'));
 $('range-grid').addEventListener('click', e => {
   const btn = e.target.closest('button[data-range]');
-  if (btn && !btn.disabled) openBuy(RANGES[Number(btn.dataset.range)]);
+  if (btn && !btn.disabled) {
+    game.voltarDaLoja = 'ranges';
+    openBuy(RANGES[Number(btn.dataset.range)]);
+  }
 });
+$('btn-buy-campos').addEventListener('click', () => setState('ranges'));
 
 $('arrow-shop').addEventListener('click', e => {
   const nivel = e.target.closest('button[data-acao]');
@@ -3219,7 +3232,7 @@ for (const id of ['arrow-shop', 'refill-options']) {
   });
 }
 $('btn-enter').addEventListener('click', enterRange);
-$('btn-buy-back').addEventListener('click', () => setState('ranges'));
+$('btn-buy-back').addEventListener('click', () => setState(game.voltarDaLoja));
 $('btn-buy-fechar-aberta').addEventListener('click', encerrarRodadaAberta);
 
 $('refill-options').addEventListener('click', e => {

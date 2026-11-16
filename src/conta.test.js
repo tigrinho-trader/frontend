@@ -402,10 +402,12 @@ describe("jogo com o servidor", () => {
     }];
     await iniciarApp();
     $("btn-play").click();
+    $("btn-buy-campos").click();   // o Jogar abre a loja da Reserva Real
     const cartoes = [...$("range-grid").querySelectorAll(".range")].map((c) => c.textContent.replace(/\s+/g, " "));
     expect(cartoes[2]).toContain("Entrada 0,5");
     expect(cartoes[3]).toContain("Entrada livre por tempo limitado");
     $("range-grid").querySelector('button[data-range="2"]').click();
+    $("modo-prepago").click();
     expect($("buy-fee").textContent).toBe("0,5");
     expect($("buy-total").textContent).toBe("0,5");
     expect($("btn-enter").textContent).toBe("Pagar e entrar");
@@ -415,6 +417,7 @@ describe("jogo com o servidor", () => {
     rotas["POST /jogos/flecha/sessoes"] = [201, sessao()];
     await iniciarApp();
     $("btn-play").click();
+    $("btn-buy-campos").click();   // o Jogar abre a loja da Reserva Real
     const cartoes = [...$("range-grid").querySelectorAll(".range")].map((c) => c.textContent.replace(/\s+/g, " "));
     expect(cartoes.every((t) => t.includes("Entrada livre por tempo limitado"))).toBe(true);
     expect(cartoes[0]).toContain("Bitcoin (flecha em desenvolvimento)");
@@ -430,6 +433,7 @@ describe("jogo com o servidor", () => {
     }
     expect($("range-grid").querySelector('button[data-range="2"]').textContent.trim()).toBe("Escolher");
     $("range-grid").querySelector('button[data-range="2"]').click();
+    $("modo-prepago").click();
     expect($("buy").classList.contains("show")).toBe(true);
     expect($("buy-fee").textContent).toBe("livre por tempo limitado");
     expect($("buy-total").textContent).toBe("0");
@@ -450,7 +454,9 @@ describe("jogo com o servidor", () => {
     rotas["POST /jogos/flecha/sessoes"] = [422, { detail: "Saldo insuficiente: disponivel 3", status: 422 }];
     await iniciarApp();
     $("btn-play").click();
+    $("btn-buy-campos").click();   // o Jogar abre a loja da Reserva Real
     $("range-grid").querySelector('button[data-range="2"]').click();
+    $("modo-prepago").click();
     $("btn-enter").click();
     await estabilizar();
     expect($("buy").classList.contains("show")).toBe(true);
@@ -464,7 +470,9 @@ describe("jogo com o servidor", () => {
     rotas["POST /jogos/flecha/sessoes"] = [409, { detail: "Já existe sessão aberta", status: 409 }];
     await iniciarApp();
     $("btn-play").click();
+    $("btn-buy-campos").click();   // o Jogar abre a loja da Reserva Real
     $("range-grid").querySelector('button[data-range="2"]').click();
+    $("modo-prepago").click();
     $("btn-enter").click();
     await estabilizar();
     expect($("btn-buy-fechar-aberta").hidden).toBe(false);
@@ -490,7 +498,9 @@ describe("jogo com o servidor", () => {
     };
     await iniciarApp();
     $("btn-play").click();
+    $("btn-buy-campos").click();   // o Jogar abre a loja da Reserva Real
     $("range-grid").querySelector('button[data-range="2"]').click();
+    $("modo-prepago").click();
     $("btn-enter").click();
     await estabilizar();
     $("btn-pause").click();
@@ -581,7 +591,9 @@ describe("comprar moedas", () => {
     rotas["POST /jogos/flecha/sessoes"] = [422, { detail: "Saldo insuficiente: disponivel 3" }];
     await iniciarApp();
     $("btn-play").click();
+    $("btn-buy-campos").click();   // o Jogar abre a loja da Reserva Real
     $("range-grid").querySelector('button[data-range="2"]').click();
+    $("modo-prepago").click();
     $("btn-enter").click();
     await estabilizar();
     expect($("buy-erro").hidden).toBe(false);
@@ -598,16 +610,53 @@ describe("comprar moedas", () => {
     rotas["POST /jogos/flecha/sessoes"] = [409, { detail: "Ja existe uma sessao aberta" }];
     await iniciarApp();
     $("btn-play").click();
+    $("btn-buy-campos").click();   // o Jogar abre a loja da Reserva Real
     $("range-grid").querySelector('button[data-range="2"]').click();
+    $("modo-prepago").click();
     $("btn-enter").click();
     await estabilizar();
     expect($("buy-erro").hidden).toBe(false);
     expect($("btn-buy-comprar").hidden).toBe(true);
   });
 
+  it("o Jogar abre direto a loja da Reserva Real no modo infinito; Voltar volta ao menu", async () => {
+    await iniciarApp();
+    $("btn-play").click();
+    expect($("wrap").dataset.state).toBe("buy");
+    expect($("buy-title").textContent).toBe("Reserva Real");
+    expect($("modo-infinito").classList.contains("ativo")).toBe(true);     // infinito é o padrão
+    expect($("modo-prepago").classList.contains("ativo")).toBe(false);
+    $("btn-buy-back").click();
+    expect($("wrap").dataset.state).toBe("menu");
+  });
+
+  it("Trocar campo abre a escolha; o Voltar da loja volta para ela; o modo escolhido fica", async () => {
+    await iniciarApp();
+    $("btn-play").click();
+    $("modo-prepago").click();
+    $("btn-buy-campos").click();
+    expect($("wrap").dataset.state).toBe("ranges");
+    $("range-grid").querySelector('button[data-range="2"]').click();
+    expect($("buy-title").textContent).toBe("Pico das Águias");
+    expect($("modo-prepago").classList.contains("ativo")).toBe(true);      // a escolha vale até sair do jogo
+    $("btn-buy-back").click();
+    expect($("wrap").dataset.state).toBe("ranges");
+  });
+
+  it("sem saldo para a Reserva Real, o Jogar mostra a escolha de campo", async () => {
+    rotas["GET /jogos/flecha/regras"] = [200, {
+      niveisFlecha: [10, 20, 30], valorMinimoFlecha: 0.01, taxaDevolucaoFlechas: 0.002,
+      campos: [{ slug: "pico", entrada: 0 }, { slug: "reserva-real", entrada: 5000 }],
+    }];
+    await iniciarApp();
+    $("btn-play").click();
+    expect($("wrap").dataset.state).toBe("ranges");
+  });
+
   it("a escolha de campo também leva à compra", async () => {
     await iniciarApp();
     $("btn-play").click();
+    $("btn-buy-campos").click();   // o Jogar abre a loja da Reserva Real
     $("btn-ranges-comprar").click();
     expect($("wrap").dataset.state).toBe("creditos");
     $("btn-creditos-voltar").click();
@@ -878,7 +927,9 @@ describe("loja com o valor das flechas de mercado", () => {
     rotas["POST /jogos/flecha/sessoes"] = [201, sessao()];
     await iniciarApp({ todosOsAtivos: true });
     $("btn-play").click();
+    $("btn-buy-campos").click();   // o Jogar abre a loja da Reserva Real
     $("range-grid").querySelector('button[data-range="1"]').click();
+    $("modo-prepago").click();
     return $("arrow-shop");
   }
   const nivelDe = (painel, flecha) =>
@@ -1015,7 +1066,9 @@ describe("rodada com lotes de flechas de mercado", { timeout: 15000 }, () => {
     HTMLCanvasElement.prototype.getBoundingClientRect = () => ({ left: 0, top: 0, width: 1280, height: 720 });
     await iniciarApp({ todosOsAtivos: true });
     $("btn-play").click();
+    $("btn-buy-campos").click();   // o Jogar abre a loja da Reserva Real
     $("range-grid").querySelector('button[data-range="1"]').click();
+    $("modo-prepago").click();
     $("btn-enter").click();
     await estabilizar();
     expect($("wrap").dataset.state).toBe("playing");
@@ -1230,7 +1283,9 @@ describe("rodada com lotes de flechas de mercado", { timeout: 15000 }, () => {
     HTMLCanvasElement.prototype.getBoundingClientRect = () => ({ left: 0, top: 0, width: 1280, height: 720 });
     await iniciarApp({ todosOsAtivos: true });
     $("btn-play").click();
+    $("btn-buy-campos").click();   // o Jogar abre a loja da Reserva Real
     $("range-grid").querySelector('button[data-range="1"]').click();
+    $("modo-prepago").click();
     $("modo-infinito").click();
     expect($("modo-infinito").classList.contains("ativo")).toBe(true);
     expect($("buy-arrows").textContent).toBe("∞");

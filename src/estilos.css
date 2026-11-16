@@ -1358,3 +1358,13 @@ h3.secao {
 #buy .buy-total { font-size: calc(var(--s) * 24px); }
 #buy .buy-after { font-size: calc(var(--s) * 14px); }
 #buy .erro-caixa { margin-bottom: calc(var(--s) * 8px); }
+/* Trocar campo: no canto da loja, sem ocupar altura */
+#buy .card.shop { position: relative; }
+#buy .trocar-campo {
+  position: absolute;
+  top: calc(var(--s) * 14px);
+  left: calc(var(--s) * 18px);
+  margin: 0;
+  padding: calc(var(--s) * 5px) calc(var(--s) * 12px);
+  font-size: calc(var(--s) * 14px);
+}
